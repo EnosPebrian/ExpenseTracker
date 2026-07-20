@@ -1,0 +1,128 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:pilgrim_tracker/features/assets/presentation/screens/asset_conversion_screen.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
+
+void main() {
+  testWidgets('asset conversion waits for persistence before showing success', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final completer = Completer<void>();
+    Transaction? submitted;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AssetConversionScreen(
+            accounts: const ['Cash Enos', 'BNI Enos'],
+            assets: const ['Gold Holdings'],
+            onSave: (transaction) {
+              submitted = transaction;
+              return completer.future;
+            },
+          ),
+        ),
+      ),
+    );
+
+    final saveButton = find.widgetWithText(FilledButton, 'Record conversion');
+
+    await tester.ensureVisible(saveButton);
+    await tester.tap(saveButton);
+    await tester.pump();
+
+    expect(submitted, isNotNull);
+    expect(submitted!.type, TransactionType.assetConversion);
+
+    expect(find.text('Saving...'), findsOneWidget);
+
+    expect(find.text('Asset conversion saved locally'), findsNothing);
+
+    completer.complete();
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Asset conversion saved locally'), findsOneWidget);
+
+    expect(find.text('Record conversion'), findsOneWidget);
+  });
+
+  testWidgets(
+    'asset conversion keeps form values and displays persistence failure',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      var saveCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AssetConversionScreen(
+              accounts: const ['Cash Enos', 'BNI Enos'],
+              assets: const ['Gold Holdings'],
+              onSave: (transaction) async {
+                saveCount++;
+
+                throw StateError('database unavailable');
+              },
+            ),
+          ),
+        ),
+      );
+
+      final saveButton = find.widgetWithText(FilledButton, 'Record conversion');
+
+      await tester.ensureVisible(saveButton);
+      await tester.tap(saveButton);
+      await tester.pumpAndSettle();
+
+      expect(saveCount, 1);
+
+      expect(find.textContaining('database unavailable'), findsOneWidget);
+
+      expect(find.text('Asset conversion saved locally'), findsNothing);
+
+      final cashField = tester.widget<TextField>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == 'Cash paid',
+        ),
+      );
+
+      final quantityField = tester.widget<TextField>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == 'Quantity received',
+        ),
+      );
+
+      expect(cashField.controller?.text, '50.000.000');
+
+      expect(quantityField.controller?.text, '20');
+
+      final enabledButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Record conversion'),
+      );
+
+      expect(enabledButton.onPressed, isNotNull);
+    },
+  );
+}

@@ -1,0 +1,278 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/database/local_store.dart';
+import '../../../core/design/app_colors.dart';
+import '../../../features/analytics/domain/financial_summary.dart';
+import '../../../features/assets/presentation/screens/asset_conversion_screen.dart';
+import '../../../features/dashboard/presentation/screens/dashboard_screen.dart';
+import '../../../features/master_data/presentation/screens/accounts_page.dart';
+import '../../../features/master_data/presentation/screens/categories_page.dart';
+import '../../../features/master_data/presentation/screens/projects_page.dart';
+import '../../../features/reports/presentation/screens/reports_page.dart';
+import '../../../features/tithe/presentation/screens/tithe_page.dart';
+import '../../../features/transactions/domain/entities/transaction.dart';
+import '../../../features/transactions/presentation/edit/edit_transaction_screen.dart';
+import '../../../features/transactions/presentation/edit/transaction_form.dart';
+import '../../../features/transactions/presentation/providers/transaction_providers.dart';
+import '../../../features/transactions/presentation/quick_add/quick_add_controller.dart';
+import '../../../features/transactions/presentation/quick_add/quick_add_screen.dart';
+import '../../../features/transactions/presentation/screens/transaction_detail_screen.dart';
+import '../../../features/transactions/presentation/screens/transaction_list_screen.dart';
+import '../../../features/master_data/presentation/controllers/master_data_controller.dart';
+import '../../services/app_bootstrap_service.dart';
+import '../../data/default_master_data.dart';
+import '../../data/default_transactions.dart';
+import '../widgets/app_navigation_scaffold.dart';
+import '../widgets/app_bootstrap_error_view.dart';
+
+class AppShell extends StatefulWidget {
+  const AppShell({super.key});
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  int selected = 0;
+  bool loading = true;
+  String? bootstrapError;
+
+  late final LocalStore store = LocalStore();
+  late final transactionController = TransactionProviders.controller(store);
+  late final masterDataController = MasterDataController(
+    persist:
+        ({
+          required String entity,
+          required String name,
+          String? previousName,
+          String? categoryType,
+        }) {
+          return store.saveMasterName(
+            entity,
+            name,
+            previousName: previousName,
+            categoryType: categoryType,
+          );
+        },
+  );
+
+  late final bootstrapService = AppBootstrapService(
+    store: store,
+    transactionController: transactionController,
+  );
+
+  final List<String> assetNames = defaultAssetNames;
+
+  @override
+  void initState() {
+    super.initState();
+
+    transactionController.addListener(_onAppStateChanged);
+    masterDataController.addListener(_onAppStateChanged);
+    _loadLocalData();
+  }
+
+  void _onAppStateChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _openTransactionDetail(
+    BuildContext context,
+    Transaction transaction,
+  ) {
+    return TransactionDetailScreen.show(
+      context,
+      transaction: transaction,
+      controller: transactionController,
+      onEdit: (selectedTransaction) {
+        EditTransactionScreen.show(
+          context,
+          transaction: selectedTransaction,
+          controller: transactionController,
+          options: transactionFormOptions,
+        );
+      },
+    );
+  }
+
+  Future<void> _loadLocalData() async {
+    try {
+      final result = await bootstrapService.load(
+        defaultAccounts: defaultAccountNames,
+        defaultExpenseCategories: defaultExpenseCategories,
+        defaultIncomeCategories: defaultIncomeCategories,
+        defaultProjects: defaultProjectNames,
+        seedTransactions: buildDefaultTransactions(),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        masterDataController.replaceAll(
+          accounts: result.accounts,
+          expenseCategories: result.expenseCategories,
+          incomeCategories: result.incomeCategories,
+          projects: result.projects,
+        );
+
+        bootstrapError = null;
+        loading = false;
+      });
+    } catch (exception) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        bootstrapError = exception.toString();
+        loading = false;
+      });
+    }
+  }
+
+  Future<void> _retryBootstrap() async {
+    setState(() {
+      bootstrapError = null;
+      loading = true;
+    });
+
+    await _loadLocalData();
+  }
+
+  Future<void> addTransaction(Transaction transaction) {
+    return transactionController.createTransaction(transaction);
+  }
+
+  QuickAddConfig get quickAddConfig {
+    final accounts = masterDataController.accounts;
+    final expenses = masterDataController.expenseCategories;
+    final incomes = masterDataController.incomeCategories;
+
+    return QuickAddConfig(
+      accounts: accounts,
+      expenseCategories: expenses,
+      incomeCategories: incomes,
+      projects: masterDataController.projects,
+      assets: assetNames,
+      defaultProject: 'Life',
+      defaultAccount: accounts.isEmpty ? null : accounts.first,
+      defaultExpenseCategory: expenses.isEmpty ? null : expenses.first,
+      defaultIncomeCategory: incomes.isEmpty ? null : incomes.first,
+    );
+  }
+
+  TransactionFormOptions get transactionFormOptions {
+    return TransactionFormOptions(
+      accounts: masterDataController.accounts,
+      expenseCategories: masterDataController.expenseCategories,
+      incomeCategories: masterDataController.incomeCategories,
+      projects: masterDataController.projects,
+      assets: assetNames,
+    );
+  }
+
+  Future<void> openQuickAdd(BuildContext context) {
+    return QuickAddScreen.show(
+      context,
+      transactionController: transactionController,
+      config: quickAddConfig,
+    );
+  }
+
+  @override
+  void dispose() {
+    transactionController.removeListener(_onAppStateChanged);
+
+    masterDataController.removeListener(_onAppStateChanged);
+
+    transactionController.dispose();
+    masterDataController.dispose();
+    store.close();
+
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final transactions = transactionController.transactions;
+
+    final referenceDate = DateTime.now();
+
+    final financialSummary = FinancialSummary.calculate(
+      transactions: transactions,
+      referenceDate: referenceDate,
+      titheRate: 0.13,
+    );
+
+    final pages = [
+      Dashboard(
+        transactions: transactions,
+        summary: financialSummary,
+        referenceDate: referenceDate,
+        onOpen: (transaction) {
+          _openTransactionDetail(context, transaction);
+        },
+      ),
+      TransactionListScreen(
+        controller: transactionController,
+        onEdit: (transaction) {
+          EditTransactionScreen.show(
+            context,
+            transaction: transaction,
+            controller: transactionController,
+            options: transactionFormOptions,
+          );
+        },
+      ),
+      AccountsPage(
+        accounts: masterDataController.accounts,
+        onSave: masterDataController.save,
+      ),
+      CategoriesPage(
+        expenseCategories: masterDataController.expenseCategories,
+        incomeCategories: masterDataController.incomeCategories,
+        onSave: masterDataController.save,
+      ),
+      AssetConversionScreen(
+        accounts: masterDataController.accounts,
+        assets: assetNames,
+        onSave: addTransaction,
+      ),
+      ProjectsPage(
+        projects: masterDataController.projects,
+        onSave: masterDataController.save,
+      ),
+      TithePage(summary: financialSummary),
+      ReportsPage(summary: financialSummary),
+    ];
+
+    if (loading || transactionController.isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: violet)),
+      );
+    }
+
+    final error = bootstrapError;
+
+    if (error != null) {
+      return AppBootstrapErrorView(message: error, onRetry: _retryBootstrap);
+    }
+
+    return AppNavigationScaffold(
+      selected: selected,
+      child: pages[selected],
+      onSelect: (index) {
+        setState(() {
+          selected = index;
+        });
+      },
+      onQuickAdd: () {
+        openQuickAdd(context);
+      },
+    );
+  }
+}
