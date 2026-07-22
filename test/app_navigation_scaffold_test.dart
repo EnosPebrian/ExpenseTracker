@@ -52,7 +52,7 @@ void main() {
     expect(find.text('Reports'), findsOneWidget);
   });
 
-  testWidgets('Selecting Reports from More returns destination index 7', (
+  testWidgets('Selecting Reports from More returns destination index 8', (
     tester,
   ) async {
     int? selectedIndex;
@@ -70,7 +70,7 @@ void main() {
     await tester.tap(find.text('Reports'));
     await tester.pumpAndSettle();
 
-    expect(selectedIndex, 7);
+    expect(selectedIndex, 8);
     expect(find.text('Reports'), findsNothing);
   });
 

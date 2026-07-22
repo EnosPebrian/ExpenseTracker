@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../transactions/domain/entities/transaction.dart';
+import '../domain/entities/asset_definition.dart';
 
 class AssetConversionController extends ChangeNotifier {
   AssetConversionController({
     required List<String> accounts,
-    required List<String> assets,
-  }) : accounts = accounts,
-       assets = assets {
+    required List<AssetDefinition> assets,
+  }) : accounts = List<String>.unmodifiable(accounts),
+       assets = List<AssetDefinition>.unmodifiable(assets) {
     if (this.accounts.isEmpty) {
       throw ArgumentError.value(
         accounts,
@@ -24,8 +25,34 @@ class AssetConversionController extends ChangeNotifier {
       );
     }
 
+    final optionLabels = <String>[];
+
+    for (final asset in this.assets) {
+      final validationErrors = asset.validate();
+
+      if (validationErrors.isNotEmpty) {
+        throw ArgumentError.value(asset, 'assets', validationErrors.join(' '));
+      }
+
+      final optionLabel = _optionLabel(asset);
+
+      if (_assetsByOption.containsKey(optionLabel)) {
+        throw ArgumentError.value(
+          assets,
+          'assets',
+          'Asset selection labels must be unique. '
+              'Duplicate label: $optionLabel.',
+        );
+      }
+
+      _assetsByOption[optionLabel] = asset;
+      optionLabels.add(optionLabel);
+    }
+
+    _assetOptions = List<String>.unmodifiable(optionLabels);
+
     source = this.accounts.first;
-    destination = this.assets.first;
+    destination = _assetOptions.first;
 
     cashController.addListener(_handleInputChanged);
     quantityController.addListener(_handleInputChanged);
@@ -37,7 +64,10 @@ class AssetConversionController extends ChangeNotifier {
   ];
 
   final List<String> accounts;
-  final List<String> assets;
+  final List<AssetDefinition> assets;
+
+  final Map<String, AssetDefinition> _assetsByOption = {};
+  late final List<String> _assetOptions;
 
   final TextEditingController cashController = TextEditingController(
     text: '50.000.000',
@@ -48,6 +78,7 @@ class AssetConversionController extends ChangeNotifier {
   );
 
   bool sellAsset = false;
+
   late String source;
   late String destination;
 
@@ -76,25 +107,34 @@ class AssetConversionController extends ChangeNotifier {
     return (cash / quantity).round();
   }
 
-  bool get canSave => cash > 0 && quantity > 0;
-
-  String get selectedAsset {
+  String get selectedAssetOption {
     return sellAsset ? source : destination;
   }
 
-  String get unit {
-    switch (selectedAsset) {
-      case 'Gold Holdings':
-        return 'gram';
-      case 'Stock Portfolio':
-        return 'share';
-      case 'Bitcoin Wallet':
-        return 'BTC';
-      case 'Inventory':
-        return 'unit';
-      default:
-        return 'unit';
+  AssetDefinition get selectedAssetDefinition {
+    final definition = _assetsByOption[selectedAssetOption];
+
+    if (definition == null) {
+      throw StateError('The selected asset definition could not be found.');
     }
+
+    return definition;
+  }
+
+  String get unit {
+    return selectedAssetDefinition.normalizedUnit;
+  }
+
+  String get currencyCode {
+    return selectedAssetDefinition.normalizedCurrencyCode;
+  }
+
+  bool get supportsSelectedCurrency {
+    return currencyCode == 'IDR';
+  }
+
+  bool get canSave {
+    return cash > 0 && quantity > 0 && supportsSelectedCurrency;
   }
 
   String get sourceLabel {
@@ -102,7 +142,7 @@ class AssetConversionController extends ChangeNotifier {
   }
 
   String get destinationLabel {
-    return sellAsset ? 'To account' : 'To asset account';
+    return sellAsset ? 'To account' : 'To asset';
   }
 
   String get cashLabel {
@@ -114,11 +154,11 @@ class AssetConversionController extends ChangeNotifier {
   }
 
   List<String> get sourceOptions {
-    return sellAsset ? assets : accounts;
+    return sellAsset ? _assetOptions : accounts;
   }
 
   List<String> get destinationOptions {
-    return sellAsset ? accounts : assets;
+    return sellAsset ? accounts : _assetOptions;
   }
 
   DateTime get transactionDate {
@@ -138,8 +178,8 @@ class AssetConversionController extends ChangeNotifier {
 
     sellAsset = value;
 
-    source = sellAsset ? assets.first : accounts.first;
-    destination = sellAsset ? accounts.first : assets.first;
+    source = sellAsset ? _assetOptions.first : accounts.first;
+    destination = sellAsset ? accounts.first : _assetOptions.first;
 
     notifyListeners();
   }
@@ -183,27 +223,53 @@ class AssetConversionController extends ChangeNotifier {
   }
 
   Transaction buildTransaction() {
+    if (!supportsSelectedCurrency) {
+      throw StateError(
+        'Asset Conversion currently supports IDR-valued assets only. '
+        '$currencyCode assets require currency conversion support.',
+      );
+    }
+
     if (!canSave) {
       throw StateError(
         'Cash value and quantity must both be greater than zero.',
       );
     }
 
+    final asset = selectedAssetDefinition;
+    final symbol = asset.normalizedSymbol;
+
+    final titleLabel = symbol ?? asset.displayName.trim();
+
     return Transaction(
-      title: sellAsset ? '$source sale' : '$destination acquisition',
+      title: sellAsset ? '$titleLabel sale' : '$titleLabel acquisition',
       category: 'Asset conversion',
       account: '$source -> $destination',
       date: transactionDate,
       amount: cash,
       type: TransactionType.assetConversion,
       quantity: quantity,
-      unit: unit,
+      unit: asset.normalizedUnit,
       unitPrice: unitPrice,
+      assetDefinitionId: asset.id,
+      assetName: asset.displayName.trim(),
+      assetSymbol: symbol,
+      assetAction: sellAsset ? AssetAction.sell : AssetAction.buy,
     );
   }
 
   void _handleInputChanged() {
     notifyListeners();
+  }
+
+  static String _optionLabel(AssetDefinition definition) {
+    final symbol = definition.normalizedSymbol;
+
+    if (symbol == null) {
+      return definition.displayName.trim();
+    }
+
+    return '${definition.displayName.trim()} ($symbol)';
   }
 
   @override

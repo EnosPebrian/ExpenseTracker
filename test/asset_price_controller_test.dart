@@ -1,0 +1,534 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:pilgrim_tracker/core/database/local_store.dart';
+import 'package:pilgrim_tracker/features/assets/controllers/asset_price_controller.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_portfolio.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_symbol_match.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/market_quote.dart';
+import 'package:pilgrim_tracker/features/assets/domain/repositories/asset_price_repository.dart';
+
+void main() {
+  test('manual price is saved and loaded from local storage', () async {
+    final testStore = await _TestStore.create();
+
+    addTearDown(testStore.dispose);
+
+    final controller = AssetPriceController(store: testStore.store);
+
+    addTearDown(controller.dispose);
+
+    final holding = _stockHolding();
+
+    await controller.setManualPrice(holding: holding, price: 9250);
+
+    expect(controller.prices, hasLength(1));
+    expect(controller.prices.single.roundedPrice, 9250);
+    expect(controller.prices.single.isManual, isTrue);
+
+    final reloadedController = AssetPriceController(store: testStore.store);
+
+    addTearDown(reloadedController.dispose);
+
+    await reloadedController.load();
+
+    expect(reloadedController.prices, hasLength(1));
+    expect(reloadedController.prices.single.assetKey, 'BBCA');
+    expect(reloadedController.prices.single.roundedPrice, 9250);
+  });
+
+  test('online stock refresh saves the latest quote', () async {
+    final testStore = await _TestStore.create();
+
+    addTearDown(testStore.dispose);
+
+    final repository = _FakePriceRepository();
+
+    final controller = AssetPriceController(
+      store: testStore.store,
+      repository: repository,
+    );
+
+    addTearDown(controller.dispose);
+
+    await controller.refreshHolding(_stockHolding());
+
+    expect(repository.requestedStockSymbol, 'BBCA.JK');
+    expect(repository.requestedCurrencyCode, 'IDR');
+    expect(controller.error, isNull);
+    expect(controller.prices, hasLength(1));
+
+    final price = controller.prices.single;
+
+    expect(price.assetKey, 'BBCA');
+    expect(price.symbol, 'BBCA.JK');
+    expect(price.roundedPrice, 9500);
+    expect(price.isManual, isFalse);
+  });
+
+  test(
+    'legacy stock refresh falls back to the stored display symbol',
+    () async {
+      final testStore = await _TestStore.create();
+
+      addTearDown(testStore.dispose);
+
+      final repository = _FakePriceRepository();
+
+      final controller = AssetPriceController(
+        store: testStore.store,
+        repository: repository,
+      );
+
+      addTearDown(controller.dispose);
+
+      await controller.refreshHolding(_legacyStockHolding());
+
+      expect(repository.requestedStockSymbol, 'BBCA');
+      expect(repository.requestedCurrencyCode, 'IDR');
+      expect(controller.error, isNull);
+      expect(controller.prices.single.assetKey, 'BBCA');
+    },
+  );
+
+  test('online refresh respects the asset pricing setting', () async {
+    final testStore = await _TestStore.create();
+
+    addTearDown(testStore.dispose);
+
+    final repository = _FakePriceRepository();
+
+    final controller = AssetPriceController(
+      store: testStore.store,
+      repository: repository,
+    );
+
+    addTearDown(controller.dispose);
+
+    final holding = _stockHolding(onlinePricingEnabled: false);
+
+    expect(controller.canRefreshHolding(holding), isFalse);
+
+    await controller.refreshHolding(holding);
+
+    expect(repository.requestedStockSymbol, isNull);
+    expect(controller.prices, isEmpty);
+    expect(
+      controller.error,
+      'Online pricing is disabled for Bank Central Asia.',
+    );
+  });
+
+  test('stock quote with wrong currency is rejected', () async {
+    final testStore = await _TestStore.create();
+
+    addTearDown(testStore.dispose);
+
+    final repository = _FakePriceRepository(
+      stockQuoteOverride: MarketQuote(
+        symbol: 'BBCA.JK',
+        priceMinor: 950000,
+        minorUnitScale: 100,
+        currencyCode: 'USD',
+        unit: 'share',
+        quotedAt: DateTime.utc(2026, 7, 21),
+        source: 'Fake provider',
+      ),
+    );
+
+    final controller = AssetPriceController(
+      store: testStore.store,
+      repository: repository,
+    );
+
+    addTearDown(controller.dispose);
+
+    await controller.refreshHolding(_stockHolding());
+
+    expect(controller.prices, isEmpty);
+    expect(controller.error, contains('Currency mismatch'));
+    expect(controller.error, contains('expected IDR'));
+    expect(controller.error, contains('received USD'));
+  });
+
+  test('stock quote with wrong unit is rejected', () async {
+    final testStore = await _TestStore.create();
+
+    addTearDown(testStore.dispose);
+
+    final repository = _FakePriceRepository(
+      stockQuoteOverride: MarketQuote(
+        symbol: 'BBCA.JK',
+        priceMinor: 9500,
+        minorUnitScale: 1,
+        currencyCode: 'IDR',
+        unit: 'unit',
+        quotedAt: DateTime.utc(2026, 7, 21),
+        source: 'Fake provider',
+      ),
+    );
+
+    final controller = AssetPriceController(
+      store: testStore.store,
+      repository: repository,
+    );
+
+    addTearDown(controller.dispose);
+
+    await controller.refreshHolding(_stockHolding());
+
+    expect(controller.prices, isEmpty);
+    expect(controller.error, contains('Unit mismatch'));
+    expect(controller.error, contains('expected share'));
+    expect(controller.error, contains('received unit'));
+  });
+
+  test('stock quote with wrong provider symbol is rejected', () async {
+    final testStore = await _TestStore.create();
+
+    addTearDown(testStore.dispose);
+
+    final repository = _FakePriceRepository(
+      stockQuoteOverride: MarketQuote(
+        symbol: 'TLKM.JK',
+        priceMinor: 3000,
+        minorUnitScale: 1,
+        currencyCode: 'IDR',
+        unit: 'share',
+        quotedAt: DateTime.utc(2026, 7, 21),
+        source: 'Fake provider',
+      ),
+    );
+
+    final controller = AssetPriceController(
+      store: testStore.store,
+      repository: repository,
+    );
+
+    addTearDown(controller.dispose);
+
+    await controller.refreshHolding(_stockHolding());
+
+    expect(controller.prices, isEmpty);
+    expect(controller.error, contains('Symbol mismatch'));
+    expect(controller.error, contains('expected BBCA.JK'));
+    expect(controller.error, contains('received TLKM.JK'));
+  });
+
+  test(
+    'unsupported linked provider is rejected before requesting a quote',
+    () async {
+      final testStore = await _TestStore.create();
+
+      addTearDown(testStore.dispose);
+
+      final repository = _FakePriceRepository();
+
+      final controller = AssetPriceController(
+        store: testStore.store,
+        repository: repository,
+      );
+
+      addTearDown(controller.dispose);
+
+      final holding = _stockHolding(providerCode: 'OTHER_PROVIDER');
+
+      expect(controller.canRefreshHolding(holding), isFalse);
+
+      await controller.refreshHolding(holding);
+
+      expect(repository.requestedStockSymbol, isNull);
+      expect(controller.prices, isEmpty);
+      expect(
+        controller.error,
+        'Online pricing provider OTHER_PROVIDER is not supported.',
+      );
+    },
+  );
+
+  test('manual price uses the holding currency and unit', () async {
+    final testStore = await _TestStore.create();
+
+    addTearDown(testStore.dispose);
+
+    final controller = AssetPriceController(store: testStore.store);
+
+    addTearDown(controller.dispose);
+
+    final holding = _stockHolding(currencyCode: 'USD');
+
+    await controller.setManualPrice(holding: holding, price: 185);
+
+    expect(controller.prices, hasLength(1));
+
+    final price = controller.prices.single;
+
+    expect(price.assetKey, 'BBCA');
+    expect(price.symbol, 'BBCA');
+    expect(price.currencyCode, 'USD');
+    expect(price.unit, 'share');
+    expect(price.roundedPrice, 185);
+    expect(price.isManual, isTrue);
+  });
+
+  test('failed online refresh preserves the previous cached price', () async {
+    final testStore = await _TestStore.create();
+
+    addTearDown(testStore.dispose);
+
+    final repository = _FakePriceRepository(
+      stockQuoteOverride: MarketQuote(
+        symbol: 'BBCA.JK',
+        priceMinor: 950000,
+        minorUnitScale: 100,
+        currencyCode: 'USD',
+        unit: 'share',
+        quotedAt: DateTime.utc(2026, 7, 21),
+        source: 'Fake provider',
+      ),
+    );
+
+    final controller = AssetPriceController(
+      store: testStore.store,
+      repository: repository,
+    );
+
+    addTearDown(controller.dispose);
+
+    final holding = _stockHolding();
+
+    await controller.setManualPrice(holding: holding, price: 9250);
+
+    await controller.refreshHolding(holding);
+
+    expect(controller.error, contains('Currency mismatch'));
+    expect(controller.prices, hasLength(1));
+
+    final retained = controller.prices.single;
+
+    expect(retained.assetKey, 'BBCA');
+    expect(retained.roundedPrice, 9250);
+    expect(retained.currencyCode, 'IDR');
+    expect(retained.unit, 'share');
+    expect(retained.isManual, isTrue);
+  });
+
+  test('online refresh replaces manual cache for the same asset key', () async {
+    final testStore = await _TestStore.create();
+
+    addTearDown(testStore.dispose);
+
+    final repository = _FakePriceRepository();
+
+    final controller = AssetPriceController(
+      store: testStore.store,
+      repository: repository,
+    );
+
+    addTearDown(controller.dispose);
+
+    final holding = _stockHolding();
+
+    await controller.setManualPrice(holding: holding, price: 9250);
+
+    expect(controller.prices.single.isManual, isTrue);
+
+    await controller.refreshHolding(holding);
+
+    expect(controller.error, isNull);
+    expect(controller.prices, hasLength(1));
+
+    final refreshed = controller.prices.single;
+
+    expect(refreshed.assetKey, 'BBCA');
+    expect(refreshed.symbol, 'BBCA.JK');
+    expect(refreshed.roundedPrice, 9500);
+    expect(refreshed.isManual, isFalse);
+
+    final reloadedController = AssetPriceController(store: testStore.store);
+
+    addTearDown(reloadedController.dispose);
+
+    await reloadedController.load();
+
+    expect(reloadedController.prices, hasLength(1));
+    expect(reloadedController.prices.single.assetKey, 'BBCA');
+    expect(reloadedController.prices.single.roundedPrice, 9500);
+    expect(reloadedController.prices.single.isManual, isFalse);
+  });
+  test('online gold refresh saves IDR price per gram', () async {
+    final testStore = await _TestStore.create();
+
+    addTearDown(testStore.dispose);
+
+    final repository = _FakePriceRepository();
+
+    final controller = AssetPriceController(
+      store: testStore.store,
+      repository: repository,
+    );
+
+    addTearDown(controller.dispose);
+
+    await controller.refreshHolding(_goldHolding());
+
+    expect(repository.goldRequested, isTrue);
+    expect(controller.prices.single.assetKey, 'Gold Holdings');
+    expect(controller.prices.single.roundedPrice, 2700000);
+    expect(controller.prices.single.unit, 'gram');
+  });
+}
+
+AssetHolding _stockHolding({
+  bool onlinePricingEnabled = true,
+  String? providerCode = 'ALPHA_VANTAGE',
+  String currencyCode = 'IDR',
+}) {
+  return AssetHolding(
+    assetDefinitionId: 'asset-bbca',
+    providerCode: providerCode,
+    providerSymbol: 'BBCA.JK',
+    currencyCode: currencyCode,
+    onlinePricingEnabled: onlinePricingEnabled,
+    assetKey: 'BBCA',
+    name: 'Bank Central Asia',
+    symbol: 'BBCA',
+    kind: AssetKind.stock,
+    unit: 'share',
+    quantity: 1000,
+    lotSize: 100,
+    costBasis: 8500000,
+    averageCost: 8500,
+    currentPrice: null,
+    marketValue: 8500000,
+    realizedGain: 0,
+    priceSource: null,
+    priceQuotedAt: null,
+    isPriceDelayed: false,
+    isManualPrice: false,
+  );
+}
+
+AssetHolding _legacyStockHolding() {
+  return const AssetHolding(
+    assetKey: 'BBCA',
+    name: 'BBCA',
+    symbol: 'BBCA',
+    kind: AssetKind.stock,
+    unit: 'share',
+    quantity: 1000,
+    lotSize: 100,
+    costBasis: 8500000,
+    averageCost: 8500,
+    currentPrice: null,
+    marketValue: 8500000,
+    realizedGain: 0,
+    priceSource: null,
+    priceQuotedAt: null,
+    isPriceDelayed: false,
+    isManualPrice: false,
+  );
+}
+
+AssetHolding _goldHolding() {
+  return const AssetHolding(
+    assetKey: 'Gold Holdings',
+    name: 'Gold Holdings',
+    symbol: null,
+    kind: AssetKind.gold,
+    unit: 'gram',
+    quantity: 20,
+    lotSize: 1,
+    costBasis: 50000000,
+    averageCost: 2500000,
+    currentPrice: null,
+    marketValue: 50000000,
+    realizedGain: 0,
+    priceSource: null,
+    priceQuotedAt: null,
+    isPriceDelayed: false,
+    isManualPrice: false,
+  );
+}
+
+class _FakePriceRepository implements AssetPriceRepository {
+  _FakePriceRepository({this.stockQuoteOverride});
+
+  final MarketQuote? stockQuoteOverride;
+
+  String? requestedStockSymbol;
+  String? requestedCurrencyCode;
+  bool goldRequested = false;
+
+  @override
+  Future<MarketQuote> fetchStockQuote({
+    required String symbol,
+    required String currencyCode,
+    required int minorUnitScale,
+  }) async {
+    requestedStockSymbol = symbol;
+    requestedCurrencyCode = currencyCode;
+
+    return stockQuoteOverride ??
+        MarketQuote(
+          symbol: symbol,
+          priceMinor: 9500,
+          minorUnitScale: 1,
+          currencyCode: currencyCode,
+          unit: 'share',
+          quotedAt: DateTime.utc(2026, 7, 21),
+          source: 'Fake provider',
+          isDelayed: true,
+        );
+  }
+
+  @override
+  Future<MarketQuote> fetchGoldPriceInIdrPerGram() async {
+    goldRequested = true;
+
+    return MarketQuote(
+      symbol: 'XAU',
+      priceMinor: 2700000,
+      minorUnitScale: 1,
+      currencyCode: 'IDR',
+      unit: 'gram',
+      quotedAt: DateTime.utc(2026, 7, 21),
+      source: 'Fake gold provider',
+    );
+  }
+
+  @override
+  Future<List<AssetSymbolMatch>> searchStockSymbols(String keywords) async {
+    return const [];
+  }
+}
+
+class _TestStore {
+  const _TestStore({required this.directory, required this.store});
+
+  final Directory directory;
+  final LocalStore store;
+
+  static Future<_TestStore> create() async {
+    final directory = await Directory.systemTemp.createTemp(
+      'pilgrim-price-controller-',
+    );
+
+    final store = LocalStore(
+      databasePath: p.join(directory.path, 'asset-controller.db'),
+    );
+
+    await store.initialize();
+
+    return _TestStore(directory: directory, store: store);
+  }
+
+  Future<void> dispose() async {
+    await store.close();
+
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
+    }
+  }
+}

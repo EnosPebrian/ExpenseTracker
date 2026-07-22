@@ -1,0 +1,258 @@
+import 'package:flutter/material.dart';
+
+import '../../../../core/design/app_colors.dart';
+import '../../../../core/shared/formatters/thousands_formatter.dart';
+import '../../../../core/shared/widgets/metric_card.dart';
+import '../../../../core/shared/widgets/page_layout.dart';
+import '../../../analytics/domain/financial_summary.dart';
+
+class AssetsDashboardScreen extends StatelessWidget {
+  const AssetsDashboardScreen({super.key, required this.summary});
+
+  final FinancialSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return PageFrame(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const PageHeading(
+            kicker: 'PORTFOLIO',
+            title: 'Assets',
+            subtitle:
+                'Track your net worth, asset allocation, cash, and liabilities.',
+          ),
+          const SizedBox(height: 18),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: constraints.maxWidth > 1050
+                    ? 4
+                    : constraints.maxWidth > 560
+                    ? 2
+                    : 1,
+                mainAxisSpacing: 14,
+                crossAxisSpacing: 14,
+                childAspectRatio: constraints.maxWidth > 1050 ? 2.05 : 2.2,
+                children: [
+                  MetricCard(
+                    label: 'Net worth',
+                    value: _signedCurrency(summary.netWorth),
+                    note: 'Assets minus liabilities',
+                    dark: true,
+                  ),
+                  MetricCard(
+                    label: 'Total assets',
+                    value: _currency(summary.totalAssets),
+                    note: 'Current recorded asset value',
+                  ),
+                  MetricCard(
+                    label: 'Total liabilities',
+                    value: _currency(summary.totalLiabilities),
+                    note: 'Outstanding obligations',
+                  ),
+                  MetricCard(
+                    label: 'Cash',
+                    value: _currency(summary.cash),
+                    note: 'Cash and cash equivalents',
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          ResponsivePair(
+            left: _AssetAllocationCard(summary: summary),
+            right: _LiabilityTotalsCard(summary: summary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AssetAllocationCard extends StatelessWidget {
+  const _AssetAllocationCard({required this.summary});
+
+  final FinancialSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final allocation = summary.assetAllocation;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const PanelTitle('Asset allocation', 'By current asset type'),
+            const SizedBox(height: 18),
+            if (allocation.isEmpty)
+              _EmptyPositionLine(
+                label: 'No asset holdings recorded',
+                amount: summary.totalAssets,
+              )
+            else
+              for (var index = 0; index < allocation.length; index++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.circle,
+                        size: 9,
+                        color:
+                            _allocationColors[index % _allocationColors.length],
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          allocation[index].type,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 10, color: muted),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _currency(allocation[index].amount),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 44,
+                        child: Text(
+                          _percentage(allocation[index].share),
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LiabilityTotalsCard extends StatelessWidget {
+  const _LiabilityTotalsCard({required this.summary});
+
+  final FinancialSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final liabilities = summary.liabilityTotals;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const PanelTitle('Liabilities', 'Outstanding obligations'),
+            const SizedBox(height: 18),
+            if (liabilities.isEmpty)
+              _EmptyPositionLine(
+                label: 'No liabilities recorded',
+                amount: summary.totalLiabilities,
+              )
+            else
+              for (final liability in liabilities)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.circle,
+                        size: 9,
+                        color: Color(0xFFE28068),
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          liability.type,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 10, color: muted),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _currency(liability.amount),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyPositionLine extends StatelessWidget {
+  const _EmptyPositionLine({required this.label, required this.amount});
+
+  final String label;
+  final int amount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.circle_outlined, size: 12, color: muted),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 10, color: muted),
+            ),
+          ),
+          Text(
+            _currency(amount),
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+const _allocationColors = [
+  violet,
+  Color(0xFF739EE8),
+  Color(0xFFF4AC8F),
+  Color(0xFF76C99D),
+  Color(0xFFD9D7E2),
+];
+
+String _currency(int value) {
+  return 'Rp ${money(value.abs())}';
+}
+
+String _signedCurrency(int value) {
+  final prefix = value < 0 ? '-' : '';
+
+  return '$prefix${_currency(value)}';
+}
+
+String _percentage(double value) {
+  return '${(value * 100).toStringAsFixed(1)}%';
+}

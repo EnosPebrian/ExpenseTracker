@@ -1,0 +1,107 @@
+import 'asset_kind.dart';
+
+export 'asset_kind.dart';
+
+class AssetHolding {
+  const AssetHolding({
+    required this.assetKey,
+    required this.name,
+    required this.symbol,
+    required this.kind,
+    required this.unit,
+    required this.quantity,
+    required this.lotSize,
+    required this.costBasis,
+    required this.averageCost,
+    required this.currentPrice,
+    required this.marketValue,
+    required this.realizedGain,
+    required this.priceSource,
+    required this.priceQuotedAt,
+    required this.isPriceDelayed,
+    required this.isManualPrice,
+  });
+
+  /// Stable key used to match this holding with cached market prices.
+  ///
+  /// Stocks normally use their ticker, such as BBCA.
+  /// Other assets normally use their asset name.
+  final String assetKey;
+
+  final String name;
+  final String? symbol;
+  final AssetKind kind;
+  final String unit;
+
+  /// Current remaining quantity.
+  final double quantity;
+
+  /// Number of shares in one lot.
+  ///
+  /// Non-stock assets use 1.
+  final int lotSize;
+
+  /// Remaining acquisition cost after recorded sales.
+  final int costBasis;
+
+  /// Weighted-average cost per remaining unit.
+  final int averageCost;
+
+  /// Latest online or manually entered price per unit.
+  ///
+  /// Null means no current market price is available.
+  final int? currentPrice;
+
+  /// Current market value.
+  ///
+  /// When no market price exists, this falls back to cost basis.
+  final int marketValue;
+
+  /// Gain already realized through recorded sales.
+  final int realizedGain;
+
+  final String? priceSource;
+  final DateTime? priceQuotedAt;
+  final bool isPriceDelayed;
+  final bool isManualPrice;
+
+  bool get hasMarketPrice => currentPrice != null;
+
+  double get lots {
+    if (kind != AssetKind.stock || lotSize <= 0) {
+      return 0;
+    }
+
+    return quantity / lotSize;
+  }
+
+  int get unrealizedGain => marketValue - costBasis;
+
+  double get unrealizedReturn {
+    if (costBasis == 0) {
+      return 0;
+    }
+
+    return unrealizedGain / costBasis;
+  }
+}
+
+class AssetPortfolio {
+  const AssetPortfolio({
+    required this.holdings,
+    required this.totalCostBasis,
+    required this.totalMarketValue,
+    required this.totalUnrealizedGain,
+    required this.totalRealizedGain,
+  });
+
+  final List<AssetHolding> holdings;
+  final int totalCostBasis;
+  final int totalMarketValue;
+  final int totalUnrealizedGain;
+  final int totalRealizedGain;
+
+  bool get isEmpty => holdings.isEmpty;
+
+  int get holdingCount => holdings.length;
+}

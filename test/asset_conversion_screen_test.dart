@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pilgrim_tracker/features/assets/presentation/screens/asset_conversion_screen.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_definition.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_kind.dart';
 
 void main() {
   testWidgets('asset conversion waits for persistence before showing success', (
@@ -25,7 +27,7 @@ void main() {
         home: Scaffold(
           body: AssetConversionScreen(
             accounts: const ['Cash Enos', 'BNI Enos'],
-            assets: const ['Gold Holdings'],
+            assets: [_goldDefinition()],
             onSave: (transaction) {
               submitted = transaction;
               return completer.future;
@@ -43,6 +45,9 @@ void main() {
 
     expect(submitted, isNotNull);
     expect(submitted!.type, TransactionType.assetConversion);
+    expect(submitted!.assetName, 'Gold Holdings');
+    expect(submitted!.assetDefinitionId, 'asset-gold');
+    expect(submitted!.assetAction, AssetAction.buy);
 
     expect(find.text('Saving...'), findsOneWidget);
 
@@ -75,7 +80,7 @@ void main() {
           home: Scaffold(
             body: AssetConversionScreen(
               accounts: const ['Cash Enos', 'BNI Enos'],
-              assets: const ['Gold Holdings'],
+              assets: [_goldDefinition()],
               onSave: (transaction) async {
                 saveCount++;
 
@@ -124,5 +129,27 @@ void main() {
 
       expect(enabledButton.onPressed, isNotNull);
     },
+  );
+}
+
+AssetDefinition _goldDefinition() {
+  return AssetDefinition(
+    id: 'asset-gold',
+    displayName: 'Gold Holdings',
+    kind: AssetKind.gold,
+    symbol: null,
+    providerCode: 'alpha_vantage',
+    providerSymbol: 'XAU',
+    exchangeCode: null,
+    currencyCode: 'IDR',
+    unit: 'gram',
+    lotSize: 1,
+    onlinePricingEnabled: true,
+    createdAt: DateTime.utc(2026, 7, 21),
+    updatedAt: DateTime.utc(2026, 7, 21),
+    deletedAt: null,
+    version: 1,
+    deviceId: 'test-device',
+    syncStatus: 'local_only',
   );
 }

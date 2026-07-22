@@ -73,6 +73,8 @@ class AssetConversionForm extends StatelessWidget {
               onChanged: controller.setDestination,
             ),
             const SizedBox(height: 12),
+            _SelectedAssetCard(controller: controller),
+            const SizedBox(height: 12),
             TextField(
               controller: controller.quantityController,
               keyboardType: const TextInputType.numberWithOptions(
@@ -103,6 +105,7 @@ class AssetConversionForm extends StatelessWidget {
               },
             ),
             const SizedBox(height: 12),
+
             _ConversionDateTimeFields(controller: controller),
             const SizedBox(height: 20),
             SizedBox(
@@ -128,6 +131,68 @@ class AssetConversionForm extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SelectedAssetCard extends StatelessWidget {
+  const _SelectedAssetCard({required this.controller});
+
+  final AssetConversionController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final definition = controller.selectedAssetDefinition;
+
+    final details = <String>[
+      if (definition.normalizedSymbol != null) definition.normalizedSymbol!,
+      definition.normalizedCurrencyCode,
+      definition.normalizedUnit,
+      if (definition.normalizedExchangeCode != null)
+        definition.normalizedExchangeCode!,
+      if (definition.kind.name == 'stock') '${definition.lotSize} shares / lot',
+    ];
+
+    final supportsCurrency = controller.supportsSelectedCurrency;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            definition.displayName,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            details.join(' • '),
+            style: const TextStyle(
+              fontSize: 10,
+              color: Colors.black54,
+              height: 1.4,
+            ),
+          ),
+          if (!supportsCurrency) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Recording is currently limited to IDR-valued assets. '
+              '${definition.normalizedCurrencyCode} conversion requires '
+              'FX support.',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 10,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

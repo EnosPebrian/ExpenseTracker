@@ -1,0 +1,145 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:pilgrim_tracker/features/assets/controllers/asset_conversion_controller.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_definition.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_kind.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
+
+void main() {
+  test('stock conversion uses the selected concrete asset definition', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_goldDefinition(), _bbcaDefinition()],
+    );
+
+    addTearDown(controller.dispose);
+
+    controller.setDestination('Bank Central Asia (BBCA)');
+
+    expect(controller.selectedAssetDefinition.id, 'asset-bbca');
+
+    expect(controller.unit, 'share');
+    expect(controller.currencyCode, 'IDR');
+    expect(controller.canSave, isTrue);
+
+    final transaction = controller.buildTransaction();
+
+    expect(transaction.type, TransactionType.assetConversion);
+
+    expect(transaction.assetName, 'Bank Central Asia');
+
+    expect(transaction.assetSymbol, 'BBCA');
+    expect(transaction.assetAction, AssetAction.buy);
+    expect(transaction.unit, 'share');
+  });
+
+  test('gold conversion uses the definition unit and no ticker', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_goldDefinition(), _bbcaDefinition()],
+    );
+
+    addTearDown(controller.dispose);
+
+    expect(controller.selectedAssetDefinition.displayName, 'Gold Holdings');
+
+    expect(controller.unit, 'gram');
+    expect(controller.canSave, isTrue);
+
+    final transaction = controller.buildTransaction();
+
+    expect(transaction.assetName, 'Gold Holdings');
+    expect(transaction.assetSymbol, isNull);
+    expect(transaction.assetAction, AssetAction.buy);
+    expect(transaction.unit, 'gram');
+  });
+
+  test('non-IDR asset conversion is blocked until FX is supported', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_appleDefinition()],
+    );
+
+    addTearDown(controller.dispose);
+
+    expect(controller.currencyCode, 'USD');
+    expect(controller.supportsSelectedCurrency, isFalse);
+    expect(controller.canSave, isFalse);
+
+    expect(
+      controller.buildTransaction,
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('currently supports IDR-valued assets only'),
+        ),
+      ),
+    );
+  });
+}
+
+AssetDefinition _goldDefinition() {
+  return AssetDefinition(
+    id: 'asset-gold',
+    displayName: 'Gold Holdings',
+    kind: AssetKind.gold,
+    symbol: null,
+    providerCode: 'alpha_vantage',
+    providerSymbol: 'XAU',
+    exchangeCode: null,
+    currencyCode: 'IDR',
+    unit: 'gram',
+    lotSize: 1,
+    onlinePricingEnabled: true,
+    createdAt: DateTime.utc(2026, 7, 21),
+    updatedAt: DateTime.utc(2026, 7, 21),
+    deletedAt: null,
+    version: 1,
+    deviceId: 'test-device',
+    syncStatus: 'local_only',
+  );
+}
+
+AssetDefinition _bbcaDefinition() {
+  return AssetDefinition(
+    id: 'asset-bbca',
+    displayName: 'Bank Central Asia',
+    kind: AssetKind.stock,
+    symbol: 'BBCA',
+    providerCode: 'alpha_vantage',
+    providerSymbol: 'BBCA.JK',
+    exchangeCode: 'IDX',
+    currencyCode: 'IDR',
+    unit: 'share',
+    lotSize: 100,
+    onlinePricingEnabled: true,
+    createdAt: DateTime.utc(2026, 7, 21),
+    updatedAt: DateTime.utc(2026, 7, 21),
+    deletedAt: null,
+    version: 1,
+    deviceId: 'test-device',
+    syncStatus: 'local_only',
+  );
+}
+
+AssetDefinition _appleDefinition() {
+  return AssetDefinition(
+    id: 'asset-aapl',
+    displayName: 'Apple',
+    kind: AssetKind.stock,
+    symbol: 'AAPL',
+    providerCode: 'alpha_vantage',
+    providerSymbol: 'AAPL',
+    exchangeCode: 'NASDAQ',
+    currencyCode: 'USD',
+    unit: 'share',
+    lotSize: 1,
+    onlinePricingEnabled: true,
+    createdAt: DateTime.utc(2026, 7, 21),
+    updatedAt: DateTime.utc(2026, 7, 21),
+    deletedAt: null,
+    version: 1,
+    deviceId: 'test-device',
+    syncStatus: 'local_only',
+  );
+}

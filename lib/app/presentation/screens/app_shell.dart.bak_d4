@@ -1,0 +1,364 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/database/local_store.dart';
+import '../../../core/config/app_environment.dart';
+import '../../../core/design/app_colors.dart';
+import '../../../features/analytics/domain/financial_summary.dart';
+import '../../../features/assets/presentation/screens/asset_conversion_screen.dart';
+import '../../../features/assets/presentation/screens/assets_dashboard_screen.dart';
+import '../../../features/assets/controllers/asset_price_controller.dart';
+import '../../../features/assets/data/repositories/alpha_vantage_asset_price_repository.dart';
+import '../../../features/assets/domain/services/asset_portfolio_calculator.dart';
+import '../../../features/dashboard/presentation/screens/dashboard_screen.dart';
+import '../../../features/master_data/presentation/screens/accounts_page.dart';
+import '../../../features/master_data/presentation/screens/categories_page.dart';
+import '../../../features/master_data/presentation/screens/projects_page.dart';
+import '../../../features/reports/presentation/screens/reports_page.dart';
+import '../../../features/tithe/presentation/screens/tithe_page.dart';
+import '../../../features/tithe/domain/tithe_policy.dart';
+import '../../../features/transactions/domain/entities/transaction.dart';
+import '../../../features/transactions/presentation/edit/edit_transaction_screen.dart';
+import '../../../features/transactions/presentation/edit/transaction_form.dart';
+import '../../../features/transactions/presentation/providers/transaction_providers.dart';
+import '../../../features/transactions/presentation/quick_add/quick_add_controller.dart';
+import '../../../features/transactions/presentation/quick_add/quick_add_screen.dart';
+import '../../../features/transactions/presentation/screens/transaction_detail_screen.dart';
+import '../../../features/transactions/presentation/screens/transaction_list_screen.dart';
+import '../../../features/master_data/presentation/controllers/master_data_controller.dart';
+import '../../../features/analytics/domain/financial_period.dart';
+import '../../../features/assets/controllers/asset_definition_controller.dart';
+import '../../../features/assets/data/repositories/local_asset_definition_repository.dart';
+import '../../services/app_bootstrap_service.dart';
+import '../../data/default_master_data.dart';
+import '../../data/default_transactions.dart';
+import '../../data/default_asset_definitions.dart';
+import '../widgets/app_navigation_scaffold.dart';
+import '../widgets/app_bootstrap_error_view.dart';
+
+class AppShell extends StatefulWidget {
+  const AppShell({super.key});
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  int selected = 0;
+  bool loading = true;
+  String? bootstrapError;
+
+  late FinancialPeriod dashboardPeriod;
+
+  late final LocalStore store = LocalStore();
+
+  late final assetDefinitionRepository = LocalAssetDefinitionRepository(store);
+
+  late final assetDefinitionController = AssetDefinitionController(
+    repository: assetDefinitionRepository,
+  );
+
+  late final AlphaVantageAssetPriceRepository? assetPriceRepository =
+      AppEnvironment.hasAlphaVantageApiKey
+      ? AlphaVantageAssetPriceRepository(
+          apiKey: AppEnvironment.alphaVantageApiKey,
+        )
+      : null;
+
+  late final AssetPriceController assetPriceController = AssetPriceController(
+    store: store,
+    repository: assetPriceRepository,
+  );
+
+  late final transactionController = TransactionProviders.controller(store);
+  late final masterDataController = MasterDataController(
+    persist:
+        ({
+          required String entity,
+          required String name,
+          String? previousName,
+          String? categoryType,
+        }) {
+          return store.saveMasterName(
+            entity,
+            name,
+            previousName: previousName,
+            categoryType: categoryType,
+          );
+        },
+  );
+
+  late final bootstrapService = AppBootstrapService(
+    store: store,
+    transactionController: transactionController,
+  );
+
+  List<String> get assetNames {
+    final persistedNames = assetDefinitionController.names;
+
+    if (persistedNames.isEmpty) {
+      return defaultAssetNames;
+    }
+
+    return persistedNames;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    dashboardPeriod = FinancialPeriod.thisMonth(DateTime.now());
+
+    transactionController.addListener(_onAppStateChanged);
+    masterDataController.addListener(_onAppStateChanged);
+    assetDefinitionController.addListener(_onAppStateChanged);
+    assetPriceController.addListener(_onAppStateChanged);
+
+    _loadLocalData();
+  }
+
+  void _onAppStateChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _openTransactionDetail(
+    BuildContext context,
+    Transaction transaction,
+  ) {
+    return TransactionDetailScreen.show(
+      context,
+      transaction: transaction,
+      controller: transactionController,
+      onEdit: (selectedTransaction) {
+        EditTransactionScreen.show(
+          context,
+          transaction: selectedTransaction,
+          controller: transactionController,
+          options: transactionFormOptions,
+        );
+      },
+    );
+  }
+
+  Future<void> _loadLocalData() async {
+    try {
+      final result = await bootstrapService.load(
+        defaultAccounts: defaultAccountNames,
+        defaultExpenseCategories: defaultExpenseCategories,
+        defaultIncomeCategories: defaultIncomeCategories,
+        defaultProjects: defaultProjectNames,
+        seedTransactions: buildDefaultTransactions(),
+      );
+
+      await assetDefinitionController.initialize(
+        seeds: buildDefaultAssetDefinitions(),
+      );
+
+      final assetDefinitionError = assetDefinitionController.error;
+
+      if (assetDefinitionError != null) {
+        throw StateError(assetDefinitionError);
+      }
+
+      await assetPriceController.load();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        masterDataController.replaceAll(
+          accounts: result.accounts,
+          expenseCategories: result.expenseCategories,
+          incomeCategories: result.incomeCategories,
+          projects: result.projects,
+        );
+
+        bootstrapError = null;
+        loading = false;
+      });
+    } catch (exception) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        bootstrapError = exception.toString();
+        loading = false;
+      });
+    }
+  }
+
+  Future<void> _retryBootstrap() async {
+    setState(() {
+      bootstrapError = null;
+      loading = true;
+    });
+
+    await _loadLocalData();
+  }
+
+  Future<void> addTransaction(Transaction transaction) {
+    return transactionController.createTransaction(transaction);
+  }
+
+  QuickAddConfig get quickAddConfig {
+    final accounts = masterDataController.accounts;
+    final expenses = masterDataController.expenseCategories;
+    final incomes = masterDataController.incomeCategories;
+
+    return QuickAddConfig(
+      accounts: accounts,
+      expenseCategories: expenses,
+      incomeCategories: incomes,
+      projects: masterDataController.projects,
+      assets: assetNames,
+      defaultProject: 'Life',
+      defaultAccount: accounts.isEmpty ? null : accounts.first,
+      defaultExpenseCategory: expenses.isEmpty ? null : expenses.first,
+      defaultIncomeCategory: incomes.isEmpty ? null : incomes.first,
+    );
+  }
+
+  TransactionFormOptions get transactionFormOptions {
+    return TransactionFormOptions(
+      accounts: masterDataController.accounts,
+      expenseCategories: masterDataController.expenseCategories,
+      incomeCategories: masterDataController.incomeCategories,
+      projects: masterDataController.projects,
+      assets: assetNames,
+    );
+  }
+
+  Future<void> openQuickAdd(BuildContext context) {
+    return QuickAddScreen.show(
+      context,
+      transactionController: transactionController,
+      config: quickAddConfig,
+    );
+  }
+
+  @override
+  void dispose() {
+    transactionController.removeListener(_onAppStateChanged);
+    masterDataController.removeListener(_onAppStateChanged);
+    assetDefinitionController.removeListener(_onAppStateChanged);
+    assetPriceController.removeListener(_onAppStateChanged);
+
+    transactionController.dispose();
+    masterDataController.dispose();
+    assetDefinitionController.dispose();
+    assetPriceController.dispose();
+    assetPriceRepository?.close();
+    store.close();
+
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final transactions = transactionController.transactions;
+
+    final referenceDate = DateTime.now();
+
+    final assetPortfolio = AssetPortfolioCalculator.calculate(
+      transactions: transactions,
+      marketPrices: assetPriceController.prices,
+    );
+
+    final currentMonthSummary = FinancialSummary.calculate(
+      transactions: transactions,
+      referenceDate: referenceDate,
+      tithePolicy: TithePolicy.defaultPolicy,
+    );
+
+    final dashboardSummary = FinancialSummary.forPeriod(
+      transactions: transactions,
+      periodStart: dashboardPeriod.start,
+      periodEndExclusive: dashboardPeriod.endExclusive,
+      tithePolicy: TithePolicy.defaultPolicy,
+    );
+
+    final pages = [
+      Dashboard(
+        transactions: transactions,
+        summary: dashboardSummary,
+        referenceDate: referenceDate,
+        period: dashboardPeriod,
+        transactionChanges: transactionController,
+        transactionsProvider: () {
+          return transactionController.transactions;
+        },
+        onPeriodChanged: (period) {
+          setState(() {
+            dashboardPeriod = period;
+          });
+        },
+        onOpen: (transaction) {
+          _openTransactionDetail(context, transaction);
+        },
+      ),
+      AssetsDashboardScreen(
+        portfolio: assetPortfolio,
+        priceController: assetPriceController,
+      ),
+      TransactionListScreen(
+        controller: transactionController,
+        onEdit: (transaction) {
+          EditTransactionScreen.show(
+            context,
+            transaction: transaction,
+            controller: transactionController,
+            options: transactionFormOptions,
+          );
+        },
+      ),
+      AccountsPage(
+        accounts: masterDataController.accounts,
+        onSave: masterDataController.save,
+      ),
+      CategoriesPage(
+        expenseCategories: masterDataController.expenseCategories,
+        incomeCategories: masterDataController.incomeCategories,
+        onSave: masterDataController.save,
+      ),
+      AssetConversionScreen(
+        accounts: masterDataController.accounts,
+        assets: assetNames,
+        onSave: addTransaction,
+      ),
+      ProjectsPage(
+        projects: masterDataController.projects,
+        onSave: masterDataController.save,
+      ),
+      TithePage(summary: currentMonthSummary),
+      ReportsPage(summary: currentMonthSummary),
+    ];
+
+    if (loading || transactionController.isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: violet)),
+      );
+    }
+
+    final error = bootstrapError;
+
+    if (error != null) {
+      return AppBootstrapErrorView(message: error, onRetry: _retryBootstrap);
+    }
+
+    return AppNavigationScaffold(
+      selected: selected,
+      child: pages[selected],
+      onSelect: (index) {
+        setState(() {
+          selected = index;
+        });
+      },
+      onQuickAdd: () {
+        openQuickAdd(context);
+      },
+    );
+  }
+}

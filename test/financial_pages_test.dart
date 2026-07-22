@@ -4,12 +4,14 @@ import 'package:pilgrim_tracker/features/analytics/domain/financial_summary.dart
 import 'package:pilgrim_tracker/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:pilgrim_tracker/features/reports/presentation/screens/reports_page.dart';
 import 'package:pilgrim_tracker/features/tithe/presentation/screens/tithe_page.dart';
+import 'package:pilgrim_tracker/features/tithe/domain/tithe_policy.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
+import 'package:pilgrim_tracker/features/analytics/domain/financial_period.dart';
 
 FinancialSummary _summary() {
   return FinancialSummary.calculate(
     referenceDate: DateTime(2026, 7, 20),
-    titheRate: 0.13,
+    titheRate: TithePolicy.defaultPolicy.rateFor(DateTime(2026, 7, 20)),
     transactions: [
       Transaction(
         title: 'Salary',
@@ -58,17 +60,19 @@ void main() {
             transactions: const [],
             summary: _summary(),
             referenceDate: DateTime(2026, 7, 20),
+            period: FinancialPeriod.thisMonth(DateTime(2026, 7, 20)),
+            onPeriodChanged: (_) {},
             onOpen: (_) {},
           ),
         ),
       ),
     );
 
-    expect(find.text('Recorded balance'), findsOneWidget);
+    expect(find.text('Monthly balance'), findsOneWidget);
     expect(find.text('Rp 10.000.000'), findsWidgets);
     expect(find.text('Rp 4.000.000'), findsWidgets);
     expect(find.text('Housing'), findsWidgets);
-    expect(find.text('Calculated tithe'), findsOneWidget);
+    expect(find.text('Tithe due'), findsOneWidget);
   });
 
   testWidgets('Reports displays calculated report values', (tester) async {

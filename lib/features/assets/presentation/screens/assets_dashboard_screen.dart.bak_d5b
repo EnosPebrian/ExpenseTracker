@@ -1,0 +1,642 @@
+import 'package:flutter/material.dart';
+
+import '../../../../core/design/app_colors.dart';
+import '../../../../core/shared/formatters/thousands_formatter.dart';
+import '../../../../core/shared/widgets/metric_card.dart';
+import '../../../../core/shared/widgets/page_layout.dart';
+import '../../controllers/asset_price_controller.dart';
+import '../../domain/entities/asset_portfolio.dart';
+
+class AssetsDashboardScreen extends StatelessWidget {
+  const AssetsDashboardScreen({
+    super.key,
+    required this.portfolio,
+    required this.priceController,
+  });
+
+  final AssetPortfolio portfolio;
+  final AssetPriceController priceController;
+
+  @override
+  Widget build(BuildContext context) {
+    return PageFrame(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const PageHeading(
+            kicker: 'PORTFOLIO',
+            title: 'Assets',
+            subtitle:
+                'Track quantities, lots, market prices, value, and returns.',
+          ),
+          const SizedBox(height: 14),
+          _PriceToolbar(portfolio: portfolio, controller: priceController),
+          if (priceController.error != null) ...[
+            const SizedBox(height: 12),
+            _PriceErrorBanner(
+              message: priceController.error!,
+              onDismiss: priceController.clearError,
+            ),
+          ],
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: constraints.maxWidth > 1050
+                    ? 4
+                    : constraints.maxWidth > 560
+                    ? 2
+                    : 1,
+                mainAxisSpacing: 14,
+                crossAxisSpacing: 14,
+                childAspectRatio: constraints.maxWidth > 1050 ? 2.05 : 2.2,
+                children: [
+                  MetricCard(
+                    label: 'Portfolio value',
+                    value: _currency(portfolio.totalMarketValue),
+                    note: '${portfolio.holdingCount} active holdings',
+                    dark: true,
+                  ),
+                  MetricCard(
+                    label: 'Cost basis',
+                    value: _currency(portfolio.totalCostBasis),
+                    note: 'Remaining acquisition cost',
+                  ),
+                  MetricCard(
+                    label: 'Unrealized gain',
+                    value: _signedCurrency(portfolio.totalUnrealizedGain),
+                    note: _percentage(
+                      portfolio.totalCostBasis == 0
+                          ? 0
+                          : portfolio.totalUnrealizedGain /
+                                portfolio.totalCostBasis,
+                    ),
+                  ),
+                  MetricCard(
+                    label: 'Realized gain',
+                    value: _signedCurrency(portfolio.totalRealizedGain),
+                    note: 'From recorded asset sales',
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          if (portfolio.isEmpty)
+            const _EmptyPortfolioCard()
+          else
+            _HoldingsSection(
+              holdings: portfolio.holdings,
+              controller: priceController,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PriceToolbar extends StatelessWidget {
+  const _PriceToolbar({required this.portfolio, required this.controller});
+
+  final AssetPortfolio portfolio;
+  final AssetPriceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasProvider = controller.hasOnlineProvider;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final status = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  hasProvider
+                      ? Icons.cloud_done_outlined
+                      : Icons.cloud_off_outlined,
+                  size: 18,
+                  color: hasProvider ? violet : muted,
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    hasProvider
+                        ? 'Online prices enabled. Successful quotes are cached locally.'
+                        : 'No API key detected. Manual prices remain available.',
+                    style: const TextStyle(fontSize: 11, color: muted),
+                  ),
+                ),
+              ],
+            );
+
+            final refreshButton = FilledButton.icon(
+              onPressed:
+                  portfolio.isEmpty ||
+                      controller.isRefreshingAll ||
+                      !hasProvider
+                  ? null
+                  : () {
+                      controller.refreshAll(portfolio.holdings);
+                    },
+              icon: controller.isRefreshingAll
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.refresh_rounded),
+              label: Text(
+                controller.isRefreshingAll ? 'Refreshing...' : 'Refresh prices',
+              ),
+            );
+
+            if (constraints.maxWidth < 700) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [status, const SizedBox(height: 12), refreshButton],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(child: status),
+                const SizedBox(width: 14),
+                refreshButton,
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _PriceErrorBanner extends StatelessWidget {
+  const _PriceErrorBanner({required this.message, required this.onDismiss});
+
+  final String message;
+  final Future<void> Function() onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.errorContainer,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+        child: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: colorScheme.onErrorContainer,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(
+                  color: colorScheme.onErrorContainer,
+                  fontSize: 11,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Dismiss',
+              onPressed: onDismiss,
+              icon: Icon(
+                Icons.close,
+                color: colorScheme.onErrorContainer,
+                size: 18,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HoldingsSection extends StatelessWidget {
+  const _HoldingsSection({required this.holdings, required this.controller});
+
+  final List<AssetHolding> holdings;
+  final AssetPriceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const PanelTitle(
+              'Your holdings',
+              'Quantity, cost basis, market price, and performance',
+            ),
+            const SizedBox(height: 16),
+            for (var index = 0; index < holdings.length; index++) ...[
+              _HoldingCard(holding: holdings[index], controller: controller),
+              if (index != holdings.length - 1) const Divider(height: 28),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HoldingCard extends StatelessWidget {
+  const _HoldingCard({required this.holding, required this.controller});
+
+  final AssetHolding holding;
+  final AssetPriceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRefreshing = controller.isRefreshing(holding.assetKey);
+
+    final canRefresh =
+        controller.hasOnlineProvider && controller.canRefreshHolding(holding);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final title = Row(
+              children: [
+                _AssetIcon(kind: holding.kind),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        holding.name,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _holdingQuantity(h24: holding),
+                        style: const TextStyle(color: muted, fontSize: 10),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+
+            final actions = Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: isRefreshing || !canRefresh
+                      ? null
+                      : () {
+                          controller.refreshHolding(holding);
+                        },
+                  icon: isRefreshing
+                      ? const SizedBox(
+                          width: 15,
+                          height: 15,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cloud_download_outlined, size: 17),
+                  label: const Text('Online price'),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    _showManualPriceDialog(context, controller, holding);
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 17),
+                  label: const Text('Manual price'),
+                ),
+              ],
+            );
+
+            if (constraints.maxWidth < 680) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [title, const SizedBox(height: 12), actions],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(child: title),
+                const SizedBox(width: 12),
+                actions,
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _HoldingMetric(
+              label: 'Average cost',
+              value: _unitCurrency(holding.averageCost, holding.unit),
+            ),
+            _HoldingMetric(
+              label: 'Current price',
+              value: holding.currentPrice == null
+                  ? 'Not set'
+                  : _unitCurrency(holding.currentPrice!, holding.unit),
+            ),
+            _HoldingMetric(
+              label: 'Cost basis',
+              value: _currency(holding.costBasis),
+            ),
+            _HoldingMetric(
+              label: 'Market value',
+              value: _currency(holding.marketValue),
+            ),
+            _HoldingMetric(
+              label: 'Unrealized gain',
+              value: _signedCurrency(holding.unrealizedGain),
+              emphasize: true,
+            ),
+            _HoldingMetric(
+              label: 'Return',
+              value: _percentage(holding.unrealizedReturn),
+              emphasize: true,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          _priceDescription(holding),
+          style: const TextStyle(color: muted, fontSize: 9, height: 1.4),
+        ),
+      ],
+    );
+  }
+}
+
+class _AssetIcon extends StatelessWidget {
+  const _AssetIcon({required this.kind});
+
+  final AssetKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = switch (kind) {
+      AssetKind.gold => Icons.diamond_outlined,
+      AssetKind.stock => Icons.candlestick_chart_outlined,
+      AssetKind.crypto => Icons.currency_bitcoin_rounded,
+      AssetKind.inventory => Icons.inventory_2_outlined,
+      AssetKind.other => Icons.account_balance_wallet_outlined,
+    };
+
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: violet.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(icon, color: violet, size: 21),
+    );
+  }
+}
+
+class _HoldingMetric extends StatelessWidget {
+  const _HoldingMetric({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 156,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: muted, fontSize: 9)),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: emphasize ? FontWeight.w700 : FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyPortfolioCard extends StatelessWidget {
+  const _EmptyPortfolioCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 42),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: const Column(
+              children: [
+                Icon(
+                  Icons.account_balance_wallet_outlined,
+                  size: 38,
+                  color: muted,
+                ),
+                SizedBox(height: 14),
+                Text(
+                  'No asset holdings yet',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Record a gold, stock, crypto, or inventory purchase '
+                  'from Asset Conversion. Your quantity and cost basis '
+                  'will appear here automatically.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: muted, fontSize: 11, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showManualPriceDialog(
+  BuildContext context,
+  AssetPriceController controller,
+  AssetHolding holding,
+) async {
+  final textController = TextEditingController(
+    text: holding.currentPrice == null ? '' : money(holding.currentPrice!),
+  );
+
+  final price = await showDialog<int>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: Text('Update ${holding.name} price'),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          inputFormatters: const [ThousandsFormatter()],
+          decoration: InputDecoration(
+            labelText: 'Current price',
+            prefixText: 'Rp ',
+            suffixText: '/ ${holding.unit}',
+            helperText: 'This price will be cached locally.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parsed = int.tryParse(
+                textController.text.replaceAll(RegExp(r'[^0-9]'), ''),
+              );
+
+              if (parsed == null || parsed <= 0) {
+                return;
+              }
+
+              Navigator.of(dialogContext).pop(parsed);
+            },
+            child: const Text('Save price'),
+          ),
+        ],
+      );
+    },
+  );
+
+  textController.dispose();
+
+  if (price == null || !context.mounted) {
+    return;
+  }
+
+  await controller.setManualPrice(holding: holding, price: price);
+
+  if (!context.mounted) {
+    return;
+  }
+
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text('${holding.name} price updated.')));
+}
+
+String _holdingQuantity({required AssetHolding h24}) {
+  if (h24.kind == AssetKind.stock) {
+    return '${h24.lots.toStringAsFixed(2)} lots · '
+        '${_quantity(h24.quantity)} shares';
+  }
+
+  return '${_quantity(h24.quantity)} ${h24.unit}';
+}
+
+String _priceDescription(AssetHolding holding) {
+  if (!holding.hasMarketPrice) {
+    return 'No market price is available. Market value currently falls '
+        'back to the remaining cost basis.';
+  }
+
+  final source = holding.priceSource ?? 'Unknown source';
+  final mode = holding.isManualPrice
+      ? 'manual'
+      : holding.isPriceDelayed
+      ? 'delayed'
+      : 'online';
+
+  final date = holding.priceQuotedAt;
+
+  if (date == null) {
+    return '$source · $mode price';
+  }
+
+  return '$source · $mode price · updated ${_date(date)}';
+}
+
+String _quantity(double value) {
+  if (value == value.roundToDouble()) {
+    return value.toInt().toString();
+  }
+
+  return value
+      .toStringAsFixed(4)
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
+}
+
+String _currency(int value) {
+  return 'Rp ${money(value.abs())}';
+}
+
+String _signedCurrency(int value) {
+  final prefix = value > 0
+      ? '+'
+      : value < 0
+      ? '-'
+      : '';
+
+  return '$prefix${_currency(value)}';
+}
+
+String _unitCurrency(int value, String unit) {
+  return '${_currency(value)} / $unit';
+}
+
+String _percentage(double value) {
+  final prefix = value > 0 ? '+' : '';
+
+  return '$prefix${(value * 100).toStringAsFixed(1)}%';
+}
+
+String _date(DateTime value) {
+  final local = value.toLocal();
+  final day = local.day.toString().padLeft(2, '0');
+  final month = local.month.toString().padLeft(2, '0');
+
+  return '$day/$month/${local.year}';
+}

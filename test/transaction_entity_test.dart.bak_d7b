@@ -1,0 +1,65 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
+
+void main() {
+  test('copyWith can explicitly clear nullable transaction fields', () {
+    final transaction = Transaction(
+      projectId: 'life',
+      title: 'Gold acquisition',
+      category: 'Asset conversion',
+      account: 'Cash Enos -> Gold Holdings',
+      date: DateTime(2026, 7, 19),
+      amount: 50000000,
+      type: TransactionType.assetConversion,
+      quantity: 20,
+      unit: 'gram',
+      unitPrice: 2500000,
+      assetDefinitionId: 'asset-gold',
+      deletedAt: DateTime(2026, 7, 20),
+    );
+
+    final cleared = transaction.copyWith(
+      projectId: null,
+      quantity: null,
+      unit: null,
+      unitPrice: null,
+      deletedAt: null,
+      assetDefinitionId: null,
+    );
+
+    expect(cleared.projectId, isNull);
+    expect(cleared.quantity, isNull);
+    expect(cleared.unit, isNull);
+    expect(cleared.unitPrice, isNull);
+    expect(cleared.deletedAt, isNull);
+    expect(cleared.assetDefinitionId, isNull);
+  });
+
+  test('copyWith preserves nullable fields when they are omitted', () {
+    final deletedAt = DateTime(2026, 7, 20);
+
+    final transaction = Transaction(
+      projectId: 'life',
+      title: 'Gold acquisition',
+      category: 'Asset conversion',
+      account: 'Cash Enos -> Gold Holdings',
+      date: DateTime(2026, 7, 19),
+      amount: 50000000,
+      type: TransactionType.assetConversion,
+      quantity: 20,
+      unit: 'gram',
+      unitPrice: 2500000,
+      assetDefinitionId: 'asset-gold',
+      deletedAt: deletedAt,
+    );
+
+    final updated = transaction.copyWith(title: 'Updated title');
+
+    expect(updated.projectId, 'life');
+    expect(updated.quantity, 20);
+    expect(updated.unit, 'gram');
+    expect(updated.unitPrice, 2500000);
+    expect(updated.deletedAt, deletedAt);
+    expect(updated.assetDefinitionId, 'asset-gold');
+  });
+}

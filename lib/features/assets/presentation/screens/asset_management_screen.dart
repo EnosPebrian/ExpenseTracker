@@ -1,0 +1,849 @@
+import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../../../core/design/app_colors.dart';
+import '../../../../core/shared/widgets/page_layout.dart';
+import '../../controllers/asset_definition_controller.dart';
+import '../../domain/entities/asset_definition.dart';
+import '../../domain/entities/asset_kind.dart';
+
+class AssetManagementScreen extends StatelessWidget {
+  const AssetManagementScreen({super.key, required this.controller});
+
+  final AssetDefinitionController controller;
+
+  static Future<void> show(
+    BuildContext context, {
+    required AssetDefinitionController controller,
+  }) {
+    return Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) {
+          return AssetManagementScreen(controller: controller);
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Manage assets')),
+      body: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          return PageFrame(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const PageHeading(
+                  kicker: 'ASSET DIRECTORY',
+                  title: 'Manage assets',
+                  subtitle:
+                      'Create concrete assets with their ticker, market, '
+                      'currency, unit, and lot size.',
+                ),
+                const SizedBox(height: 14),
+                _AssetManagementToolbar(
+                  saving: controller.isSaving,
+                  onAdd: () {
+                    _openEditor(context);
+                  },
+                ),
+                if (controller.error != null) ...[
+                  const SizedBox(height: 12),
+                  _AssetDefinitionErrorBanner(
+                    message: controller.error!,
+                    onDismiss: controller.clearError,
+                  ),
+                ],
+                const SizedBox(height: 14),
+                _AssetDefinitionList(
+                  definitions: controller.definitions,
+                  saving: controller.isSaving,
+                  onEdit: (definition) {
+                    _openEditor(context, definition: definition);
+                  },
+                  onDelete: (definition) {
+                    _confirmDelete(context, definition);
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _openEditor(
+    BuildContext context, {
+    AssetDefinition? definition,
+  }) async {
+    controller.clearError();
+
+    final draft = await showDialog<_AssetDefinitionDraft>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) {
+        return _AssetDefinitionEditorDialog(definition: definition);
+      },
+    );
+
+    if (draft == null || !context.mounted) {
+      return;
+    }
+
+    final timestamp = DateTime.now().toUtc();
+
+    final candidate = AssetDefinition(
+      id: definition?.id ?? const Uuid().v4(),
+      displayName: draft.displayName,
+      kind: draft.kind,
+      symbol: draft.symbol,
+      providerCode: draft.providerCode,
+      providerSymbol: draft.providerSymbol,
+      exchangeCode: draft.exchangeCode,
+      currencyCode: draft.currencyCode,
+      unit: draft.unit,
+      lotSize: draft.lotSize,
+      onlinePricingEnabled: draft.onlinePricingEnabled,
+      createdAt: definition?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+      deletedAt: null,
+      version: definition?.version ?? 1,
+      deviceId: definition?.deviceId ?? 'local-device',
+      syncStatus: definition?.syncStatus ?? 'local_only',
+    );
+
+    try {
+      final saved = await controller.save(candidate);
+
+      if (!context.mounted) {
+        return;
+      }
+
+      _showMessage(
+        context,
+        definition == null
+            ? '${saved.displayName} created.'
+            : '${saved.displayName} updated.',
+      );
+    } catch (exception) {
+      if (!context.mounted) {
+        return;
+      }
+
+      _showMessage(context, 'Could not save the asset. $exception');
+    }
+  }
+
+  Future<void> _confirmDelete(
+    BuildContext context,
+    AssetDefinition definition,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete asset?'),
+          content: Text(
+            '${definition.displayName} will be removed from the active '
+            'asset list. Existing transaction snapshots will remain.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    try {
+      await controller.delete(definition);
+
+      if (!context.mounted) {
+        return;
+      }
+
+      _showMessage(context, '${definition.displayName} deleted.');
+    } catch (exception) {
+      if (!context.mounted) {
+        return;
+      }
+
+      _showMessage(context, 'Could not delete the asset. $exception');
+    }
+  }
+
+  void _showMessage(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _AssetManagementToolbar extends StatelessWidget {
+  const _AssetManagementToolbar({required this.saving, required this.onAdd});
+
+  final bool saving;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            const description = Text(
+              'Portfolio accounts and tradable assets are different. '
+              'Create one definition for each stock, crypto asset, '
+              'commodity, or inventory item.',
+              style: TextStyle(color: muted, fontSize: 11, height: 1.45),
+            );
+
+            final addButton = FilledButton.icon(
+              key: const Key('add-asset-button'),
+              onPressed: saving ? null : onAdd,
+              icon: const Icon(Icons.add),
+              label: const Text('Add asset'),
+            );
+
+            if (constraints.maxWidth < 650) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [description, const SizedBox(height: 12), addButton],
+              );
+            }
+
+            return Row(
+              children: [
+                const Expanded(child: description),
+                const SizedBox(width: 18),
+                addButton,
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _AssetDefinitionErrorBanner extends StatelessWidget {
+  const _AssetDefinitionErrorBanner({
+    required this.message,
+    required this.onDismiss,
+  });
+
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.errorContainer,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+        child: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: colorScheme.onErrorContainer,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(
+                  color: colorScheme.onErrorContainer,
+                  fontSize: 11,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Dismiss',
+              onPressed: onDismiss,
+              icon: Icon(
+                Icons.close,
+                color: colorScheme.onErrorContainer,
+                size: 18,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AssetDefinitionList extends StatelessWidget {
+  const _AssetDefinitionList({
+    required this.definitions,
+    required this.saving,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final List<AssetDefinition> definitions;
+  final bool saving;
+  final ValueChanged<AssetDefinition> onEdit;
+  final ValueChanged<AssetDefinition> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const PanelTitle(
+              'Asset definitions',
+              'Identity and market settings used by future transactions',
+            ),
+            const SizedBox(height: 16),
+            if (definitions.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 28),
+                child: Center(
+                  child: Text(
+                    'No asset definitions yet.',
+                    style: TextStyle(color: muted, fontSize: 11),
+                  ),
+                ),
+              )
+            else
+              for (var index = 0; index < definitions.length; index++) ...[
+                _AssetDefinitionTile(
+                  definition: definitions[index],
+                  enabled: !saving,
+                  onEdit: () {
+                    onEdit(definitions[index]);
+                  },
+                  onDelete: () {
+                    onDelete(definitions[index]);
+                  },
+                ),
+                if (index != definitions.length - 1) const Divider(height: 28),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AssetDefinitionTile extends StatelessWidget {
+  const _AssetDefinitionTile({
+    required this.definition,
+    required this.enabled,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final AssetDefinition definition;
+  final bool enabled;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final symbol = definition.normalizedSymbol;
+    final subtitleParts = <String>[
+      _kindLabel(definition.kind),
+      ?symbol,
+      definition.normalizedCurrencyCode,
+      definition.normalizedUnit,
+      if (definition.kind == AssetKind.stock)
+        '${definition.lotSize} shares / lot',
+    ];
+
+    final providerParts = <String>[
+      ?definition.normalizedProviderCode,
+      ?definition.normalizedProviderSymbol,
+      ?definition.normalizedExchangeCode,
+    ];
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: _DefinitionIcon(kind: definition.kind),
+      title: Text(
+        definition.displayName,
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 5),
+        child: Text(
+          [
+            subtitleParts.join(' • '),
+            if (definition.onlinePricingEnabled)
+              providerParts.isEmpty
+                  ? 'Online pricing enabled'
+                  : 'Online: ${providerParts.join(' • ')}'
+            else
+              'Manual pricing',
+          ].join('\n'),
+          style: const TextStyle(color: muted, fontSize: 10, height: 1.45),
+        ),
+      ),
+      trailing: PopupMenuButton<_AssetDefinitionAction>(
+        enabled: enabled,
+        tooltip: 'Asset actions',
+        onSelected: (action) {
+          switch (action) {
+            case _AssetDefinitionAction.edit:
+              onEdit();
+
+            case _AssetDefinitionAction.delete:
+              onDelete();
+          }
+        },
+        itemBuilder: (_) {
+          return const [
+            PopupMenuItem(
+              value: _AssetDefinitionAction.edit,
+              child: ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.edit_outlined),
+                title: Text('Edit'),
+              ),
+            ),
+            PopupMenuItem(
+              value: _AssetDefinitionAction.delete,
+              child: ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.delete_outline),
+                title: Text('Delete'),
+              ),
+            ),
+          ];
+        },
+      ),
+    );
+  }
+}
+
+class _DefinitionIcon extends StatelessWidget {
+  const _DefinitionIcon({required this.kind});
+
+  final AssetKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = switch (kind) {
+      AssetKind.gold => Icons.diamond_outlined,
+      AssetKind.stock => Icons.candlestick_chart_outlined,
+      AssetKind.crypto => Icons.currency_bitcoin_rounded,
+      AssetKind.inventory => Icons.inventory_2_outlined,
+      AssetKind.other => Icons.account_balance_wallet_outlined,
+    };
+
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: violet.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(icon, color: violet, size: 21),
+    );
+  }
+}
+
+enum _AssetDefinitionAction { edit, delete }
+
+class _AssetDefinitionEditorDialog extends StatefulWidget {
+  const _AssetDefinitionEditorDialog({required this.definition});
+
+  final AssetDefinition? definition;
+
+  @override
+  State<_AssetDefinitionEditorDialog> createState() {
+    return _AssetDefinitionEditorDialogState();
+  }
+}
+
+class _AssetDefinitionEditorDialogState
+    extends State<_AssetDefinitionEditorDialog> {
+  final formKey = GlobalKey<FormState>();
+
+  late final TextEditingController nameController;
+  late final TextEditingController symbolController;
+  late final TextEditingController providerController;
+  late final TextEditingController providerSymbolController;
+  late final TextEditingController exchangeController;
+  late final TextEditingController currencyController;
+  late final TextEditingController unitController;
+  late final TextEditingController lotSizeController;
+
+  late AssetKind kind;
+  late bool onlinePricingEnabled;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final definition = widget.definition;
+
+    kind = definition?.kind ?? AssetKind.stock;
+    onlinePricingEnabled = definition?.onlinePricingEnabled ?? false;
+
+    nameController = TextEditingController(text: definition?.displayName ?? '');
+
+    symbolController = TextEditingController(text: definition?.symbol ?? '');
+
+    providerController = TextEditingController(
+      text: definition?.providerCode ?? 'alpha_vantage',
+    );
+
+    providerSymbolController = TextEditingController(
+      text: definition?.providerSymbol ?? '',
+    );
+
+    exchangeController = TextEditingController(
+      text: definition?.exchangeCode ?? '',
+    );
+
+    currencyController = TextEditingController(
+      text: definition?.currencyCode ?? 'IDR',
+    );
+
+    unitController = TextEditingController(text: definition?.unit ?? 'share');
+
+    lotSizeController = TextEditingController(
+      text: (definition?.lotSize ?? 100).toString(),
+    );
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    symbolController.dispose();
+    providerController.dispose();
+    providerSymbolController.dispose();
+    exchangeController.dispose();
+    currencyController.dispose();
+    unitController.dispose();
+    lotSizeController.dispose();
+
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.definition == null ? 'Add asset' : 'Edit asset'),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  key: const Key('asset-name-field'),
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Display name',
+                    hintText: 'Bank Central Asia',
+                  ),
+                  validator: _requiredValidator,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<AssetKind>(
+                  key: const Key('asset-kind-field'),
+                  initialValue: kind,
+                  decoration: const InputDecoration(labelText: 'Asset kind'),
+                  items: [
+                    for (final value in AssetKind.values)
+                      DropdownMenuItem(
+                        value: value,
+                        child: Text(_kindLabel(value)),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) {
+                      return;
+                    }
+
+                    setState(() {
+                      kind = value;
+                      _applyKindDefaults(value);
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const Key('asset-symbol-field'),
+                  controller: symbolController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Symbol',
+                    hintText: 'BBCA',
+                  ),
+                  validator: (value) {
+                    if (kind == AssetKind.stock &&
+                        (value == null || value.trim().isEmpty)) {
+                      return 'A stock symbol is required.';
+                    }
+
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const Key('asset-exchange-field'),
+                  controller: exchangeController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Exchange',
+                    hintText: 'IDX',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        key: const Key('asset-currency-field'),
+                        controller: currencyController,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: const InputDecoration(
+                          labelText: 'Currency',
+                          hintText: 'IDR',
+                        ),
+                        validator: (value) {
+                          final normalized = value?.trim() ?? '';
+
+                          if (normalized.length != 3) {
+                            return 'Use a three-letter currency.';
+                          }
+
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        key: const Key('asset-unit-field'),
+                        controller: unitController,
+                        decoration: const InputDecoration(
+                          labelText: 'Unit',
+                          hintText: 'share',
+                        ),
+                        validator: _requiredValidator,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  key: const Key('asset-lot-size-field'),
+                  controller: lotSizeController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Units per lot',
+                    helperText: 'IDX stocks commonly use 100 shares per lot.',
+                  ),
+                  validator: (value) {
+                    final parsed = int.tryParse(value?.trim() ?? '');
+
+                    if (parsed == null || parsed <= 0) {
+                      return 'Lot size must be greater than zero.';
+                    }
+
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  key: const Key('asset-online-pricing-switch'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Online pricing'),
+                  subtitle: const Text(
+                    'Use a market-data provider for this asset.',
+                  ),
+                  value: onlinePricingEnabled,
+                  onChanged: (value) {
+                    setState(() {
+                      onlinePricingEnabled = value;
+                    });
+                  },
+                ),
+                if (onlinePricingEnabled) ...[
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    key: const Key('asset-provider-field'),
+                    controller: providerController,
+                    decoration: const InputDecoration(
+                      labelText: 'Provider',
+                      hintText: 'alpha_vantage',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    key: const Key('asset-provider-symbol-field'),
+                    controller: providerSymbolController,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                      labelText: 'Provider symbol',
+                      hintText: 'BBCA.JK',
+                      helperText:
+                          'Use the exact symbol required by the provider.',
+                    ),
+                    validator: (value) {
+                      if (kind != AssetKind.gold &&
+                          (value == null || value.trim().isEmpty)) {
+                        return 'A provider symbol is required.';
+                      }
+
+                      return null;
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('save-asset-button'),
+          onPressed: _save,
+          child: const Text('Save asset'),
+        ),
+      ],
+    );
+  }
+
+  void _applyKindDefaults(AssetKind value) {
+    switch (value) {
+      case AssetKind.gold:
+        unitController.text = 'gram';
+        lotSizeController.text = '1';
+
+      case AssetKind.stock:
+        unitController.text = 'share';
+        lotSizeController.text = '100';
+
+      case AssetKind.crypto:
+        unitController.text = 'coin';
+        lotSizeController.text = '1';
+
+      case AssetKind.inventory:
+        unitController.text = 'unit';
+        lotSizeController.text = '1';
+
+      case AssetKind.other:
+        unitController.text = 'unit';
+        lotSizeController.text = '1';
+    }
+  }
+
+  void _save() {
+    if (!(formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _AssetDefinitionDraft(
+        displayName: nameController.text.trim(),
+        kind: kind,
+        symbol: _optionalValue(symbolController.text),
+        providerCode: onlinePricingEnabled
+            ? _optionalValue(providerController.text)
+            : null,
+        providerSymbol: onlinePricingEnabled
+            ? _optionalValue(providerSymbolController.text)
+            : null,
+        exchangeCode: _optionalValue(exchangeController.text),
+        currencyCode: currencyController.text.trim().toUpperCase(),
+        unit: unitController.text.trim().toLowerCase(),
+        lotSize: int.parse(lotSizeController.text.trim()),
+        onlinePricingEnabled: onlinePricingEnabled,
+      ),
+    );
+  }
+}
+
+class _AssetDefinitionDraft {
+  const _AssetDefinitionDraft({
+    required this.displayName,
+    required this.kind,
+    required this.symbol,
+    required this.providerCode,
+    required this.providerSymbol,
+    required this.exchangeCode,
+    required this.currencyCode,
+    required this.unit,
+    required this.lotSize,
+    required this.onlinePricingEnabled,
+  });
+
+  final String displayName;
+  final AssetKind kind;
+  final String? symbol;
+  final String? providerCode;
+  final String? providerSymbol;
+  final String? exchangeCode;
+  final String currencyCode;
+  final String unit;
+  final int lotSize;
+  final bool onlinePricingEnabled;
+}
+
+String? _requiredValidator(String? value) {
+  if (value == null || value.trim().isEmpty) {
+    return 'This field is required.';
+  }
+
+  return null;
+}
+
+String? _optionalValue(String value) {
+  final normalized = value.trim();
+
+  return normalized.isEmpty ? null : normalized;
+}
+
+String _kindLabel(AssetKind kind) {
+  return switch (kind) {
+    AssetKind.gold => 'Gold',
+    AssetKind.stock => 'Stock',
+    AssetKind.crypto => 'Crypto',
+    AssetKind.inventory => 'Inventory',
+    AssetKind.other => 'Other',
+  };
+}

@@ -1,0 +1,155 @@
+import 'market_quote.dart';
+
+class AssetMarketPrice {
+  const AssetMarketPrice({
+    required this.assetKey,
+    required this.symbol,
+    required this.priceMinor,
+    required this.minorUnitScale,
+    required this.currencyCode,
+    required this.unit,
+    required this.quotedAt,
+    required this.source,
+    required this.isDelayed,
+    required this.isManual,
+    required this.updatedAt,
+  });
+
+  final String assetKey;
+  final String? symbol;
+  final int priceMinor;
+  final int minorUnitScale;
+  final String currencyCode;
+  final String unit;
+  final DateTime quotedAt;
+  final String source;
+  final bool isDelayed;
+  final bool isManual;
+  final DateTime updatedAt;
+
+  double get price {
+    return priceMinor / minorUnitScale;
+  }
+
+  int get roundedPrice {
+    return price.round();
+  }
+
+  factory AssetMarketPrice.fromQuote({
+    required String assetKey,
+    required MarketQuote quote,
+  }) {
+    final now = DateTime.now();
+
+    return AssetMarketPrice(
+      assetKey: assetKey,
+      symbol: quote.symbol,
+      priceMinor: quote.priceMinor,
+      minorUnitScale: quote.minorUnitScale,
+      currencyCode: quote.currencyCode,
+      unit: quote.unit,
+      quotedAt: quote.quotedAt,
+      source: quote.source,
+      isDelayed: quote.isDelayed,
+      isManual: false,
+      updatedAt: now,
+    );
+  }
+
+  factory AssetMarketPrice.manual({
+    required String assetKey,
+    String? symbol,
+    required int price,
+    String currencyCode = 'IDR',
+    required String unit,
+    DateTime? quotedAt,
+  }) {
+    final normalizedAssetKey = assetKey.trim();
+    final normalizedSymbol = symbol?.trim().toUpperCase();
+    final normalizedCurrency = currencyCode.trim().toUpperCase();
+    final normalizedUnit = unit.trim().toLowerCase();
+
+    if (normalizedAssetKey.isEmpty) {
+      throw ArgumentError.value(
+        assetKey,
+        'assetKey',
+        'An asset key is required.',
+      );
+    }
+
+    if (price <= 0) {
+      throw ArgumentError.value(
+        price,
+        'price',
+        'The market price must be greater than zero.',
+      );
+    }
+
+    if (normalizedCurrency.isEmpty) {
+      throw ArgumentError.value(
+        currencyCode,
+        'currencyCode',
+        'A currency code is required.',
+      );
+    }
+
+    if (normalizedUnit.isEmpty) {
+      throw ArgumentError.value(unit, 'unit', 'A pricing unit is required.');
+    }
+
+    final now = DateTime.now();
+
+    return AssetMarketPrice(
+      assetKey: normalizedAssetKey,
+      symbol: normalizedSymbol == null || normalizedSymbol.isEmpty
+          ? null
+          : normalizedSymbol,
+      priceMinor: price,
+      minorUnitScale: 1,
+      currencyCode: normalizedCurrency,
+      unit: normalizedUnit,
+      quotedAt: quotedAt ?? now,
+      source: 'Manual',
+      isDelayed: false,
+      isManual: true,
+      updatedAt: now,
+    );
+  }
+  Map<String, Object?> toRecord() {
+    return {
+      'asset_key': assetKey,
+      'symbol': symbol,
+      'price_minor': priceMinor,
+      'minor_unit_scale': minorUnitScale,
+      'currency_code': currencyCode,
+      'unit': unit,
+      'quoted_at': quotedAt.millisecondsSinceEpoch,
+      'source': source,
+      'is_delayed': isDelayed ? 1 : 0,
+      'is_manual': isManual ? 1 : 0,
+      'updated_at': updatedAt.millisecondsSinceEpoch,
+    };
+  }
+
+  factory AssetMarketPrice.fromRecord(Map<String, Object?> record) {
+    return AssetMarketPrice(
+      assetKey: record['asset_key'] as String,
+      symbol: record['symbol'] as String?,
+      priceMinor: record['price_minor'] as int,
+      minorUnitScale: record['minor_unit_scale'] as int,
+      currencyCode: record['currency_code'] as String,
+      unit: record['unit'] as String,
+      quotedAt: DateTime.fromMillisecondsSinceEpoch(record['quoted_at'] as int),
+      source: record['source'] as String,
+      isDelayed: _readBoolean(record['is_delayed']),
+      isManual: _readBoolean(record['is_manual']),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(
+        record['updated_at'] as int,
+      ),
+    );
+  }
+
+  static bool _readBoolean(Object? value) {
+    return value == true || value == 1;
+  }
+}

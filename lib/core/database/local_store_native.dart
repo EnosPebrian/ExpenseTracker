@@ -23,7 +23,7 @@ class LocalStore {
 
     _database = await openDatabase(
       resolvedDatabasePath,
-      version: 3,
+      version: 7,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await db.execute('''
@@ -39,6 +39,10 @@ class LocalStore {
             quantity REAL,
             unit TEXT,
             unit_price INTEGER,
+asset_definition_id TEXT,
+asset_name TEXT,
+asset_symbol TEXT,
+            asset_action TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             deleted_at INTEGER,
@@ -52,6 +56,18 @@ class LocalStore {
         );
         await db.execute(
           'CREATE INDEX idx_transactions_sync ON transactions(sync_status)',
+        );
+        await db.execute(
+          'CREATE INDEX idx_transactions_project '
+          'ON transactions(project_id)',
+        );
+        await db.execute(
+          'CREATE INDEX idx_transactions_asset '
+          'ON transactions(asset_name, asset_action)',
+        );
+        await db.execute(
+          'CREATE INDEX idx_transactions_asset_definition '
+          'ON transactions(asset_definition_id)',
         );
         await db.execute(
           '''CREATE TABLE IF NOT EXISTS books (
@@ -76,6 +92,58 @@ class LocalStore {
           id TEXT PRIMARY KEY, book_id TEXT, name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active',
           created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER,
           version INTEGER NOT NULL DEFAULT 1, device_id TEXT NOT NULL, sync_status TEXT NOT NULL DEFAULT 'local_only')''',
+        );
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS asset_market_prices (
+            asset_key TEXT PRIMARY KEY,
+            symbol TEXT,
+            price_minor INTEGER NOT NULL,
+            minor_unit_scale INTEGER NOT NULL DEFAULT 1,
+            currency_code TEXT NOT NULL,
+            unit TEXT NOT NULL,
+            quoted_at INTEGER NOT NULL,
+            source TEXT NOT NULL,
+            is_delayed INTEGER NOT NULL DEFAULT 0,
+            is_manual INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL
+          )
+          ''');
+        await db.execute('''
+  CREATE TABLE IF NOT EXISTS asset_definitions (
+    id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    asset_kind TEXT NOT NULL,
+    symbol TEXT,
+    provider_code TEXT,
+    provider_symbol TEXT,
+    exchange_code TEXT,
+    currency_code TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    lot_size INTEGER NOT NULL DEFAULT 1
+      CHECK(lot_size > 0),
+    online_pricing_enabled INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    deleted_at INTEGER,
+    version INTEGER NOT NULL DEFAULT 1,
+    device_id TEXT NOT NULL,
+    sync_status TEXT NOT NULL DEFAULT 'local_only'
+  )
+''');
+
+        await db.execute(
+          'CREATE INDEX idx_asset_definitions_name '
+          'ON asset_definitions(display_name)',
+        );
+
+        await db.execute(
+          'CREATE INDEX idx_asset_definitions_symbol '
+          'ON asset_definitions(symbol)',
+        );
+
+        await db.execute(
+          'CREATE INDEX idx_asset_definitions_sync '
+          'ON asset_definitions(sync_status)',
         );
       },
       onUpgrade: (db, oldVersion, newVersion) async {
@@ -118,6 +186,98 @@ class LocalStore {
           );
           await db.execute('CREATE INDEX idx_projects_name ON projects(name)');
         }
+
+        if (oldVersion < 4) {
+          await db.execute(
+            'ALTER TABLE transactions ADD COLUMN asset_name TEXT',
+          );
+
+          await db.execute(
+            'ALTER TABLE transactions ADD COLUMN asset_action TEXT',
+          );
+
+          await db.execute(
+            'CREATE INDEX idx_transactions_asset '
+            'ON transactions(asset_name, asset_action)',
+          );
+        }
+        if (oldVersion < 5) {
+          await db.execute(
+            'ALTER TABLE transactions ADD COLUMN asset_symbol TEXT',
+          );
+
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS asset_market_prices (
+              asset_key TEXT PRIMARY KEY,
+              symbol TEXT,
+              price_minor INTEGER NOT NULL,
+              minor_unit_scale INTEGER NOT NULL DEFAULT 1,
+              currency_code TEXT NOT NULL,
+              unit TEXT NOT NULL,
+              quoted_at INTEGER NOT NULL,
+              source TEXT NOT NULL,
+              is_delayed INTEGER NOT NULL DEFAULT 0,
+              is_manual INTEGER NOT NULL DEFAULT 0,
+              updated_at INTEGER NOT NULL
+            )
+            ''');
+        }
+        if (oldVersion < 6) {
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_transactions_project '
+            'ON transactions(project_id)',
+          );
+
+          await db.execute('''
+    CREATE TABLE IF NOT EXISTS asset_definitions (
+      id TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      asset_kind TEXT NOT NULL,
+      symbol TEXT,
+      provider_code TEXT,
+      provider_symbol TEXT,
+      exchange_code TEXT,
+      currency_code TEXT NOT NULL,
+      unit TEXT NOT NULL,
+      lot_size INTEGER NOT NULL DEFAULT 1
+        CHECK(lot_size > 0),
+      online_pricing_enabled INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      deleted_at INTEGER,
+      version INTEGER NOT NULL DEFAULT 1,
+      device_id TEXT NOT NULL,
+      sync_status TEXT NOT NULL DEFAULT 'local_only'
+    )
+  ''');
+
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_asset_definitions_name '
+            'ON asset_definitions(display_name)',
+          );
+
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_asset_definitions_symbol '
+            'ON asset_definitions(symbol)',
+          );
+
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_asset_definitions_sync '
+            'ON asset_definitions(sync_status)',
+          );
+        }
+        if (oldVersion < 7) {
+          await db.execute(
+            'ALTER TABLE transactions '
+            'ADD COLUMN asset_definition_id TEXT',
+          );
+
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS '
+            'idx_transactions_asset_definition '
+            'ON transactions(asset_definition_id)',
+          );
+        }
       },
     );
   }
@@ -155,6 +315,79 @@ class LocalStore {
     where: 'id = ?',
     whereArgs: [id],
   );
+
+  Future<List<Map<String, Object?>>> getAssetMarketPrices() {
+    return db.query('asset_market_prices', orderBy: 'updated_at DESC');
+  }
+
+  Future<void> upsertAssetMarketPrice(Map<String, Object?> record) {
+    return db.insert(
+      'asset_market_prices',
+      record,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Map<String, Object?>>> getAssetDefinitions({
+    bool includeDeleted = false,
+  }) {
+    return db.query(
+      'asset_definitions',
+      where: includeDeleted ? null : 'deleted_at IS NULL',
+      orderBy: 'display_name COLLATE NOCASE',
+    );
+  }
+
+  Future<Map<String, Object?>?> getAssetDefinitionById(String id) async {
+    final rows = await db.query(
+      'asset_definitions',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    return rows.first;
+  }
+
+  Future<void> upsertAssetDefinition(Map<String, Object?> record) {
+    return db.insert(
+      'asset_definitions',
+      record,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> softDeleteAssetDefinition(String id, int deletedAt) async {
+    await db.rawUpdate(
+      '''
+    UPDATE asset_definitions
+    SET deleted_at = ?,
+        updated_at = ?,
+        version = version + 1,
+        sync_status = ?
+    WHERE id = ?
+    ''',
+      [deletedAt, deletedAt, 'pending', id],
+    );
+  }
+
+  Future<void> ensureAssetDefinitionSeeds(
+    List<Map<String, Object?>> records,
+  ) async {
+    await db.transaction((txn) async {
+      for (final record in records) {
+        await txn.insert(
+          'asset_definitions',
+          record,
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    });
+  }
 
   Future<void> close() async => _database?.close();
 

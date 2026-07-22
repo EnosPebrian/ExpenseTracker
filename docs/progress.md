@@ -1,54 +1,183 @@
 # Pilgrim Tracker Progress
 
-## Current milestone
+**Snapshot date:** 2026-07-21
 
-- Flutter app shell runs on web, Android, and Windows targets.
-- Premium dashboard, transactions, accounts, projects, tithe, reports, and asset conversion screens exist.
-- Quick Add supports expense, income, and transfer entry with controller-supplied defaults while keeping date/time/project out of the compact fast-entry surface.
-- Quick Add now uses the compact prototype-style centered modal: type tabs, amount, account, category, description, and one primary save action.
-- Asset conversion supports source/destination assets, quantity, unit cost, fee treatment, and optional date/time.
-- Local-first transaction storage is implemented with versioned SQLite on Android/Windows and a browser preview fallback.
-- Transaction records include UUIDs, project IDs, soft deletion, version, device ID, and sync status.
-- Default expense categories, income categories, projects, and financial accounts are seeded from the approved user lists.
-- Categories, projects, and accounts have add/edit management interfaces and feed directly into Quick Add.
-- Existing transactions can be edited from their detail dialog and are saved back to the same UUID record with a new version.
-- Asset conversion supports both buying measured assets with cash and selling gold, stocks, Bitcoin, or inventory back to cash/bank accounts.
+```text
+flutter analyze
+No issues found!
 
-## Architecture alignment work completed
+flutter test
+93 tests passed
+```
 
-- Completed Phase 1 shell extraction: `lib/main.dart` is now a bootstrap entrypoint and the application shell lives in `lib/app/app.dart`.
-- Added `lib/app/theme/app_theme.dart` and a transitional `lib/app/router.dart` route registry.
-- Existing SQLite code remains isolated in `lib/core/database/`.
-- Transaction Phase 1 extraction completed: the transaction entity/model now lives in `lib/features/transactions/domain/entities/transaction.dart`.
-- Added `TransactionRepository` domain contract and `LocalTransactionRepository` SQLite adapter under `lib/features/transactions/`.
-- Existing app-shell transaction UI remains behaviorally compatible through a `TxType` typedef during the incremental move.
-- Added transaction application use cases for create, update, soft delete, get, and duplicate operations.
-- AppShell creation, loading, and editing now delegate through repository-backed transaction use cases instead of direct SQLite calls.
-- Added focused unit tests for transaction creation, update versioning, duplication metadata, and soft deletion.
-- Added `TransactionController` with loading/error state and CRUD/duplicate commands.
-- Added a transitional `TransactionProviders` dependency factory for future Riverpod migration.
-- AppShell now observes the controller and routes transaction create/update operations through it.
-- Extracted the transaction list and detail presentation surface into `lib/features/transactions/presentation/`.
-- Added reusable `TransactionFilters`, `TransactionTile`, and `TransactionCard` widgets plus `TransactionListScreen` and `TransactionDetailScreen`.
-- AppShell now routes the Transactions page through `TransactionListScreen`; the feature screen observes `TransactionController` and keeps edit/delete callbacks at the shell boundary.
-- Extracted Quick Add into `presentation/quick_add/` with a `QuickAddController`, configurable default context chips, and controller-backed persistence.
-- Extracted Edit Transaction into `presentation/edit/` with reusable form fields, project editing, date/time editing, transfer and asset-conversion fields.
-- New transaction and edit forms reuse the shared searchable picker and preserve the existing keyboard-first selection behavior.
-- Transaction domain copying now supports explicitly clearing nullable `project_id`; edit presentation no longer carries UUID, version, or sync metadata manually.
+## Current application state
 
-- Added nullable `transactions.project_id`.
-- Added SQLite schema migration from version 1 to version 2.
-- Added an optional project selector to Quick Add.
-- Preserved local-first writes before future synchronization.
-- Added database migration version 3 with dedicated `books`, `accounts`, `categories`, and `projects` tables, including soft-delete and synchronization metadata.
-- Wired master-data seed loading and account/category/project additions and renames to local persistence.
+- Flutter shell runs on web preview, Android, and Windows targets.
+- Navigation contains Overview, Assets, Transactions, Accounts, Categories, Asset Conversion, Projects, Tithe, and Reports.
+- Overview is period-based and no longer carries detailed asset analytics.
+- Assets is a dedicated portfolio destination.
+- Transactions use repository/use-case/controller flow.
+- Native storage uses SQLite version 5.
+- Web uses a compatible in-memory preview store.
+- Accounts, categories, and projects are seeded/manageable.
+- Tithe summaries use an effective-date policy.
 
-## Known architecture follow-ups
+## Dashboard work completed
 
-- Replace the transitional SQLite repository with Drift ORM.
-- Introduce Riverpod state management and GoRouter navigation.
-- Move the current presentation code into feature-first `data/`, `domain/`, and `presentation/` folders.
-- Add business units, contacts, ledger entries, revisions, tithe entities, and sync queues as separate tables.
-- Replace the dashboard's compatibility `RecentTransactions`/legacy tile with `TransactionCard` when the dashboard is extracted.
-- Remove the temporary searchable-picker compatibility declarations from `app.dart` after all legacy master-data screens use the shared widget directly.
-- Extract transaction presentation controllers/providers into the final app state-management solution after the Riverpod migration.
+- Assets inserted after Overview.
+- navigation tests updated
+- Overview reduced to monthly balance, income, expenses, tithe, cash flow, spending, recent transactions, and activity
+- detailed assets moved to Assets
+
+## Asset transaction work completed
+
+Transaction now supports:
+
+```text
+assetName
+assetSymbol
+assetAction
+quantity
+unit
+unitPrice
+```
+
+- buy/sell actions are explicit
+- stock ticker is required
+- shares and grams are recorded
+- SQLite v4 added asset name/action
+- SQLite v5 added symbol and market-price cache
+- legacy conversions remain calculable
+
+## Market-price work completed
+
+Added:
+
+```text
+AppEnvironment
+MarketQuote
+AssetSymbolMatch
+AssetPriceRepository
+AlphaVantageAssetPriceRepository
+AssetMarketPrice
+AssetPriceController
+```
+
+Capabilities:
+
+- stock quote parsing
+- symbol-search service
+- gold spot retrieval
+- USD/IDR and ounce/gram conversion
+- provider/rate-limit errors
+- injected HTTP client tests
+- online and manual prices
+- cached latest native prices
+- source/status/date display
+- no-key manual fallback
+
+## Portfolio engine completed
+
+Added:
+
+```text
+AssetPortfolio
+AssetHolding
+AssetKind
+AssetPortfolioCalculator
+```
+
+Implemented:
+
+- gold quantity
+- stock shares/lots
+- chronological processing
+- weighted-average cost
+- remaining cost basis
+- partial sale
+- realized/unrealized gains
+- market value
+- quote matching
+- cost-basis fallback
+- legacy support
+- soft-delete filtering
+
+## Assets UI completed
+
+- portfolio value
+- cost basis
+- realized/unrealized gain
+- holdings
+- quantity/lots/shares
+- average/current price
+- market value and return
+- online/manual refresh
+- quote source/status/date
+- provider error and empty states
+
+## Current boundaries
+
+- `AppShell` composes features.
+- HTTP parsing stays in data implementation.
+- quote retrieval uses a domain repository.
+- portfolio math stays in a pure domain service.
+- widgets render and trigger controller actions.
+- native and web stores keep compatible methods.
+
+## Known gaps
+
+High priority:
+
+- no persistent `AssetDefinition`
+- lot size fixed at 100 for stocks
+- stock online refresh assumes IDR
+- provider symbol/exchange/currency not separately configured
+- overselling not blocked before save
+- fee treatment shown but not persisted/applied
+- client API key unsuitable for public release
+
+Medium priority:
+
+- web storage is in-memory
+- latest quote only, no history
+- symbol-search has no UI
+- no refresh-age/rate-limit policy
+- no complete net worth with cash/liabilities
+- no market-value allocation chart
+- no safe ticker-correction flow
+
+Planned migrations:
+
+- Drift
+- Riverpod
+- GoRouter
+- ledger entries
+- revisions
+- sync queue
+- persistent tithe entities
+
+## Next implementation
+
+Add persistent `AssetDefinition` with:
+
+```text
+id
+displayName
+kind
+symbol
+providerCode
+providerSymbol
+exchangeCode
+currencyCode
+unit
+lotSize
+onlinePricingEnabled
+createdAt
+updatedAt
+deletedAt
+version
+deviceId
+syncStatus
+```
+
+Then migrate v5 safely, seed defaults, integrate conversion selection, use configured lot/currency, reject quote-currency mismatch, add oversell validation/fees, and preserve all 93 tests.

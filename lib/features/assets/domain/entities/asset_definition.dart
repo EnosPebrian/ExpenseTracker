@@ -1,0 +1,329 @@
+import 'asset_kind.dart';
+
+class AssetDefinition {
+  const AssetDefinition({
+    required this.id,
+    required this.displayName,
+    required this.kind,
+    required this.symbol,
+    required this.providerCode,
+    required this.providerSymbol,
+    required this.exchangeCode,
+    required this.currencyCode,
+    required this.unit,
+    required this.lotSize,
+    required this.onlinePricingEnabled,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.deletedAt,
+    required this.version,
+    required this.deviceId,
+    required this.syncStatus,
+  });
+
+  static const Object _unset = Object();
+
+  final String id;
+  final String displayName;
+  final AssetKind kind;
+
+  /// User-facing market symbol, such as BBCA or AAPL.
+  final String? symbol;
+
+  /// Market-data provider identifier, such as alpha_vantage.
+  final String? providerCode;
+
+  /// Symbol expected by the selected provider.
+  ///
+  /// This may differ from [symbol].
+  final String? providerSymbol;
+
+  /// Exchange identifier, such as IDX or NASDAQ.
+  final String? exchangeCode;
+
+  /// Currency used for valuation, such as IDR or USD.
+  final String currencyCode;
+
+  /// Quantity unit, such as gram, share, coin, or item.
+  final String unit;
+
+  /// Number of units represented by one lot.
+  ///
+  /// Indonesian stocks commonly use 100 shares per lot.
+  final int lotSize;
+
+  final bool onlinePricingEnabled;
+
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+
+  final int version;
+  final String deviceId;
+  final String syncStatus;
+
+  bool get isDeleted => deletedAt != null;
+
+  String? get normalizedSymbol {
+    return _normalizeOptionalCode(symbol);
+  }
+
+  String? get normalizedProviderCode {
+    return _normalizeOptionalCode(providerCode);
+  }
+
+  String? get normalizedProviderSymbol {
+    return _normalizeOptionalCode(providerSymbol);
+  }
+
+  String? get normalizedExchangeCode {
+    return _normalizeOptionalCode(exchangeCode);
+  }
+
+  String get normalizedCurrencyCode {
+    return currencyCode.trim().toUpperCase();
+  }
+
+  String get normalizedUnit {
+    return unit.trim().toLowerCase();
+  }
+
+  /// Stable key used to associate this definition with its latest price.
+  ///
+  /// Stocks and crypto prefer their symbol. Other assets use display name.
+  String get marketPriceKey {
+    switch (kind) {
+      case AssetKind.stock:
+      case AssetKind.crypto:
+        return normalizedSymbol ?? displayName.trim();
+
+      case AssetKind.gold:
+      case AssetKind.inventory:
+      case AssetKind.other:
+        return displayName.trim();
+    }
+  }
+
+  /// Symbol used for online quote requests.
+  ///
+  /// Provider-specific identity takes precedence over the display symbol.
+  String? get quoteSymbol {
+    return normalizedProviderSymbol ?? normalizedSymbol;
+  }
+
+  List<String> validate() {
+    final errors = <String>[];
+
+    if (id.trim().isEmpty) {
+      errors.add('Asset definition ID is required.');
+    }
+
+    if (displayName.trim().isEmpty) {
+      errors.add('Asset display name is required.');
+    }
+
+    if (unit.trim().isEmpty) {
+      errors.add('Asset unit is required.');
+    }
+
+    final currency = normalizedCurrencyCode;
+
+    if (currency.length != 3) {
+      errors.add('Currency code must contain exactly three characters.');
+    }
+
+    if (lotSize <= 0) {
+      errors.add('Lot size must be greater than zero.');
+    }
+
+    if (kind == AssetKind.stock && normalizedSymbol == null) {
+      errors.add('A stock symbol is required.');
+    }
+
+    if (onlinePricingEnabled &&
+        kind != AssetKind.gold &&
+        normalizedProviderSymbol == null) {
+      errors.add(
+        'A provider symbol is required when online pricing is enabled.',
+      );
+    }
+
+    if (version <= 0) {
+      errors.add('Version must be greater than zero.');
+    }
+
+    if (deviceId.trim().isEmpty) {
+      errors.add('Device ID is required.');
+    }
+
+    if (syncStatus.trim().isEmpty) {
+      errors.add('Sync status is required.');
+    }
+
+    return List<String>.unmodifiable(errors);
+  }
+
+  AssetDefinition copyWith({
+    String? id,
+    String? displayName,
+    AssetKind? kind,
+    Object? symbol = _unset,
+    Object? providerCode = _unset,
+    Object? providerSymbol = _unset,
+    Object? exchangeCode = _unset,
+    String? currencyCode,
+    String? unit,
+    int? lotSize,
+    bool? onlinePricingEnabled,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Object? deletedAt = _unset,
+    int? version,
+    String? deviceId,
+    String? syncStatus,
+  }) {
+    return AssetDefinition(
+      id: id ?? this.id,
+      displayName: displayName ?? this.displayName,
+      kind: kind ?? this.kind,
+      symbol: identical(symbol, _unset) ? this.symbol : symbol as String?,
+      providerCode: identical(providerCode, _unset)
+          ? this.providerCode
+          : providerCode as String?,
+      providerSymbol: identical(providerSymbol, _unset)
+          ? this.providerSymbol
+          : providerSymbol as String?,
+      exchangeCode: identical(exchangeCode, _unset)
+          ? this.exchangeCode
+          : exchangeCode as String?,
+      currencyCode: currencyCode ?? this.currencyCode,
+      unit: unit ?? this.unit,
+      lotSize: lotSize ?? this.lotSize,
+      onlinePricingEnabled: onlinePricingEnabled ?? this.onlinePricingEnabled,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: identical(deletedAt, _unset)
+          ? this.deletedAt
+          : deletedAt as DateTime?,
+      version: version ?? this.version,
+      deviceId: deviceId ?? this.deviceId,
+      syncStatus: syncStatus ?? this.syncStatus,
+    );
+  }
+
+  Map<String, Object?> toRecord() {
+    return <String, Object?>{
+      'id': id,
+      'display_name': displayName,
+      'asset_kind': kind.name,
+      'symbol': normalizedSymbol,
+      'provider_code': normalizedProviderCode,
+      'provider_symbol': normalizedProviderSymbol,
+      'exchange_code': normalizedExchangeCode,
+      'currency_code': normalizedCurrencyCode,
+      'unit': normalizedUnit,
+      'lot_size': lotSize,
+      'online_pricing_enabled': onlinePricingEnabled ? 1 : 0,
+      'created_at': createdAt.toUtc().millisecondsSinceEpoch,
+      'updated_at': updatedAt.toUtc().millisecondsSinceEpoch,
+      'deleted_at': deletedAt?.toUtc().millisecondsSinceEpoch,
+      'version': version,
+      'device_id': deviceId,
+      'sync_status': syncStatus,
+    };
+  }
+
+  factory AssetDefinition.fromRecord(Map<String, Object?> record) {
+    return AssetDefinition(
+      id: _requiredString(record['id']),
+      displayName: _requiredString(record['display_name']),
+      kind: AssetKind.values.byName(_requiredString(record['asset_kind'])),
+      symbol: _optionalString(record['symbol']),
+      providerCode: _optionalString(record['provider_code']),
+      providerSymbol: _optionalString(record['provider_symbol']),
+      exchangeCode: _optionalString(record['exchange_code']),
+      currencyCode: _requiredString(record['currency_code']),
+      unit: _requiredString(record['unit']),
+      lotSize: _readInt(record['lot_size']),
+      onlinePricingEnabled: _readBool(record['online_pricing_enabled']),
+      createdAt: _readDateTime(record['created_at']),
+      updatedAt: _readDateTime(record['updated_at']),
+      deletedAt: _readNullableDateTime(record['deleted_at']),
+      version: _readInt(record['version']),
+      deviceId: _requiredString(record['device_id']),
+      syncStatus: _requiredString(record['sync_status']),
+    );
+  }
+
+  static String? _normalizeOptionalCode(String? value) {
+    final normalized = value?.trim().toUpperCase();
+
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  static String _requiredString(Object? value) {
+    if (value is String) {
+      return value;
+    }
+
+    throw StateError('Expected a non-null String value, but received $value.');
+  }
+
+  static String? _optionalString(Object? value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is! String) {
+      throw StateError(
+        'Expected a nullable String value, but received $value.',
+      );
+    }
+
+    final normalized = value.trim();
+
+    return normalized.isEmpty ? null : normalized;
+  }
+
+  static int _readInt(Object? value) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    throw StateError('Expected an integer value, but received $value.');
+  }
+
+  static bool _readBool(Object? value) {
+    if (value is bool) {
+      return value;
+    }
+
+    if (value is num) {
+      return value != 0;
+    }
+
+    throw StateError(
+      'Expected a boolean or integer value, but received $value.',
+    );
+  }
+
+  static DateTime _readDateTime(Object? value) {
+    return DateTime.fromMillisecondsSinceEpoch(_readInt(value), isUtc: true);
+  }
+
+  static DateTime? _readNullableDateTime(Object? value) {
+    if (value == null) {
+      return null;
+    }
+
+    return _readDateTime(value);
+  }
+}

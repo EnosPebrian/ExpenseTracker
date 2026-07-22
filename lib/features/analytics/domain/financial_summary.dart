@@ -1,4 +1,5 @@
 import '../../transactions/domain/entities/transaction.dart';
+import '../../tithe/domain/tithe_policy.dart';
 
 class CategorySpending {
   const CategorySpending({
@@ -14,6 +15,59 @@ class CategorySpending {
   final double share;
 }
 
+class FinancialAsset {
+  const FinancialAsset({
+    required this.type,
+    int? amount,
+    int? value,
+    this.isCash = false,
+  }) : amount = amount ?? value ?? 0;
+
+  final String type;
+  final int amount;
+  final bool isCash;
+
+  int get value => amount;
+}
+
+class FinancialLiability {
+  const FinancialLiability({required this.type, int? amount, int? value})
+    : amount = amount ?? value ?? 0;
+
+  final String type;
+  final int amount;
+
+  int get value => amount;
+}
+
+typedef AssetBalance = FinancialAsset;
+typedef LiabilityBalance = FinancialLiability;
+
+class AssetAllocation {
+  const AssetAllocation({
+    required this.type,
+    required this.amount,
+    required this.share,
+  });
+
+  final String type;
+  final int amount;
+
+  /// Value from 0 to 1 of total assets.
+  final double share;
+
+  double get percentage => share * 100;
+}
+
+typedef AssetAllocationByType = AssetAllocation;
+
+class LiabilityTotal {
+  const LiabilityTotal({required this.type, required this.amount});
+
+  final String type;
+  final int amount;
+}
+
 class FinancialSummary {
   const FinancialSummary({
     required this.periodStart,
@@ -27,6 +81,14 @@ class FinancialSummary {
     required this.monthlyTithe,
     required this.activityCount,
     required this.spendingByCategory,
+    this.totalAssets = 0,
+    this.totalLiabilities = 0,
+    this.netWorth = 0,
+    this.cash = 0,
+    this.availableCash = 0,
+    this.availableCashAfterPendingTithe = 0,
+    this.assetAllocation = const [],
+    this.liabilityTotals = const [],
   });
 
   final DateTime periodStart;
@@ -44,15 +106,40 @@ class FinancialSummary {
   /// Decimal representation, for example 0.30 means 30%.
   final double savingsRate;
 
-  /// Decimal representation, for example 0.13 means 13%.
+  /// Decimal representation of the applied percentage.
   final double titheRate;
 
   final int monthlyTithe;
+
+  int get periodIncome => monthlyIncome;
+
+  int get periodExpenses => monthlyExpenses;
+
+  int get periodNetCashFlow => monthlyNetCashFlow;
+
+  int get periodTithe => monthlyTithe;
 
   /// All transaction types recorded within the period.
   final int activityCount;
 
   final List<CategorySpending> spendingByCategory;
+
+  final int totalAssets;
+  final int totalLiabilities;
+  final int netWorth;
+  final int cash;
+  final int availableCash;
+  final int availableCashAfterPendingTithe;
+  final List<AssetAllocation> assetAllocation;
+  final List<LiabilityTotal> liabilityTotals;
+
+  int get pendingTithe => monthlyTithe;
+
+  int get totalCash => cash;
+
+  int get availableAfterTithe => availableCashAfterPendingTithe;
+
+  List<LiabilityTotal> get liabilitiesByType => liabilityTotals;
 
   CategorySpending? get topCategory {
     if (spendingByCategory.isEmpty) {
@@ -65,22 +152,46 @@ class FinancialSummary {
   factory FinancialSummary.calculate({
     required Iterable<Transaction> transactions,
     required DateTime referenceDate,
-    double titheRate = 0.13,
+    TithePolicy? tithePolicy,
+    double? titheRate,
+    Iterable<FinancialAsset> assets = const [],
+    Iterable<FinancialLiability> liabilities = const [],
   }) {
-    if (titheRate < 0 || titheRate > 1) {
+    return FinancialSummary.forPeriod(
+      transactions: transactions,
+      periodStart: DateTime(referenceDate.year, referenceDate.month),
+      periodEndExclusive: DateTime(referenceDate.year, referenceDate.month + 1),
+      tithePolicy: tithePolicy,
+      titheRate: titheRate,
+      assets: assets,
+      liabilities: liabilities,
+    );
+  }
+
+  factory FinancialSummary.forPeriod({
+    required Iterable<Transaction> transactions,
+    required DateTime periodStart,
+    required DateTime periodEndExclusive,
+    TithePolicy? tithePolicy,
+    double? titheRate,
+    Iterable<FinancialAsset> assets = const [],
+    Iterable<FinancialLiability> liabilities = const [],
+  }) {
+    if (!periodEndExclusive.isAfter(periodStart)) {
+      throw ArgumentError('The financial period end must be after its start.');
+    }
+
+    final resolvedTitheRate =
+        titheRate ??
+        (tithePolicy ?? TithePolicy.defaultPolicy).rateFor(periodStart);
+
+    if (resolvedTitheRate < 0 || resolvedTitheRate > 1) {
       throw ArgumentError.value(
-        titheRate,
+        resolvedTitheRate,
         'titheRate',
         'Tithe rate must be between 0 and 1.',
       );
     }
-
-    final periodStart = DateTime(referenceDate.year, referenceDate.month);
-
-    final periodEndExclusive = DateTime(
-      referenceDate.year,
-      referenceDate.month + 1,
-    );
 
     final activeTransactions = transactions
         .where((transaction) => transaction.deletedAt == null)
@@ -110,18 +221,18 @@ class FinancialSummary {
         })
         .toList(growable: false);
 
-    var monthlyIncome = 0;
-    var monthlyExpenses = 0;
+    var periodIncome = 0;
+    var periodExpenses = 0;
 
     final categoryTotals = <String, int>{};
 
     for (final transaction in periodTransactions) {
       switch (transaction.type) {
         case TransactionType.income:
-          monthlyIncome += transaction.amount;
+          periodIncome += transaction.amount;
 
         case TransactionType.expense:
-          monthlyExpenses += transaction.amount;
+          periodExpenses += transaction.amount;
 
           categoryTotals.update(
             transaction.category,
@@ -135,11 +246,11 @@ class FinancialSummary {
       }
     }
 
-    final monthlyNetCashFlow = monthlyIncome - monthlyExpenses;
+    final periodNetCashFlow = periodIncome - periodExpenses;
 
-    final savingsRate = monthlyIncome == 0
+    final savingsRate = periodIncome == 0
         ? 0.0
-        : monthlyNetCashFlow / monthlyIncome;
+        : periodNetCashFlow / periodIncome;
 
     final spendingByCategory =
         categoryTotals.entries
@@ -147,25 +258,89 @@ class FinancialSummary {
               (entry) => CategorySpending(
                 category: entry.key,
                 amount: entry.value,
-                share: monthlyExpenses == 0 ? 0 : entry.value / monthlyExpenses,
+                share: periodExpenses == 0 ? 0 : entry.value / periodExpenses,
               ),
             )
             .toList()
           ..sort((left, right) => right.amount.compareTo(left.amount));
 
+    final assetTotals = <String, ({String type, int amount})>{};
+    var totalAssets = 0;
+    var cash = 0;
+    for (final asset in assets) {
+      final type = asset.type.trim().isEmpty ? 'Other' : asset.type.trim();
+      final key = type.toLowerCase();
+      final current = assetTotals[key];
+      assetTotals[key] = (
+        type: current?.type ?? type,
+        amount: (current?.amount ?? 0) + asset.amount,
+      );
+      totalAssets += asset.amount;
+      if (asset.isCash || key == 'cash') {
+        cash += asset.amount;
+      }
+    }
+
+    final liabilityTotalsByType = <String, ({String type, int amount})>{};
+    var totalLiabilities = 0;
+    for (final liability in liabilities) {
+      final type = liability.type.trim().isEmpty
+          ? 'Other liabilities'
+          : liability.type.trim();
+      final key = type.toLowerCase();
+      final current = liabilityTotalsByType[key];
+      liabilityTotalsByType[key] = (
+        type: current?.type ?? type,
+        amount: (current?.amount ?? 0) + liability.amount,
+      );
+      totalLiabilities += liability.amount;
+    }
+
+    final assetAllocation =
+        assetTotals.values
+            .map(
+              (entry) => AssetAllocation(
+                type: entry.type,
+                amount: entry.amount,
+                share: totalAssets == 0 ? 0 : entry.amount / totalAssets,
+              ),
+            )
+            .toList()
+          ..sort((left, right) => right.amount.compareTo(left.amount));
+
+    final liabilityTotalsByClass =
+        liabilityTotalsByType.values
+            .map(
+              (entry) => LiabilityTotal(type: entry.type, amount: entry.amount),
+            )
+            .toList()
+          ..sort((left, right) => right.amount.compareTo(left.amount));
+    final availableCash = cash - totalLiabilities;
+
     return FinancialSummary(
       periodStart: periodStart,
       periodEndExclusive: periodEndExclusive,
       recordedBalance: allTimeIncome - allTimeExpenses,
-      monthlyIncome: monthlyIncome,
-      monthlyExpenses: monthlyExpenses,
-      monthlyNetCashFlow: monthlyNetCashFlow,
+      monthlyIncome: periodIncome,
+      monthlyExpenses: periodExpenses,
+      monthlyNetCashFlow: periodNetCashFlow,
       savingsRate: savingsRate,
-      titheRate: titheRate,
-      monthlyTithe: (monthlyIncome * titheRate).round(),
+      titheRate: resolvedTitheRate,
+      monthlyTithe: (periodIncome * resolvedTitheRate).round(),
       activityCount: periodTransactions.length,
       spendingByCategory: List<CategorySpending>.unmodifiable(
         spendingByCategory,
+      ),
+      totalAssets: totalAssets,
+      totalLiabilities: totalLiabilities,
+      netWorth: totalAssets - totalLiabilities,
+      cash: cash,
+      availableCash: availableCash,
+      availableCashAfterPendingTithe:
+          availableCash - (periodIncome * resolvedTitheRate).round(),
+      assetAllocation: List<AssetAllocation>.unmodifiable(assetAllocation),
+      liabilityTotals: List<LiabilityTotal>.unmodifiable(
+        liabilityTotalsByClass,
       ),
     );
   }

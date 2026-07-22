@@ -1,0 +1,50 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:pilgrim_tracker/features/assets/controllers/asset_conversion_controller.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
+
+void main() {
+  test('stock conversion requires and stores a ticker symbol', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: const ['Gold Holdings', 'Stock Portfolio'],
+    );
+
+    addTearDown(controller.dispose);
+
+    controller.setDestination('Stock Portfolio');
+
+    expect(controller.requiresStockSymbol, isTrue);
+    expect(controller.canSave, isFalse);
+
+    controller.symbolController.text = 'bbca';
+
+    expect(controller.canSave, isTrue);
+
+    final transaction = controller.buildTransaction();
+
+    expect(transaction.type, TransactionType.assetConversion);
+    expect(transaction.assetName, 'Stock Portfolio');
+    expect(transaction.assetSymbol, 'BBCA');
+    expect(transaction.assetAction, AssetAction.buy);
+    expect(transaction.unit, 'share');
+  });
+
+  test('gold conversion does not require a ticker symbol', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: const ['Gold Holdings', 'Stock Portfolio'],
+    );
+
+    addTearDown(controller.dispose);
+
+    expect(controller.requiresStockSymbol, isFalse);
+    expect(controller.canSave, isTrue);
+
+    final transaction = controller.buildTransaction();
+
+    expect(transaction.assetName, 'Gold Holdings');
+    expect(transaction.assetSymbol, isNull);
+    expect(transaction.assetAction, AssetAction.buy);
+    expect(transaction.unit, 'gram');
+  });
+}

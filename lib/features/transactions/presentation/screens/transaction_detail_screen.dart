@@ -53,10 +53,102 @@ class _TransactionDetailDialog extends StatefulWidget {
 
 class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
   bool deleting = false;
+  bool confirmingDelete = false;
   String? error;
 
+  @override
+  void initState() {
+    super.initState();
+
+    widget.controller.addListener(_onTransactionChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _TransactionDetailDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onTransactionChanged);
+
+      widget.controller.addListener(_onTransactionChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTransactionChanged);
+
+    super.dispose();
+  }
+
+  void _onTransactionChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Transaction get currentTransaction {
+    for (final transaction in widget.controller.transactions) {
+      if (transaction.id == widget.transaction.id) {
+        return transaction;
+      }
+    }
+
+    return widget.transaction;
+  }
+
   Future<void> _delete() async {
-    if (deleting) {
+    if (deleting || confirmingDelete) {
+      return;
+    }
+    final transaction = currentTransaction;
+
+    setState(() {
+      confirmingDelete = true;
+    });
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (confirmationContext) {
+        return AlertDialog(
+          title: Text('Delete “${transaction.title}”?'),
+          content: Text(
+            'Rp ${money(transaction.amount)} · '
+            '${transaction.account}\n\n'
+            'This transaction will be removed from '
+            'your active ledger.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(confirmationContext, false);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB42318),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.pop(confirmationContext, true);
+              },
+              child: const Text('Delete transaction'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      confirmingDelete = false;
+    });
+
+    if (confirmed != true) {
       return;
     }
 
@@ -66,7 +158,7 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
     });
 
     try {
-      await widget.controller.deleteTransaction(widget.transaction);
+      await widget.controller.deleteTransaction(transaction);
 
       if (!mounted) {
         return;
@@ -93,17 +185,17 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
   void _edit() {
     final onEdit = widget.onEdit;
 
-    if (onEdit == null || deleting) {
+    if (onEdit == null || deleting || confirmingDelete) {
       return;
     }
 
-    Navigator.pop(context);
-    onEdit(widget.transaction);
+    // Detail tetap terbuka di belakang edit dialog.
+    onEdit(currentTransaction);
   }
 
   @override
   Widget build(BuildContext context) {
-    final transaction = widget.transaction;
+    final transaction = currentTransaction;
 
     return PopScope(
       canPop: !deleting,
@@ -191,8 +283,14 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
             child: const Text('Close'),
           ),
           TextButton(
-            onPressed: deleting ? null : _delete,
-            child: Text(deleting ? 'Deleting...' : 'Delete'),
+            onPressed: deleting || confirmingDelete ? null : _delete,
+            child: Text(
+              deleting
+                  ? 'Deleting...'
+                  : confirmingDelete
+                  ? 'Confirming...'
+                  : 'Delete',
+            ),
           ),
           FilledButton(
             onPressed: widget.onEdit == null || deleting ? null : _edit,

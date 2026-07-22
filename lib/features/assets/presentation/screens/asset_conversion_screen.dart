@@ -5,6 +5,7 @@ import '../../../transactions/domain/entities/transaction.dart';
 import '../../controllers/asset_conversion_controller.dart';
 import '../widgets/asset_conversion_form.dart';
 import '../widgets/conversion_summary_card.dart';
+import '../../domain/entities/asset_definition.dart';
 
 class AssetConversionScreen extends StatefulWidget {
   const AssetConversionScreen({
@@ -15,7 +16,7 @@ class AssetConversionScreen extends StatefulWidget {
   });
 
   final List<String> accounts;
-  final List<String> assets;
+  final List<AssetDefinition> assets;
   final Future<void> Function(Transaction) onSave;
 
   @override

@@ -1,0 +1,292 @@
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:uuid/uuid.dart';
+
+class LocalStore {
+  LocalStore({this.databasePath});
+  static bool _ffiInitialized = false;
+
+  final String? databasePath;
+  Database? _database;
+
+  Future<void> initialize() async {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) &&
+        !_ffiInitialized) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      _ffiInitialized = true;
+    }
+    final resolvedDatabasePath =
+        databasePath ?? p.join(await getDatabasesPath(), 'pilgrim_tracker.db');
+
+    _database = await openDatabase(
+      resolvedDatabasePath,
+      version: 4,
+      onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE transactions (
+            id TEXT PRIMARY KEY,
+            project_id TEXT,
+            title TEXT NOT NULL,
+            category TEXT NOT NULL,
+            account TEXT NOT NULL,
+            transaction_date INTEGER NOT NULL,
+            amount INTEGER NOT NULL,
+            transaction_type TEXT NOT NULL,
+                        quantity REAL,
+            unit TEXT,
+            unit_price INTEGER,
+            asset_name TEXT,
+            asset_action TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            deleted_at INTEGER,
+            version INTEGER NOT NULL DEFAULT 1,
+            device_id TEXT NOT NULL,
+            sync_status TEXT NOT NULL DEFAULT 'local_only'
+          )
+        ''');
+        await db.execute(
+          'CREATE INDEX idx_transactions_date ON transactions(transaction_date)',
+        );
+        await db.execute(
+          'CREATE INDEX idx_transactions_sync ON transactions(sync_status)',
+        );
+        await db.execute(
+          'CREATE INDEX idx_transactions_asset '
+          'ON transactions(asset_name, asset_action)',
+        );
+        await db.execute(
+          '''CREATE TABLE IF NOT EXISTS books (
+          id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL, deleted_at INTEGER, version INTEGER NOT NULL DEFAULT 1,
+          device_id TEXT NOT NULL, sync_status TEXT NOT NULL DEFAULT 'local_only')''',
+        );
+        await db.execute(
+          '''CREATE TABLE IF NOT EXISTS accounts (
+          id TEXT PRIMARY KEY, book_id TEXT, name TEXT NOT NULL, account_type TEXT NOT NULL DEFAULT 'asset',
+          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER,
+          version INTEGER NOT NULL DEFAULT 1, device_id TEXT NOT NULL, sync_status TEXT NOT NULL DEFAULT 'local_only')''',
+        );
+        await db.execute(
+          '''CREATE TABLE IF NOT EXISTS categories (
+          id TEXT PRIMARY KEY, book_id TEXT, name TEXT NOT NULL, category_type TEXT NOT NULL,
+          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER,
+          version INTEGER NOT NULL DEFAULT 1, device_id TEXT NOT NULL, sync_status TEXT NOT NULL DEFAULT 'local_only')''',
+        );
+        await db.execute(
+          '''CREATE TABLE IF NOT EXISTS projects (
+          id TEXT PRIMARY KEY, book_id TEXT, name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active',
+          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER,
+          version INTEGER NOT NULL DEFAULT 1, device_id TEXT NOT NULL, sync_status TEXT NOT NULL DEFAULT 'local_only')''',
+        );
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute(
+            'ALTER TABLE transactions ADD COLUMN project_id TEXT',
+          );
+          await db.execute(
+            'CREATE INDEX idx_transactions_project ON transactions(project_id)',
+          );
+        }
+        if (oldVersion < 3) {
+          await db.execute(
+            '''CREATE TABLE books (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL, deleted_at INTEGER, version INTEGER NOT NULL DEFAULT 1,
+            device_id TEXT NOT NULL, sync_status TEXT NOT NULL DEFAULT 'local_only')''',
+          );
+          await db.execute(
+            '''CREATE TABLE accounts (
+            id TEXT PRIMARY KEY, book_id TEXT, name TEXT NOT NULL, account_type TEXT NOT NULL DEFAULT 'asset',
+            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER,
+            version INTEGER NOT NULL DEFAULT 1, device_id TEXT NOT NULL, sync_status TEXT NOT NULL DEFAULT 'local_only')''',
+          );
+          await db.execute(
+            '''CREATE TABLE categories (
+            id TEXT PRIMARY KEY, book_id TEXT, name TEXT NOT NULL, category_type TEXT NOT NULL,
+            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER,
+            version INTEGER NOT NULL DEFAULT 1, device_id TEXT NOT NULL, sync_status TEXT NOT NULL DEFAULT 'local_only')''',
+          );
+          await db.execute(
+            '''CREATE TABLE projects (
+            id TEXT PRIMARY KEY, book_id TEXT, name TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active',
+            created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER,
+            version INTEGER NOT NULL DEFAULT 1, device_id TEXT NOT NULL, sync_status TEXT NOT NULL DEFAULT 'local_only')''',
+          );
+          await db.execute('CREATE INDEX idx_accounts_name ON accounts(name)');
+          await db.execute(
+            'CREATE INDEX idx_categories_type ON categories(category_type)',
+          );
+          await db.execute('CREATE INDEX idx_projects_name ON projects(name)');
+        }
+
+        if (oldVersion < 4) {
+          await db.execute(
+            'ALTER TABLE transactions ADD COLUMN asset_name TEXT',
+          );
+
+          await db.execute(
+            'ALTER TABLE transactions ADD COLUMN asset_action TEXT',
+          );
+
+          await db.execute(
+            'CREATE INDEX idx_transactions_asset '
+            'ON transactions(asset_name, asset_action)',
+          );
+        }
+      },
+    );
+  }
+
+  Database get db {
+    final value = _database;
+    if (value == null) throw StateError('LocalStore has not been initialized');
+    return value;
+  }
+
+  Future<List<Map<String, Object?>>> getTransactions() => db.query(
+    'transactions',
+    where: 'deleted_at IS NULL',
+    orderBy: 'transaction_date DESC, created_at DESC',
+  );
+
+  Future<void> upsertTransaction(Map<String, Object?> record) => db.insert(
+    'transactions',
+    record,
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+
+  Future<void> softDeleteTransaction(
+    String id,
+    int deletedAt, {
+    int? version,
+  }) => db.update(
+    'transactions',
+    {
+      'deleted_at': deletedAt,
+      'updated_at': deletedAt,
+      ...?version == null ? null : {'version': version},
+      'sync_status': 'pending',
+    },
+    where: 'id = ?',
+    whereArgs: [id],
+  );
+
+  Future<void> close() async => _database?.close();
+
+  String _table(String entity) {
+    if (!const {'accounts', 'categories', 'projects'}.contains(entity)) {
+      throw ArgumentError.value(entity, 'entity');
+    }
+    return entity;
+  }
+
+  Future<List<String>> getMasterNames(
+    String entity, {
+    String? categoryType,
+  }) async {
+    final table = _table(entity);
+    final rows = await db.query(
+      table,
+      columns: ['name'],
+      where: categoryType == null
+          ? 'deleted_at IS NULL'
+          : 'deleted_at IS NULL AND category_type = ?',
+      whereArgs: categoryType == null ? null : [categoryType],
+      orderBy: 'name COLLATE NOCASE',
+    );
+    return rows.map((row) => row['name'] as String).toList();
+  }
+
+  Future<void> saveMasterName(
+    String entity,
+    String name, {
+    String? previousName,
+    String? categoryType,
+  }) async {
+    final table = _table(entity);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (previousName != null) {
+      final isCategory = entity == 'categories';
+
+      if (isCategory && categoryType == null) {
+        throw ArgumentError.value(
+          categoryType,
+          'categoryType',
+          'Category type is required when renaming a category.',
+        );
+      }
+
+      final where = isCategory
+          ? 'name = ? AND deleted_at IS NULL '
+                'AND category_type = ?'
+          : 'name = ? AND deleted_at IS NULL';
+
+      final whereArgs = <Object?>[previousName, if (isCategory) categoryType];
+
+      await db.rawUpdate(
+        '''
+      UPDATE $table
+      SET name = ?,
+          updated_at = ?,
+          version = version + 1,
+          sync_status = ?
+      WHERE $where
+    ''',
+        [name, now, 'pending', ...whereArgs],
+      );
+
+      return;
+    }
+    final record = <String, Object?>{
+      'id': const Uuid().v4(),
+      'name': name,
+      'created_at': now,
+      'updated_at': now,
+      'version': 1,
+      'device_id': 'local-device',
+      'sync_status': 'pending',
+    };
+    if (entity == 'accounts') record['account_type'] = 'asset';
+    if (entity == 'projects') record['status'] = 'active';
+    if (entity == 'categories') {
+      record['category_type'] = categoryType ?? 'expense';
+    }
+    await db.insert(table, record, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  Future<void> ensureMasterSeeds(
+    String entity,
+    List<String> names, {
+    String? categoryType,
+  }) async {
+    if ((await getMasterNames(entity, categoryType: categoryType)).isNotEmpty) {
+      return;
+    }
+    await db.transaction((txn) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (final name in names) {
+        final record = <String, Object?>{
+          'id': const Uuid().v4(),
+          'name': name,
+          'created_at': now,
+          'updated_at': now,
+          'version': 1,
+          'device_id': 'local-device',
+          'sync_status': 'local_only',
+        };
+        if (entity == 'accounts') record['account_type'] = 'asset';
+        if (entity == 'projects') record['status'] = 'active';
+        if (entity == 'categories') {
+          record['category_type'] = categoryType ?? 'expense';
+        }
+        await txn.insert(_table(entity), record);
+      }
+    });
+  }
+}

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pilgrim_tracker/features/analytics/domain/financial_summary.dart';
+import 'package:pilgrim_tracker/features/tithe/domain/tithe_policy.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
 
 Transaction _transaction({
@@ -169,7 +170,7 @@ void main() {
   test('calculates tithe and safely handles zero income', () {
     final withIncome = FinancialSummary.calculate(
       referenceDate: DateTime(2026, 7, 20),
-      titheRate: 0.13,
+      titheRate: TithePolicy.defaultPolicy.rateFor(DateTime(2026, 7, 20)),
       transactions: [
         _transaction(
           title: 'Income',
@@ -193,7 +194,10 @@ void main() {
     );
 
     expect(withIncome.monthlyTithe, 1300000);
-    expect(withIncome.titheRate, 0.13);
+    expect(
+      withIncome.titheRate,
+      TithePolicy.defaultPolicy.rateFor(DateTime(2026, 7, 20)),
+    );
     expect(withIncome.savingsRate, 1);
 
     expect(withoutIncome.monthlyTithe, 0);

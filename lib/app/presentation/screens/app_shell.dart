@@ -1,15 +1,22 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/database/local_store.dart';
+import '../../../core/config/app_environment.dart';
 import '../../../core/design/app_colors.dart';
 import '../../../features/analytics/domain/financial_summary.dart';
 import '../../../features/assets/presentation/screens/asset_conversion_screen.dart';
+import '../../../features/assets/presentation/screens/asset_management_screen.dart';
+import '../../../features/assets/presentation/screens/assets_dashboard_screen.dart';
+import '../../../features/assets/controllers/asset_price_controller.dart';
+import '../../../features/assets/data/repositories/alpha_vantage_asset_price_repository.dart';
+import '../../../features/assets/domain/services/asset_portfolio_calculator.dart';
 import '../../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../../features/master_data/presentation/screens/accounts_page.dart';
 import '../../../features/master_data/presentation/screens/categories_page.dart';
 import '../../../features/master_data/presentation/screens/projects_page.dart';
 import '../../../features/reports/presentation/screens/reports_page.dart';
 import '../../../features/tithe/presentation/screens/tithe_page.dart';
+import '../../../features/tithe/domain/tithe_policy.dart';
 import '../../../features/transactions/domain/entities/transaction.dart';
 import '../../../features/transactions/presentation/edit/edit_transaction_screen.dart';
 import '../../../features/transactions/presentation/edit/transaction_form.dart';
@@ -19,9 +26,13 @@ import '../../../features/transactions/presentation/quick_add/quick_add_screen.d
 import '../../../features/transactions/presentation/screens/transaction_detail_screen.dart';
 import '../../../features/transactions/presentation/screens/transaction_list_screen.dart';
 import '../../../features/master_data/presentation/controllers/master_data_controller.dart';
+import '../../../features/analytics/domain/financial_period.dart';
+import '../../../features/assets/controllers/asset_definition_controller.dart';
+import '../../../features/assets/data/repositories/local_asset_definition_repository.dart';
 import '../../services/app_bootstrap_service.dart';
 import '../../data/default_master_data.dart';
 import '../../data/default_transactions.dart';
+import '../../data/default_asset_definitions.dart';
 import '../widgets/app_navigation_scaffold.dart';
 import '../widgets/app_bootstrap_error_view.dart';
 
@@ -37,7 +48,28 @@ class _AppShellState extends State<AppShell> {
   bool loading = true;
   String? bootstrapError;
 
+  late FinancialPeriod dashboardPeriod;
+
   late final LocalStore store = LocalStore();
+
+  late final LocalAssetDefinitionRepository assetDefinitionRepository =
+      LocalAssetDefinitionRepository(store);
+
+  late final AssetDefinitionController assetDefinitionController =
+      AssetDefinitionController(repository: assetDefinitionRepository);
+
+  late final AlphaVantageAssetPriceRepository? assetPriceRepository =
+      AppEnvironment.hasAlphaVantageApiKey
+      ? AlphaVantageAssetPriceRepository(
+          apiKey: AppEnvironment.alphaVantageApiKey,
+        )
+      : null;
+
+  late final AssetPriceController assetPriceController = AssetPriceController(
+    store: store,
+    repository: assetPriceRepository,
+  );
+
   late final transactionController = TransactionProviders.controller(store);
   late final masterDataController = MasterDataController(
     persist:
@@ -67,8 +99,13 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
 
+    dashboardPeriod = FinancialPeriod.thisMonth(DateTime.now());
+
     transactionController.addListener(_onAppStateChanged);
     masterDataController.addListener(_onAppStateChanged);
+    assetDefinitionController.addListener(_onAppStateChanged);
+    assetPriceController.addListener(_onAppStateChanged);
+
     _loadLocalData();
   }
 
@@ -106,6 +143,18 @@ class _AppShellState extends State<AppShell> {
         defaultProjects: defaultProjectNames,
         seedTransactions: buildDefaultTransactions(),
       );
+
+      await assetDefinitionController.initialize(
+        seeds: buildDefaultAssetDefinitions(),
+      );
+
+      final assetDefinitionError = assetDefinitionController.error;
+
+      if (assetDefinitionError != null) {
+        throw StateError(assetDefinitionError);
+      }
+
+      await assetPriceController.load();
 
       if (!mounted) {
         return;
@@ -158,6 +207,7 @@ class _AppShellState extends State<AppShell> {
       incomeCategories: incomes,
       projects: masterDataController.projects,
       assets: assetNames,
+      assetDefinitions: assetDefinitionController.definitions,
       defaultProject: 'Life',
       defaultAccount: accounts.isEmpty ? null : accounts.first,
       defaultExpenseCategory: expenses.isEmpty ? null : expenses.first,
@@ -186,11 +236,15 @@ class _AppShellState extends State<AppShell> {
   @override
   void dispose() {
     transactionController.removeListener(_onAppStateChanged);
-
     masterDataController.removeListener(_onAppStateChanged);
+    assetDefinitionController.removeListener(_onAppStateChanged);
+    assetPriceController.removeListener(_onAppStateChanged);
 
     transactionController.dispose();
     masterDataController.dispose();
+    assetDefinitionController.dispose();
+    assetPriceController.dispose();
+    assetPriceRepository?.close();
     store.close();
 
     super.dispose();
@@ -202,19 +256,52 @@ class _AppShellState extends State<AppShell> {
 
     final referenceDate = DateTime.now();
 
-    final financialSummary = FinancialSummary.calculate(
+    final assetPortfolio = AssetPortfolioCalculator.calculate(
+      transactions: transactions,
+      marketPrices: assetPriceController.prices,
+      assetDefinitions: assetDefinitionController.definitions,
+    );
+
+    final currentMonthSummary = FinancialSummary.calculate(
       transactions: transactions,
       referenceDate: referenceDate,
-      titheRate: 0.13,
+      tithePolicy: TithePolicy.defaultPolicy,
+    );
+
+    final dashboardSummary = FinancialSummary.forPeriod(
+      transactions: transactions,
+      periodStart: dashboardPeriod.start,
+      periodEndExclusive: dashboardPeriod.endExclusive,
+      tithePolicy: TithePolicy.defaultPolicy,
     );
 
     final pages = [
       Dashboard(
         transactions: transactions,
-        summary: financialSummary,
+        summary: dashboardSummary,
         referenceDate: referenceDate,
+        period: dashboardPeriod,
+        transactionChanges: transactionController,
+        transactionsProvider: () {
+          return transactionController.transactions;
+        },
+        onPeriodChanged: (period) {
+          setState(() {
+            dashboardPeriod = period;
+          });
+        },
         onOpen: (transaction) {
           _openTransactionDetail(context, transaction);
+        },
+      ),
+      AssetsDashboardScreen(
+        portfolio: assetPortfolio,
+        priceController: assetPriceController,
+        onManageAssets: () {
+          AssetManagementScreen.show(
+            context,
+            controller: assetDefinitionController,
+          );
         },
       ),
       TransactionListScreen(
@@ -239,15 +326,15 @@ class _AppShellState extends State<AppShell> {
       ),
       AssetConversionScreen(
         accounts: masterDataController.accounts,
-        assets: assetNames,
+        assets: assetDefinitionController.definitions,
         onSave: addTransaction,
       ),
       ProjectsPage(
         projects: masterDataController.projects,
         onSave: masterDataController.save,
       ),
-      TithePage(summary: financialSummary),
-      ReportsPage(summary: financialSummary),
+      TithePage(summary: currentMonthSummary),
+      ReportsPage(summary: currentMonthSummary),
     ];
 
     if (loading || transactionController.isLoading) {

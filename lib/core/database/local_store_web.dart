@@ -2,6 +2,8 @@ class LocalStore {
   LocalStore({String? databasePath});
 
   static final List<Map<String, Object?>> _records = [];
+  static final List<Map<String, Object?>> _assetMarketPrices = [];
+  static final List<Map<String, Object?>> _assetDefinitions = [];
   static final Map<String, List<String>> _master = {};
   Future<void> initialize() async {}
   Future<List<Map<String, Object?>>> getTransactions() async =>
@@ -24,6 +26,85 @@ class LocalStore {
         'sync_status': 'pending',
         ...?version == null ? null : {'version': version},
       };
+    }
+  }
+
+  Future<List<Map<String, Object?>>> getAssetMarketPrices() async {
+    return List.unmodifiable(_assetMarketPrices.map(Map<String, Object?>.of));
+  }
+
+  Future<void> upsertAssetMarketPrice(Map<String, Object?> record) async {
+    _assetMarketPrices.removeWhere(
+      (item) => item['asset_key'] == record['asset_key'],
+    );
+
+    _assetMarketPrices.add(Map<String, Object?>.of(record));
+  }
+
+  Future<List<Map<String, Object?>>> getAssetDefinitions({
+    bool includeDeleted = false,
+  }) async {
+    final records = _assetDefinitions
+        .where((record) => includeDeleted || record['deleted_at'] == null)
+        .map(Map<String, Object?>.of)
+        .toList();
+
+    records.sort((first, second) {
+      final firstName = (first['display_name'] as String).toLowerCase();
+      final secondName = (second['display_name'] as String).toLowerCase();
+
+      return firstName.compareTo(secondName);
+    });
+
+    return List.unmodifiable(records);
+  }
+
+  Future<Map<String, Object?>?> getAssetDefinitionById(String id) async {
+    final index = _assetDefinitions.indexWhere((record) => record['id'] == id);
+
+    if (index < 0) {
+      return null;
+    }
+
+    return Map<String, Object?>.of(_assetDefinitions[index]);
+  }
+
+  Future<void> upsertAssetDefinition(Map<String, Object?> record) async {
+    _assetDefinitions.removeWhere((item) => item['id'] == record['id']);
+
+    _assetDefinitions.add(Map<String, Object?>.of(record));
+  }
+
+  Future<void> softDeleteAssetDefinition(String id, int deletedAt) async {
+    final index = _assetDefinitions.indexWhere((record) => record['id'] == id);
+
+    if (index < 0) {
+      return;
+    }
+
+    final current = _assetDefinitions[index];
+    final currentVersion = current['version'];
+
+    _assetDefinitions[index] = {
+      ...current,
+      'deleted_at': deletedAt,
+      'updated_at': deletedAt,
+      'version': currentVersion is num ? currentVersion.toInt() + 1 : 1,
+      'sync_status': 'pending',
+    };
+  }
+
+  Future<void> ensureAssetDefinitionSeeds(
+    List<Map<String, Object?>> records,
+  ) async {
+    for (final record in records) {
+      final exists = _assetDefinitions.any(
+        (item) => item['id'] == record['id'],
+      );
+
+      if (!exists) {
+        _assetDefinitions.add(Map<String, Object?>.of(record));
+      }
     }
   }
 

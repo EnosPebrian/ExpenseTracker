@@ -1,0 +1,199 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_market_price.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_portfolio.dart';
+import 'package:pilgrim_tracker/features/assets/domain/services/asset_portfolio_calculator.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
+
+void main() {
+  test('calculates gold quantity, cost basis, and unrealized gain', () {
+    final transactions = [
+      _conversion(
+        id: 'gold-buy',
+        assetName: 'Gold Holdings',
+        action: AssetAction.buy,
+        amount: 50000000,
+        quantity: 20,
+        unit: 'gram',
+        unitPrice: 2500000,
+      ),
+    ];
+
+    final prices = [
+      AssetMarketPrice.manual(
+        assetKey: 'Gold Holdings',
+        symbol: 'XAU',
+        price: 2700000,
+        unit: 'gram',
+      ),
+    ];
+
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: transactions,
+      marketPrices: prices,
+    );
+
+    expect(portfolio.holdings, hasLength(1));
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.kind, AssetKind.gold);
+    expect(holding.quantity, 20);
+    expect(holding.averageCost, 2500000);
+    expect(holding.currentPrice, 2700000);
+    expect(holding.costBasis, 50000000);
+    expect(holding.marketValue, 54000000);
+    expect(holding.unrealizedGain, 4000000);
+    expect(holding.unrealizedReturn, closeTo(0.08, 0.0001));
+
+    expect(portfolio.totalCostBasis, 50000000);
+    expect(portfolio.totalMarketValue, 54000000);
+    expect(portfolio.totalUnrealizedGain, 4000000);
+  });
+
+  test('calculates weighted stock cost after a partial sale', () {
+    final transactions = [
+      _conversion(
+        id: 'stock-buy-1',
+        assetName: 'Stock Portfolio',
+        assetSymbol: 'BBCA',
+        action: AssetAction.buy,
+        amount: 800000,
+        quantity: 100,
+        unit: 'share',
+        unitPrice: 8000,
+        date: DateTime(2026, 1, 1),
+      ),
+      _conversion(
+        id: 'stock-buy-2',
+        assetName: 'Stock Portfolio',
+        assetSymbol: 'BBCA',
+        action: AssetAction.buy,
+        amount: 1000000,
+        quantity: 100,
+        unit: 'share',
+        unitPrice: 10000,
+        date: DateTime(2026, 2, 1),
+      ),
+      _conversion(
+        id: 'stock-sell',
+        assetName: 'Stock Portfolio',
+        assetSymbol: 'BBCA',
+        action: AssetAction.sell,
+        amount: 550000,
+        quantity: 50,
+        unit: 'share',
+        unitPrice: 11000,
+        date: DateTime(2026, 3, 1),
+      ),
+    ];
+
+    final prices = [
+      AssetMarketPrice.manual(
+        assetKey: 'BBCA',
+        symbol: 'BBCA',
+        price: 10000,
+        unit: 'share',
+      ),
+    ];
+
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: transactions,
+      marketPrices: prices,
+    );
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.kind, AssetKind.stock);
+    expect(holding.symbol, 'BBCA');
+    expect(holding.quantity, 150);
+    expect(holding.lotSize, 100);
+    expect(holding.lots, 1.5);
+
+    expect(holding.averageCost, 9000);
+    expect(holding.costBasis, 1350000);
+    expect(holding.currentPrice, 10000);
+    expect(holding.marketValue, 1500000);
+    expect(holding.unrealizedGain, 150000);
+    expect(holding.realizedGain, 100000);
+  });
+
+  test('uses cost basis when no current market price exists', () {
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [
+        _conversion(
+          id: 'unpriced-gold',
+          assetName: 'Gold Holdings',
+          action: AssetAction.buy,
+          amount: 2500000,
+          quantity: 1,
+          unit: 'gram',
+          unitPrice: 2500000,
+        ),
+      ],
+    );
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.hasMarketPrice, isFalse);
+    expect(holding.currentPrice, isNull);
+    expect(holding.marketValue, holding.costBasis);
+    expect(holding.unrealizedGain, 0);
+  });
+
+  test('supports legacy conversions without explicit asset fields', () {
+    final transaction = Transaction(
+      id: 'legacy-gold',
+      title: 'Gold Holdings acquisition',
+      category: 'Asset conversion',
+      account: 'Cash Enos -> Gold Holdings',
+      date: DateTime(2025, 1, 1),
+      amount: 5000000,
+      type: TransactionType.assetConversion,
+      quantity: 2,
+      unit: 'gram',
+      unitPrice: 2500000,
+    );
+
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [transaction],
+    );
+
+    expect(portfolio.holdings, hasLength(1));
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.assetKey, 'Gold Holdings');
+    expect(holding.quantity, 2);
+    expect(holding.costBasis, 5000000);
+  });
+}
+
+Transaction _conversion({
+  required String id,
+  required String assetName,
+  String? assetSymbol,
+  required AssetAction action,
+  required int amount,
+  required double quantity,
+  required String unit,
+  required int unitPrice,
+  DateTime? date,
+}) {
+  final isSell = action == AssetAction.sell;
+
+  return Transaction(
+    id: id,
+    title: isSell ? '$assetName sale' : '$assetName acquisition',
+    category: 'Asset conversion',
+    account: isSell ? '$assetName -> Cash Enos' : 'Cash Enos -> $assetName',
+    date: date ?? DateTime(2026, 1, 1),
+    amount: amount,
+    type: TransactionType.assetConversion,
+    quantity: quantity,
+    unit: unit,
+    unitPrice: unitPrice,
+    assetName: assetName,
+    assetSymbol: assetSymbol,
+    assetAction: action,
+  );
+}

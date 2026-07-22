@@ -7,6 +7,8 @@ import '../../../../core/shared/widgets/page_layout.dart';
 import '../../../analytics/domain/financial_summary.dart';
 import '../../../transactions/domain/entities/transaction.dart';
 import '../../../transactions/presentation/widgets/transaction_tile.dart';
+import '../../../analytics/domain/financial_period.dart';
+import 'category_transactions_dialog.dart';
 
 class Dashboard extends StatelessWidget {
   const Dashboard({
@@ -15,15 +17,32 @@ class Dashboard extends StatelessWidget {
     required this.onOpen,
     required this.summary,
     required this.referenceDate,
+    required this.period,
+    required this.onPeriodChanged,
+    this.transactionChanges,
+    this.transactionsProvider,
   });
 
   final List<Transaction> transactions;
   final ValueChanged<Transaction> onOpen;
   final FinancialSummary summary;
   final DateTime referenceDate;
+  final FinancialPeriod period;
+  final ValueChanged<FinancialPeriod> onPeriodChanged;
+  final Listenable? transactionChanges;
+  final List<Transaction> Function()? transactionsProvider;
 
   @override
   Widget build(BuildContext context) {
+    final periodTransactions =
+        transactions
+            .where((transaction) {
+              return transaction.deletedAt == null &&
+                  period.contains(transaction.date);
+            })
+            .toList(growable: false)
+          ..sort((left, right) => right.date.compareTo(left.date));
+
     return PageFrame(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -31,8 +50,14 @@ class Dashboard extends StatelessWidget {
           PageHeading(
             kicker: _formatLongDate(referenceDate).toUpperCase(),
             title: 'Good morning',
-            subtitle: "Here's your financial pulse for this month.",
+            subtitle: "Here's your monthly expense overview.",
           ),
+          DashboardPeriodSelector(
+            period: period,
+            referenceDate: referenceDate,
+            onChanged: onPeriodChanged,
+          ),
+          const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
               return GridView.count(
@@ -48,9 +73,9 @@ class Dashboard extends StatelessWidget {
                 childAspectRatio: constraints.maxWidth > 1050 ? 2.05 : 2.2,
                 children: [
                   MetricCard(
-                    label: 'Recorded balance',
-                    value: _signedCurrency(summary.recordedBalance),
-                    note: 'Recorded income minus expenses',
+                    label: 'Monthly balance',
+                    value: _signedCurrency(summary.monthlyNetCashFlow),
+                    note: 'Income minus expenses',
                     dark: true,
                   ),
                   MetricCard(
@@ -64,9 +89,10 @@ class Dashboard extends StatelessWidget {
                     note: _monthYear(summary.periodStart),
                   ),
                   MetricCard(
-                    label: 'Calculated tithe',
+                    label: 'Tithe due',
                     value: _currency(summary.monthlyTithe),
-                    note: '${_percentage(summary.titheRate)} of monthly income',
+                    note:
+                        '${_percentage(summary.titheRate)} of eligible income',
                   ),
                 ],
               );
@@ -75,12 +101,18 @@ class Dashboard extends StatelessWidget {
           const SizedBox(height: 14),
           ResponsivePair(
             left: CashFlowCard(summary: summary),
-            right: SpendingCard(summary: summary),
+            right: SpendingCard(
+              summary: summary,
+              transactions: periodTransactions,
+              onOpen: onOpen,
+              transactionChanges: transactionChanges,
+              transactionsProvider: transactionsProvider,
+            ),
           ),
           const SizedBox(height: 14),
           ResponsivePair(
             left: RecentTransactions(
-              transactions: transactions,
+              transactions: periodTransactions,
               onOpen: onOpen,
             ),
             right: ActivityCard(summary: summary),
@@ -188,9 +220,21 @@ class _CashFlowLine extends StatelessWidget {
 }
 
 class SpendingCard extends StatelessWidget {
-  const SpendingCard({super.key, required this.summary});
+  const SpendingCard({
+    super.key,
+    required this.summary,
+    required this.transactions,
+    required this.onOpen,
+    this.transactionChanges,
+    this.transactionsProvider,
+  });
 
   final FinancialSummary summary;
+  final List<Transaction> transactions;
+  final ValueChanged<Transaction> onOpen;
+  final Listenable? transactionChanges;
+
+  final List<Transaction> Function()? transactionsProvider;
 
   static const _colors = [
     violet,
@@ -222,44 +266,71 @@ class SpendingCard extends StatelessWidget {
               )
             else
               for (var index = 0; index < spending.length; index++)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.circle,
-                        size: 9,
-                        color: _colors[index % _colors.length],
-                      ),
-                      const SizedBox(width: 9),
-                      Expanded(
-                        child: Text(
-                          spending[index].category,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 10, color: muted),
+                InkWell(
+                  key: ValueKey(
+                    'spending-category-${spending[index].category}',
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () async {
+                    await CategoryTransactionsDialog.show(
+                      context,
+                      category: spending[index].category,
+                      transactions: transactions,
+                      periodStart: summary.periodStart,
+                      periodEndExclusive: summary.periodEndExclusive,
+                      onOpen: onOpen,
+                      transactionChanges: transactionChanges,
+                      transactionsProvider: transactionsProvider,
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 9,
+                      horizontal: 6,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.circle,
+                          size: 9,
+                          color: _colors[index % _colors.length],
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        _currency(spending[index].amount),
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        width: 46,
-                        child: Text(
-                          _percentage(spending[index].share),
-                          textAlign: TextAlign.end,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            spending[index].category,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 10, color: muted),
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 12),
+                        Text(
+                          _currency(spending[index].amount),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 46,
+                          child: Text(
+                            _percentage(spending[index].share),
+                            textAlign: TextAlign.end,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 17,
+                          color: muted,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
           ],
@@ -437,4 +508,186 @@ String _signedCurrency(int value, {bool showPositiveSign = false}) {
 
 String _percentage(double value) {
   return '${(value * 100).toStringAsFixed(1)}%';
+}
+
+class DashboardPeriodSelector extends StatelessWidget {
+  const DashboardPeriodSelector({
+    super.key,
+    required this.period,
+    required this.referenceDate,
+    required this.onChanged,
+  });
+
+  final FinancialPeriod period;
+  final DateTime referenceDate;
+  final ValueChanged<FinancialPeriod> onChanged;
+
+  Future<void> _select(
+    BuildContext context,
+    FinancialPeriodPreset preset,
+  ) async {
+    switch (preset) {
+      case FinancialPeriodPreset.thisMonth:
+        onChanged(FinancialPeriod.thisMonth(referenceDate));
+        return;
+
+      case FinancialPeriodPreset.last2Months:
+        onChanged(FinancialPeriod.last2Months(referenceDate));
+        return;
+
+      case FinancialPeriodPreset.last3Months:
+        onChanged(FinancialPeriod.last3Months(referenceDate));
+        return;
+
+      case FinancialPeriodPreset.last6Months:
+        onChanged(FinancialPeriod.last6Months(referenceDate));
+        return;
+
+      case FinancialPeriodPreset.last12Months:
+        onChanged(FinancialPeriod.last12Months(referenceDate));
+        return;
+
+      case FinancialPeriodPreset.yearToDate:
+        onChanged(FinancialPeriod.yearToDate(referenceDate));
+        return;
+
+      case FinancialPeriodPreset.quarter1:
+        onChanged(FinancialPeriod.quarter1(referenceDate));
+        return;
+
+      case FinancialPeriodPreset.quarter2:
+        onChanged(FinancialPeriod.quarter2(referenceDate));
+        return;
+
+      case FinancialPeriodPreset.quarter3:
+        onChanged(FinancialPeriod.quarter3(referenceDate));
+        return;
+
+      case FinancialPeriodPreset.quarter4:
+        onChanged(FinancialPeriod.quarter4(referenceDate));
+        return;
+
+      case FinancialPeriodPreset.lastYear:
+        onChanged(FinancialPeriod.lastYear(referenceDate));
+        return;
+
+      case FinancialPeriodPreset.custom:
+        final initialEnd = period.endExclusive.subtract(
+          const Duration(days: 1),
+        );
+
+        final selected = await showDateRangePicker(
+          context: context,
+          firstDate: DateTime(2000),
+          lastDate: DateTime(2100),
+          initialDateRange: DateTimeRange(start: period.start, end: initialEnd),
+        );
+
+        if (selected == null) {
+          return;
+        }
+
+        onChanged(
+          FinancialPeriod.custom(
+            start: selected.start,
+            endInclusive: selected.end,
+          ),
+        );
+        return;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.date_range_outlined, size: 17, color: muted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            period.label,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+        ),
+        PopupMenuButton<FinancialPeriodPreset>(
+          tooltip: 'Change dashboard period',
+          onSelected: (preset) {
+            _select(context, preset);
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: FinancialPeriodPreset.thisMonth,
+              child: Text('This month'),
+            ),
+            PopupMenuDivider(),
+            PopupMenuItem(
+              value: FinancialPeriodPreset.last2Months,
+              child: Text('Last 2 months'),
+            ),
+            PopupMenuItem(
+              value: FinancialPeriodPreset.last3Months,
+              child: Text('Last 3 months'),
+            ),
+            PopupMenuItem(
+              value: FinancialPeriodPreset.last6Months,
+              child: Text('Last 6 months'),
+            ),
+            PopupMenuItem(
+              value: FinancialPeriodPreset.last12Months,
+              child: Text('Last 12 months'),
+            ),
+            PopupMenuDivider(),
+            PopupMenuItem(
+              value: FinancialPeriodPreset.yearToDate,
+              child: Text('Year to date'),
+            ),
+            PopupMenuItem(
+              value: FinancialPeriodPreset.lastYear,
+              child: Text('Last Year'),
+            ),
+            PopupMenuDivider(),
+            PopupMenuItem(
+              value: FinancialPeriodPreset.quarter1,
+              child: Text('Q1'),
+            ),
+            PopupMenuItem(
+              value: FinancialPeriodPreset.quarter2,
+              child: Text('Q2'),
+            ),
+            PopupMenuItem(
+              value: FinancialPeriodPreset.quarter3,
+              child: Text('Q3'),
+            ),
+            PopupMenuItem(
+              value: FinancialPeriodPreset.quarter4,
+              child: Text('Q4'),
+            ),
+            PopupMenuDivider(),
+            PopupMenuItem(
+              value: FinancialPeriodPreset.custom,
+              child: Text('Custom range'),
+            ),
+          ],
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Change period',
+                  style: TextStyle(
+                    color: violet,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(width: 5),
+                Icon(Icons.expand_more_rounded, color: violet, size: 17),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

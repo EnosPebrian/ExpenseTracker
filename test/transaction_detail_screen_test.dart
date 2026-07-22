@@ -73,23 +73,37 @@ void main() {
       ),
     );
 
+    // Buka transaction detail terlebih dahulu.
     await tester.tap(find.text('Open detail'));
     await tester.pumpAndSettle();
 
     expect(find.text('Groceries'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
 
+    // Baru klik tombol Delete pada detail.
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Groceries'), findsOneWidget);
+    // Transaction detail tetap terbuka di belakang confirmation dialog.
+    expect(find.byType(AlertDialog), findsNWidgets(2));
+
+    expect(find.text('Delete transaction'), findsOneWidget);
+
+    // Persistence baru dijalankan setelah konfirmasi kedua.
+    await tester.tap(find.text('Delete transaction'));
+
+    await tester.pumpAndSettle();
 
     expect(find.textContaining('database unavailable'), findsOneWidget);
+
+    // Confirmation dialog sudah tertutup,
+    // tetapi transaction detail tetap terbuka.
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    expect(find.text(transaction.title), findsOneWidget);
 
     expect(find.text('Delete'), findsOneWidget);
 
     expect(controller.error, contains('database unavailable'));
-
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
   });
 }

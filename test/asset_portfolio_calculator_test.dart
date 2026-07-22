@@ -1,0 +1,404 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_market_price.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_portfolio.dart';
+import 'package:pilgrim_tracker/features/assets/domain/services/asset_portfolio_calculator.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_definition.dart';
+
+void main() {
+  test('calculates gold quantity, cost basis, and unrealized gain', () {
+    final transactions = [
+      _conversion(
+        id: 'gold-buy',
+        assetName: 'Gold Holdings',
+        action: AssetAction.buy,
+        amount: 50000000,
+        quantity: 20,
+        unit: 'gram',
+        unitPrice: 2500000,
+      ),
+    ];
+
+    final prices = [
+      AssetMarketPrice.manual(
+        assetKey: 'Gold Holdings',
+        symbol: 'XAU',
+        price: 2700000,
+        unit: 'gram',
+      ),
+    ];
+
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: transactions,
+      marketPrices: prices,
+    );
+
+    expect(portfolio.holdings, hasLength(1));
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.kind, AssetKind.gold);
+    expect(holding.quantity, 20);
+    expect(holding.averageCost, 2500000);
+    expect(holding.currentPrice, 2700000);
+    expect(holding.costBasis, 50000000);
+    expect(holding.marketValue, 54000000);
+    expect(holding.unrealizedGain, 4000000);
+    expect(holding.unrealizedReturn, closeTo(0.08, 0.0001));
+
+    expect(portfolio.totalCostBasis, 50000000);
+    expect(portfolio.totalMarketValue, 54000000);
+    expect(portfolio.totalUnrealizedGain, 4000000);
+  });
+
+  test('calculates weighted stock cost after a partial sale', () {
+    final transactions = [
+      _conversion(
+        id: 'stock-buy-1',
+        assetName: 'Stock Portfolio',
+        assetSymbol: 'BBCA',
+        action: AssetAction.buy,
+        amount: 800000,
+        quantity: 100,
+        unit: 'share',
+        unitPrice: 8000,
+        date: DateTime(2026, 1, 1),
+      ),
+      _conversion(
+        id: 'stock-buy-2',
+        assetName: 'Stock Portfolio',
+        assetSymbol: 'BBCA',
+        action: AssetAction.buy,
+        amount: 1000000,
+        quantity: 100,
+        unit: 'share',
+        unitPrice: 10000,
+        date: DateTime(2026, 2, 1),
+      ),
+      _conversion(
+        id: 'stock-sell',
+        assetName: 'Stock Portfolio',
+        assetSymbol: 'BBCA',
+        action: AssetAction.sell,
+        amount: 550000,
+        quantity: 50,
+        unit: 'share',
+        unitPrice: 11000,
+        date: DateTime(2026, 3, 1),
+      ),
+    ];
+
+    final prices = [
+      AssetMarketPrice.manual(
+        assetKey: 'BBCA',
+        symbol: 'BBCA',
+        price: 10000,
+        unit: 'share',
+      ),
+    ];
+
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: transactions,
+      marketPrices: prices,
+    );
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.kind, AssetKind.stock);
+    expect(holding.symbol, 'BBCA');
+    expect(holding.assetDefinitionId, isNull);
+    expect(holding.providerCode, isNull);
+    expect(holding.providerSymbol, isNull);
+    expect(holding.quoteSymbol, 'BBCA');
+    expect(holding.normalizedCurrencyCode, 'IDR');
+    expect(holding.onlinePricingEnabled, isTrue);
+    expect(holding.quantity, 150);
+    expect(holding.lotSize, 100);
+    expect(holding.lots, 1.5);
+
+    expect(holding.averageCost, 9000);
+    expect(holding.costBasis, 1350000);
+    expect(holding.currentPrice, 10000);
+    expect(holding.marketValue, 1500000);
+    expect(holding.unrealizedGain, 150000);
+    expect(holding.realizedGain, 100000);
+  });
+
+  test('uses cost basis when no current market price exists', () {
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [
+        _conversion(
+          id: 'unpriced-gold',
+          assetName: 'Gold Holdings',
+          action: AssetAction.buy,
+          amount: 2500000,
+          quantity: 1,
+          unit: 'gram',
+          unitPrice: 2500000,
+        ),
+      ],
+    );
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.hasMarketPrice, isFalse);
+    expect(holding.currentPrice, isNull);
+    expect(holding.marketValue, holding.costBasis);
+    expect(holding.unrealizedGain, 0);
+  });
+
+  test('ignores cached price with a mismatched currency', () {
+    final transaction = _conversion(
+      id: 'bbca-currency-mismatch',
+      assetDefinitionId: 'asset-bbca',
+      assetName: 'Bank Central Asia',
+      assetSymbol: 'BBCA',
+      action: AssetAction.buy,
+      amount: 1000000,
+      quantity: 100,
+      unit: 'share',
+      unitPrice: 10000,
+    );
+
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [transaction],
+      assetDefinitions: [_bbcaDefinition()],
+      marketPrices: [
+        AssetMarketPrice.manual(
+          assetKey: 'BBCA',
+          symbol: 'BBCA',
+          price: 9500,
+          currencyCode: 'USD',
+          unit: 'share',
+        ),
+      ],
+    );
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.hasMarketPrice, isFalse);
+    expect(holding.currentPrice, isNull);
+    expect(holding.marketValue, holding.costBasis);
+    expect(holding.unrealizedGain, 0);
+  });
+
+  test('ignores cached price with a mismatched unit', () {
+    final transaction = _conversion(
+      id: 'bbca-unit-mismatch',
+      assetDefinitionId: 'asset-bbca',
+      assetName: 'Bank Central Asia',
+      assetSymbol: 'BBCA',
+      action: AssetAction.buy,
+      amount: 1000000,
+      quantity: 100,
+      unit: 'share',
+      unitPrice: 10000,
+    );
+
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [transaction],
+      assetDefinitions: [_bbcaDefinition()],
+      marketPrices: [
+        AssetMarketPrice.manual(
+          assetKey: 'BBCA',
+          symbol: 'BBCA',
+          price: 9500,
+          currencyCode: 'IDR',
+          unit: 'unit',
+        ),
+      ],
+    );
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.hasMarketPrice, isFalse);
+    expect(holding.currentPrice, isNull);
+    expect(holding.marketValue, holding.costBasis);
+    expect(holding.unrealizedGain, 0);
+  });
+
+  test('supports legacy conversions without explicit asset fields', () {
+    final transaction = Transaction(
+      id: 'legacy-gold',
+      title: 'Gold Holdings acquisition',
+      category: 'Asset conversion',
+      account: 'Cash Enos -> Gold Holdings',
+      date: DateTime(2025, 1, 1),
+      amount: 5000000,
+      type: TransactionType.assetConversion,
+      quantity: 2,
+      unit: 'gram',
+      unitPrice: 2500000,
+    );
+
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [transaction],
+    );
+
+    expect(portfolio.holdings, hasLength(1));
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.assetKey, 'Gold Holdings');
+    expect(holding.quantity, 2);
+    expect(holding.costBasis, 5000000);
+  });
+
+  test('linked definition supplies identity, kind, unit, and lot size', () {
+    final transaction = _conversion(
+      id: 'linked-bbca-buy',
+      assetDefinitionId: 'asset-bbca',
+      assetName: 'Legacy Stock Portfolio',
+      assetSymbol: 'OLD',
+      action: AssetAction.buy,
+      amount: 1000000,
+      quantity: 100,
+      unit: 'unit',
+      unitPrice: 10000,
+    );
+
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [transaction],
+      assetDefinitions: [_bbcaDefinition()],
+    );
+
+    expect(portfolio.holdings, hasLength(1));
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.assetDefinitionId, 'asset-bbca');
+    expect(holding.providerCode, 'ALPHA_VANTAGE');
+    expect(holding.providerSymbol, 'BBCA.JK');
+    expect(holding.quoteSymbol, 'BBCA.JK');
+    expect(holding.currencyCode, 'IDR');
+    expect(holding.normalizedCurrencyCode, 'IDR');
+    expect(holding.onlinePricingEnabled, isTrue);
+    expect(holding.assetKey, 'BBCA');
+    expect(holding.name, 'Bank Central Asia');
+    expect(holding.symbol, 'BBCA');
+    expect(holding.kind, AssetKind.stock);
+    expect(holding.unit, 'share');
+    expect(holding.lotSize, 100);
+    expect(holding.quantity, 100);
+    expect(holding.lots, 1);
+  });
+  test('missing definition falls back to stored transaction snapshots', () {
+    final transaction = _conversion(
+      id: 'missing-definition-gold',
+      assetDefinitionId: 'removed-asset-definition',
+      assetName: 'Gold Holdings',
+      action: AssetAction.buy,
+      amount: 5000000,
+      quantity: 2,
+      unit: 'gram',
+      unitPrice: 2500000,
+    );
+
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [transaction],
+      assetDefinitions: const [],
+    );
+
+    final holding = portfolio.holdings.single;
+
+    expect(holding.assetDefinitionId, isNull);
+    expect(holding.assetKey, 'Gold Holdings');
+    expect(holding.name, 'Gold Holdings');
+    expect(holding.kind, AssetKind.gold);
+    expect(holding.unit, 'gram');
+    expect(holding.quantity, 2);
+  });
+  test('fully sold position contributes to total realized gain', () {
+    final transactions = [
+      _conversion(
+        id: 'bbca-full-buy',
+        assetDefinitionId: 'asset-bbca',
+        assetName: 'Bank Central Asia',
+        assetSymbol: 'BBCA',
+        action: AssetAction.buy,
+        amount: 800000,
+        quantity: 100,
+        unit: 'share',
+        unitPrice: 8000,
+        date: DateTime(2026, 1, 1),
+      ),
+      _conversion(
+        id: 'bbca-full-sell',
+        assetDefinitionId: 'asset-bbca',
+        assetName: 'Bank Central Asia',
+        assetSymbol: 'BBCA',
+        action: AssetAction.sell,
+        amount: 900000,
+        quantity: 100,
+        unit: 'share',
+        unitPrice: 9000,
+        date: DateTime(2026, 2, 1),
+      ),
+    ];
+
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: transactions,
+      assetDefinitions: [_bbcaDefinition()],
+    );
+
+    expect(portfolio.holdings, isEmpty);
+    expect(portfolio.totalCostBasis, 0);
+    expect(portfolio.totalMarketValue, 0);
+    expect(portfolio.totalUnrealizedGain, 0);
+    expect(portfolio.totalRealizedGain, 100000);
+  });
+}
+
+AssetDefinition _bbcaDefinition() {
+  return AssetDefinition(
+    id: 'asset-bbca',
+    displayName: 'Bank Central Asia',
+    kind: AssetKind.stock,
+    symbol: 'BBCA',
+    providerCode: 'alpha_vantage',
+    providerSymbol: 'BBCA.JK',
+    exchangeCode: 'IDX',
+    currencyCode: 'IDR',
+    unit: 'share',
+    lotSize: 100,
+    onlinePricingEnabled: true,
+    createdAt: DateTime.utc(2026, 7, 21),
+    updatedAt: DateTime.utc(2026, 7, 21),
+    deletedAt: null,
+    version: 1,
+    deviceId: 'test-device',
+    syncStatus: 'local_only',
+  );
+}
+
+Transaction _conversion({
+  required String id,
+  required String assetName,
+  String? assetDefinitionId,
+  String? assetSymbol,
+  required AssetAction action,
+  required int amount,
+  required double quantity,
+  required String unit,
+  required int unitPrice,
+  DateTime? date,
+}) {
+  final isSell = action == AssetAction.sell;
+
+  return Transaction(
+    id: id,
+    title: isSell ? '$assetName sale' : '$assetName acquisition',
+    category: 'Asset conversion',
+    account: isSell ? '$assetName -> Cash Enos' : 'Cash Enos -> $assetName',
+    date: date ?? DateTime(2026, 1, 1),
+    amount: amount,
+    type: TransactionType.assetConversion,
+    quantity: quantity,
+    unit: unit,
+    unitPrice: unitPrice,
+    assetDefinitionId: assetDefinitionId,
+    assetName: assetName,
+    assetSymbol: assetSymbol,
+    assetAction: action,
+  );
+}

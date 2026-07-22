@@ -1,502 +1,237 @@
-# Pilgrim Tracker Architecture Documentation
+# Pilgrim Tracker Architecture
 
-## 1. Purpose
+**Snapshot date:** 2026-07-21  
+**Verified state:** Analyzer clean; 93 tests passing  
+**Style:** Feature-first, local-first, layered, incrementally migrated
 
-This document defines the technical architecture rules for Pilgrim
-Tracker.
+## 1. Non-negotiable principles
 
-Pilgrim Tracker is a local-first financial management system supporting:
+1. Local storage is the immediate source of truth.
+2. Internet is optional for normal transactions.
+3. Money uses integer values.
+4. Quantity and money remain separate.
+5. Presentation does not calculate portfolio accounting.
+6. Domain code does not import Flutter UI.
+7. Domain repositories are contracts; data implementations satisfy them.
+8. Persisted changes require migrations and tests.
+9. Project, asset, tithe, and sync metadata must be preserved.
+10. Completed feature boundaries must not collapse into `AppShell`.
 
--   Personal finance
--   Projects
--   Businesses
--   Income
--   Expenses
--   Transfers
--   Asset conversion
--   Quantity-based assets
--   Tithe tracking
--   Offline operation
--   Synchronization
--   Import/export
+## 2. Current stack
 
-This file exists so future Codex sessions understand the existing
-architecture and do not redesign completed decisions.
+```text
+Flutter / Dart
+SQLite via sqflite_common_ffi on native
+Conditional LocalStore web fallback
+ChangeNotifier controllers
+Repository and use-case boundaries
+UUID identifiers
+package:http for market data
+```
 
-------------------------------------------------------------------------
+Transitional choices:
 
-# 2. Core Architecture Principles
+- ChangeNotifier while Riverpod is planned
+- index-based shell navigation while GoRouter is planned
+- direct SQLite store while Drift is planned
+- in-memory web preview while persistent web storage is planned
 
-## Local-first
+Do not mix a broad framework migration into an unrelated feature batch.
 
-The local database is the primary source of truth.
+## 3. Structure
 
-Rules:
-
-1.  Save changes locally first.
-2.  Never require internet for normal transactions.
-3.  Queue changes for synchronization.
-4.  Sync later when internet exists.
-
-## Shared business logic
-
-Android and Windows must share:
-
--   Database models
--   Financial calculations
--   Validation
--   Tithe engine
--   Asset engine
--   Import/export logic
--   Sync logic
-
-Only presentation layers should differ.
-
-------------------------------------------------------------------------
-
-# 3. Technology Stack
-
-## Frontend
-
-Flutter
-
-Targets:
-
--   Android
--   Windows
-
-Future:
-
--   iOS
--   macOS
--   Linux
--   Web
-
-## Database
-
-SQLite + Drift ORM
-
-Reasons:
-
--   Offline support
--   Reliable migrations
--   Strong querying
-
-## State Management
-
-Recommended:
-
-Riverpod
-
-## Routing
-
-Recommended:
-
-GoRouter
-
-## Models
-
-Recommended:
-
-Freezed immutable models
-
-------------------------------------------------------------------------
-
-# 4. Project Structure
-
-Recommended:
-
-    lib/
-
-    app/
-    core/
-    features/
+```text
+lib/
+  app/
+  core/
+    config/
+    database/
+    design/
     shared/
+  features/
+    analytics/
+    assets/
+    dashboard/
+    master_data/
+    reports/
+    tithe/
+    transactions/
+```
+
+Dependency direction:
+
+```text
+presentation -> controller/application -> domain
+data implementation -> domain contract
+core infrastructure -> platform-specific services
+```
+
+## 4. AppShell boundary
+
+`AppShell` is the current composition root. It may construct stores/controllers, bootstrap data, connect navigation, calculate page inputs, observe controllers, and dispose resources.
+
+It must not perform HTTP parsing, calculate weighted-average cost, execute SQL directly, or duplicate feature business logic.
+
+Current navigation indices:
+
+```text
+0 Overview
+1 Assets
+2 Transactions
+3 Accounts
+4 Categories
+5 Asset Conversion
+6 Projects
+7 Tithe
+8 Reports
+```
+
+## 5. Transaction feature
+
+```text
+features/transactions/
+  data/repositories/
+  domain/entities/
+  domain/repositories/
+  domain/usecases/
+  presentation/controllers/
+  presentation/edit/
+  presentation/quick_add/
+  presentation/screens/
+  presentation/widgets/
+```
+
+The persisted transaction source for asset buys/sells contains:
+
+```text
+quantity
+unit
+unitPrice
+assetName
+assetSymbol
+assetAction
+```
+
+New records must not depend on title/account parsing.
+
+## 6. Assets feature
+
+```text
+features/assets/
+  controllers/
+    asset_conversion_controller.dart
+    asset_price_controller.dart
+  data/repositories/
+    alpha_vantage_asset_price_repository.dart
+  domain/entities/
+    asset_market_price.dart
+    asset_portfolio.dart
+    asset_symbol_match.dart
+    market_quote.dart
+  domain/repositories/
+    asset_price_repository.dart
+  domain/services/
+    asset_portfolio_calculator.dart
+  presentation/screens/
+    asset_conversion_screen.dart
+    assets_dashboard_screen.dart
+  presentation/widgets/
+```
+
+Responsibilities:
+
+- `AssetConversionController`: form state, validation, explicit buy/sell transaction creation
+- `AssetPortfolioCalculator`: pure weighted-average calculations and legacy compatibility
+- `AssetPriceRepository`: provider contract
+- `AlphaVantageAssetPriceRepository`: HTTP/provider parsing
+- `AssetPriceController`: cache, refresh, manual price, loading/error state
+- `AssetsDashboardScreen`: rendering and action triggers only
+
+## 7. Market-price flow
+
+```text
+transactions + cached prices
+        |
+AssetPortfolioCalculator
+        |
+AssetsDashboardScreen
+        |
+user refresh/manual action
+        |
+AssetPriceController
+        |
+AssetPriceRepository
+        |
+provider or manual input
+        |
+AssetMarketPrice
+        |
+LocalStore cache
+        |
+controller notification and recalculation
+```
 
-Feature folders:
+## 8. Overview/Assets boundary
 
-    accounts
-    assets
-    books
-    categories
-    dashboard
-    import_export
-    projects
-    recurring
-    reports
-    settings
-    tithe
-    transactions
-
-Each feature should contain:
-
-    data/
-    domain/
-    presentation/
-
-------------------------------------------------------------------------
-
-# 5. Database Architecture
-
-Pilgrim Tracker must preserve financial dimensions.
-
-Main entities:
-
--   Users
--   Devices
--   Books
--   Accounts
--   Projects
--   Business Units
--   Categories
--   Contacts
--   Transactions
--   Transaction Entries
--   Transaction Revisions
--   Assets
--   Tithe Rules
--   Tithe Obligations
--   Recurring Rules
--   Attachments
--   Import Batches
--   Sync Changes
+Overview owns period activity: income, expenses, net cash flow, tithe, categories, and recent activity.
 
-------------------------------------------------------------------------
-
-# 6. Project Tracking (IMPORTANT)
+Assets owns quantity, lots, cost basis, market prices, market value, and realized/unrealized gains.
 
-Projects are a required financial dimension.
+Do not move detailed holdings back to Overview.
 
-Every transaction must support:
+## 9. Persistence architecture
 
-    project_id nullable
+Conditional export:
 
-A transaction may exist without a project, but if linked it must
-contribute to project reporting.
+```dart
+export 'local_store_web.dart'
+    if (dart.library.io) 'local_store_native.dart';
+```
 
-Example:
+Native uses versioned SQLite. Web exposes the same method surface but is currently in-memory.
 
-    Income
-    Project: Client Website
-    Amount: IDR 10,000,000
+## 10. Environment configuration
 
-Project reports:
+```dart
+String.fromEnvironment('ALPHA_VANTAGE_API_KEY')
+```
 
--   Income
--   Expenses
--   Profit
--   Cash flow
--   Asset usage
--   Tithe generated
+The key is for private/local development only. Public builds need a secure backend proxy.
 
-Project table:
+## 11. Testing
 
-    projects
+Current verified suite: 93 tests.
 
-    id
-    book_id
-    name
-    description
-    status
-    start_date
-    end_date
-    created_at
-    updated_at
-    deleted_at
+Required coverage includes transaction mapping, SQLite round trips, migrations, conversion controller/widget, provider parsing, quote cache, price controller, portfolio calculations, navigation/dashboard widgets, and financial summaries.
 
-------------------------------------------------------------------------
+## 12. Planned migrations
 
-# 7. Transaction Architecture
+- Drift behind existing repository/store boundaries
+- Riverpod through incremental controller replacement
+- GoRouter after route contracts are tested
+- full ledger entries and transaction revisions
 
-Transaction types:
+## 13. Asset guardrails
 
--   Income
--   Expense
--   Transfer
--   Asset Conversion
--   Asset Sale
--   Tithe Payment
--   Refund
--   Adjustment
--   Split Transaction
+Do:
 
-Transaction fields:
+- add first-class `AssetDefinition`
+- separate display name and provider symbol
+- store currency/exchange/unit/lot size
+- validate sales before save
+- persist fees and treatment
+- keep provider code behind repository contract
+- keep portfolio math pure
+- add migrations and native/web tests
 
-    id
-    book_id
-    project_id
-    business_unit_id
-    transaction_type
-    transaction_date
-    description
-    amount
-    currency
-    account_from_id
-    account_to_id
-    category_id
-    contact_id
-    created_at
-    updated_at
-    deleted_at
-    version
-    device_id
-    sync_status
+Do not:
 
-------------------------------------------------------------------------
-
-# 8. Double Entry Principle
-
-Transactions generate ledger entries.
-
-Example:
-
-Income:
-
-    Debit:
-    Bank
-
-    Credit:
-    Income
-
-Expense:
-
-    Debit:
-    Expense
-
-    Credit:
-    Cash
-
-Transfer:
-
-    Debit:
-    Destination Account
-
-    Credit:
-    Source Account
-
-Transfers do not affect profit.
-
-------------------------------------------------------------------------
-
-# 9. Asset Conversion
-
-Asset conversion is NOT an expense.
-
-Example:
-
-    Cash:
-    - IDR 50,000,000
-
-    Gold:
-    +20 grams
-
-Result:
-
-    Cash decreases
-    Gold asset increases
-
-Required fields:
-
-    source_asset
-    destination_asset
-
-    source_amount
-    destination_quantity
-
-    source_unit
-    destination_unit
-
-    unit_price
-    cost_basis
-
-    fee_amount
-    fee_treatment
-
-Supported assets:
-
--   Gold
--   Silver
--   Stocks
--   Cryptocurrency
--   Property
--   Inventory
--   Equipment
--   Other measurable assets
-
-------------------------------------------------------------------------
-
-# 10. Tithe Architecture
-
-Tithe is generated from eligible income.
-
-Entities:
-
-    tithe_rules
-    tithe_obligations
-    tithe_payments
-    tithe_payment_allocations
-
-Every eligible income stores:
-
-    tithe_rate_snapshot
-    tithe_due_amount
-
-Changing the tithe percentage creates a new rule version.
-
-Example:
-
-    January 2026: 13%
-
-    February 2026: 14%
-
-Old income keeps 13%.
-
-------------------------------------------------------------------------
-
-# 11. Synchronization Architecture
-
-Every synced entity requires:
-
-    id
-    version
-    created_at
-    updated_at
-    deleted_at
-    device_id
-    sync_status
-
-Sync states:
-
-    LOCAL
-    PENDING
-    SYNCED
-    CONFLICT
-    FAILED
-
-Never silently overwrite financial conflicts.
-
-Manual conflict review required for:
-
--   Amount
--   Account
--   Date
--   Asset quantity
--   Cost basis
--   Tithe values
-
-------------------------------------------------------------------------
-
-# 12. Import and Export
-
-Supported:
-
-Import:
-
--   CSV
--   XLSX
--   JSON backup
-
-Export:
-
--   CSV
--   XLSX
--   Full backup
-
-Import metadata:
-
-    import_batch_id
-    source_file
-    source_row
-    fingerprint
-
-------------------------------------------------------------------------
-
-# 13. Desktop and Mobile Roles
-
-## Desktop
-
-Financial control center:
-
--   Spreadsheet transaction editing
--   Bulk editing
--   Reports
--   Import/export
--   Reconciliation
-
-## Mobile
-
-Fast capture:
-
--   Quick Add
--   Custom keypad
--   Duplicate last transaction
--   Receipt capture
--   Offline entry
-
-------------------------------------------------------------------------
-
-# 14. Codex Rules
-
-Before coding, always read:
-
-    docs/product_spec.md
-    docs/roadmap.md
-    docs/architecture.md
-    docs/progress.md
-
-Never remove these dimensions:
-
-    Book
-    Project
-    Business Unit
-    Account
-    Category
-    Contact
-    Transaction
-    Asset
-    Tithe
-
-When adding features:
-
-1.  Update architecture.md.
-2.  Create database migration.
-3.  Update tests.
-4.  Update progress.md.
-
-------------------------------------------------------------------------
-
-# 15. Current Important Correction
-
-The project column must exist in the transaction database.
-
-Required:
-
-    transactions.project_id
-
-This field is nullable.
-
-Examples:
-
-Personal food:
-
-    project_id = NULL
-
-Client project expense:
-
-    project_id = website_project_id
-
-Without this field, project profitability reports cannot work.
-
-------------------------------------------------------------------------
-
-# 16. Long-Term Vision
-
-Pilgrim Tracker becomes a financial operating system supporting:
-
--   Personal finance
--   Business finance
--   Project accounting
--   Asset management
--   Tithe management
--   Receipt intelligence
--   Multi-device synchronization
+- parse tickers from titles for new records
+- put HTTP in widgets
+- put SQL in controllers
+- store money as `double`
+- overwrite cost basis with market value
+- count unrealized gain as income
+- assume every stock uses IDR
+- silently oversell
+- commit API keys

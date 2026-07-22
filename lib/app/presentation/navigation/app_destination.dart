@@ -9,6 +9,7 @@ class AppDestination {
 
 const appDestinations = <AppDestination>[
   AppDestination(label: 'Overview', icon: Icons.grid_view_rounded),
+  AppDestination(label: 'Assets', icon: Icons.pie_chart_outline_rounded),
   AppDestination(label: 'Transactions', icon: Icons.swap_vert_rounded),
   AppDestination(
     label: 'Accounts',

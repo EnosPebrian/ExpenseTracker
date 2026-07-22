@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../assets/controllers/asset_conversion_controller.dart';
 import '../../domain/entities/transaction.dart';
 import '../controllers/transaction_controller.dart';
+import '../../../assets/domain/entities/asset_definition.dart';
+import '../../../assets/domain/entities/asset_kind.dart';
 
 class QuickAddConfig {
   const QuickAddConfig({
@@ -16,6 +18,7 @@ class QuickAddConfig {
       'Bitcoin Wallet',
       'Inventory',
     ],
+    this.assetDefinitions = const [],
     this.defaultProject = 'Life',
     this.defaultAccount,
     this.defaultExpenseCategory,
@@ -30,7 +33,14 @@ class QuickAddConfig {
   final List<String> expenseCategories;
   final List<String> incomeCategories;
   final List<String> projects;
+
+  /// Legacy asset-name options retained temporarily for compatibility.
+  ///
+  /// Production application composition should provide [assetDefinitions].
   final List<String> assets;
+
+  /// Concrete measurable or tradable assets used by Asset Conversion.
+  final List<AssetDefinition> assetDefinitions;
 
   final String defaultProject;
   final String? defaultAccount;
@@ -79,7 +89,7 @@ class QuickAddController extends ChangeNotifier {
       time = TimeOfDay.now() {
     assetConversion = AssetConversionController(
       accounts: config.accounts,
-      assets: config.assets,
+      assets: _resolveAssetDefinitions(config),
     );
 
     // The dedicated Asset Conversion screen has demo defaults.
@@ -222,7 +232,14 @@ class QuickAddController extends ChangeNotifier {
 
     if (isAssetConversion) {
       _synchronizeAssetCash();
-
+      if (!assetConversion.supportsSelectedCurrency) {
+        error =
+            'Asset Conversion currently supports IDR-valued assets only. '
+            '${assetConversion.currencyCode} assets require currency '
+            'conversion support.';
+        notifyListeners();
+        return false;
+      }
       if (assetConversion.quantity <= 0) {
         error = 'Enter an asset quantity greater than zero.';
         notifyListeners();
@@ -295,10 +312,13 @@ class QuickAddController extends ChangeNotifier {
     required DateTime transactionDate,
   }) {
     final conversion = assetConversion;
+    final asset = conversion.selectedAssetDefinition;
+
+    final titleLabel = asset.normalizedSymbol ?? asset.displayName.trim();
 
     final generatedTitle = conversion.sellAsset
-        ? '${conversion.source} sale'
-        : '${conversion.destination} acquisition';
+        ? '$titleLabel sale'
+        : '$titleLabel acquisition';
 
     return Transaction(
       projectId: project == null ? null : _projectId(project!),
@@ -309,8 +329,12 @@ class QuickAddController extends ChangeNotifier {
       amount: amount,
       type: TransactionType.assetConversion,
       quantity: conversion.quantity,
-      unit: conversion.unit,
+      unit: asset.normalizedUnit,
       unitPrice: conversion.unitPrice,
+      assetDefinitionId: asset.id,
+      assetName: asset.displayName.trim(),
+      assetSymbol: asset.normalizedSymbol,
+      assetAction: conversion.sellAsset ? AssetAction.sell : AssetAction.buy,
     );
   }
 
@@ -346,6 +370,96 @@ class QuickAddController extends ChangeNotifier {
     assetConversion.dispose();
 
     super.dispose();
+  }
+
+  static List<AssetDefinition> _resolveAssetDefinitions(QuickAddConfig config) {
+    if (config.assetDefinitions.isNotEmpty) {
+      return List<AssetDefinition>.unmodifiable(config.assetDefinitions);
+    }
+
+    // Temporary compatibility path for older tests or callers that still
+    // provide asset names. AppShell supplies concrete definitions.
+    return List<AssetDefinition>.unmodifiable(
+      config.assets.map(_legacyAssetDefinition),
+    );
+  }
+
+  static AssetDefinition _legacyAssetDefinition(String name) {
+    final normalizedName = name.trim();
+    final now = DateTime.now().toUtc();
+
+    final configuration = switch (normalizedName) {
+      'Gold Holdings' => (
+        kind: AssetKind.gold,
+        symbol: null,
+        providerCode: 'alpha_vantage',
+        providerSymbol: 'XAU',
+        currencyCode: 'IDR',
+        unit: 'gram',
+        lotSize: 1,
+        onlinePricingEnabled: true,
+      ),
+      'Stock Portfolio' => (
+        kind: AssetKind.stock,
+        symbol: 'STOCK',
+        providerCode: null,
+        providerSymbol: null,
+        currencyCode: 'IDR',
+        unit: 'share',
+        lotSize: 100,
+        onlinePricingEnabled: false,
+      ),
+      'Bitcoin Wallet' => (
+        kind: AssetKind.crypto,
+        symbol: 'BTC',
+        providerCode: null,
+        providerSymbol: null,
+        currencyCode: 'IDR',
+        unit: 'btc',
+        lotSize: 1,
+        onlinePricingEnabled: false,
+      ),
+      'Inventory' => (
+        kind: AssetKind.inventory,
+        symbol: null,
+        providerCode: null,
+        providerSymbol: null,
+        currencyCode: 'IDR',
+        unit: 'unit',
+        lotSize: 1,
+        onlinePricingEnabled: false,
+      ),
+      _ => (
+        kind: AssetKind.other,
+        symbol: null,
+        providerCode: null,
+        providerSymbol: null,
+        currencyCode: 'IDR',
+        unit: 'unit',
+        lotSize: 1,
+        onlinePricingEnabled: false,
+      ),
+    };
+
+    return AssetDefinition(
+      id: 'legacy-${normalizedName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-')}',
+      displayName: normalizedName,
+      kind: configuration.kind,
+      symbol: configuration.symbol,
+      providerCode: configuration.providerCode,
+      providerSymbol: configuration.providerSymbol,
+      exchangeCode: null,
+      currencyCode: configuration.currencyCode,
+      unit: configuration.unit,
+      lotSize: configuration.lotSize,
+      onlinePricingEnabled: configuration.onlinePricingEnabled,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      version: 1,
+      deviceId: 'local-device',
+      syncStatus: 'local_only',
+    );
   }
 
   static String _projectId(String value) {

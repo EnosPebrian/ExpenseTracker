@@ -83,6 +83,10 @@ Transaction _sampleTransaction({
   double? quantity,
   String? unit,
   int? unitPrice,
+  String? assetDefinitionId,
+  String? assetName,
+  AssetAction? assetAction,
+  String? assetSymbol,
 }) {
   final timestamp = DateTime(2026, 7, 19, 9, 30);
 
@@ -102,6 +106,10 @@ Transaction _sampleTransaction({
     quantity: quantity,
     unit: unit,
     unitPrice: unitPrice,
+    assetDefinitionId: assetDefinitionId,
+    assetName: assetName,
+    assetAction: assetAction,
+    assetSymbol: assetSymbol,
     createdAt: timestamp,
     updatedAt: timestamp,
   );
@@ -211,6 +219,9 @@ void main() {
         quantity: 20.5,
         unit: 'gram',
         unitPrice: 2439024,
+        assetName: 'Gold Holdings',
+        assetDefinitionId: 'asset-gold',
+        assetAction: AssetAction.buy,
       ),
     );
 
@@ -228,6 +239,9 @@ void main() {
     expect(transaction.quantity, 20.5);
     expect(transaction.unit, 'gram');
     expect(transaction.unitPrice, 2439024);
+    expect(transaction.assetDefinitionId, 'asset-gold');
+    expect(transaction.assetName, 'Gold Holdings');
+    expect(transaction.assetAction, AssetAction.buy);
     expect(transaction.amount, 50000000);
   });
 
