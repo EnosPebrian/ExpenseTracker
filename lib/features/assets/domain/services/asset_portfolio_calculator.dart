@@ -275,7 +275,28 @@ class AssetPortfolioCalculator {
     final expectedUnit = state.unit.trim().toLowerCase();
     final actualUnit = price.unit.trim().toLowerCase();
 
-    return actualUnit == expectedUnit;
+    if (actualUnit != expectedUnit) {
+      return false;
+    }
+
+    if (state.kind == AssetKind.foreignCurrency && price.symbol != null) {
+      final sourceCurrency = state.symbol?.trim().toUpperCase();
+      final valuationCurrency = expectedCurrency;
+      final expectedPair =
+          state.providerSymbol?.trim().toUpperCase() ??
+          (sourceCurrency == null
+              ? null
+              : '$sourceCurrency/$valuationCurrency');
+      final actualSymbol = price.symbol!.trim().toUpperCase();
+
+      if (expectedPair != null &&
+          actualSymbol != expectedPair &&
+          actualSymbol != sourceCurrency) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   static AssetAction _resolveAction(Transaction transaction) {

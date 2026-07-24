@@ -4,7 +4,6 @@ import '../../../../core/shared/formatters/thousands_formatter.dart';
 import '../../../../core/shared/widgets/page_layout.dart';
 import '../../../../core/shared/widgets/searchable_dropdown.dart';
 import '../../controllers/asset_conversion_controller.dart';
-import '../../domain/entities/asset_kind.dart';
 
 class AssetConversionForm extends StatelessWidget {
   const AssetConversionForm({
@@ -86,17 +85,6 @@ class AssetConversionForm extends StatelessWidget {
                 suffixText: controller.unit,
               ),
             ),
-            if (controller.isForeignCurrency) ...[
-              const SizedBox(height: 8),
-              Text(
-                controller.calculatedRateLabel,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               key: ValueKey(controller.feeTreatment),
@@ -156,23 +144,14 @@ class _SelectedAssetCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final definition = controller.selectedAssetDefinition;
-    final isForeignCurrency = definition.kind == AssetKind.foreignCurrency;
 
     final details = <String>[
-      if (isForeignCurrency)
-        definition.quoteSymbol ??
-            '${definition.normalizedSymbol}/'
-                '${definition.normalizedCurrencyCode}'
-      else if (definition.normalizedSymbol != null)
-        definition.normalizedSymbol!,
-      if (!isForeignCurrency) definition.normalizedCurrencyCode,
-      isForeignCurrency
-          ? definition.normalizedUnit.toUpperCase()
-          : definition.normalizedUnit,
+      if (definition.normalizedSymbol != null) definition.normalizedSymbol!,
+      definition.normalizedCurrencyCode,
+      definition.normalizedUnit,
       if (definition.normalizedExchangeCode != null)
         definition.normalizedExchangeCode!,
-      if (definition.kind == AssetKind.stock)
-        '${definition.lotSize} shares / lot',
+      if (definition.kind.name == 'stock') '${definition.lotSize} shares / lot',
     ];
 
     final supportsCurrency = controller.supportsSelectedCurrency;
@@ -193,7 +172,7 @@ class _SelectedAssetCard extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           Text(
-            details.join(' · '),
+            details.join(' • '),
             style: const TextStyle(
               fontSize: 10,
               color: Colors.black54,

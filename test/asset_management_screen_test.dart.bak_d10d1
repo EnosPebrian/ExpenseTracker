@@ -103,78 +103,7 @@ void main() {
 
     expect(find.text('Bank Central Asia'), findsOneWidget);
   });
-  testWidgets('creates a custom foreign currency with synchronized FX fields', (
-    tester,
-  ) async {
-    final repository = _FakeAssetDefinitionRepository();
 
-    final controller = AssetDefinitionController(
-      repository: repository,
-      now: () => DateTime.utc(2026, 7, 23, 12),
-    );
-
-    await controller.initialize();
-
-    await tester.pumpWidget(
-      MaterialApp(home: AssetManagementScreen(controller: controller)),
-    );
-
-    await tester.tap(find.byKey(const Key('add-asset-button')));
-
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('asset-kind-field')));
-
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Foreign currency').last);
-
-    await tester.pumpAndSettle();
-
-    await tester.enterText(
-      find.byKey(const Key('asset-name-field')),
-      'Euro Cash',
-    );
-
-    await tester.enterText(find.byKey(const Key('asset-symbol-field')), 'EUR');
-
-    await tester.pumpAndSettle();
-
-    final unitField = tester.widget<TextFormField>(
-      find.byKey(const Key('asset-unit-field')),
-    );
-
-    expect(unitField.controller?.text, 'eur');
-
-    final providerPairField = tester.widget<TextFormField>(
-      find.byKey(const Key('asset-provider-symbol-field')),
-    );
-
-    expect(providerPairField.controller?.text, 'EUR/IDR');
-
-    final saveButton = find.byKey(const Key('save-asset-button'));
-
-    await tester.ensureVisible(saveButton);
-    await tester.pumpAndSettle();
-
-    await tester.tap(saveButton);
-    await tester.pumpAndSettle();
-
-    expect(controller.definitions, hasLength(1));
-
-    final definition = controller.definitions.single;
-
-    expect(definition.displayName, 'Euro Cash');
-    expect(definition.kind, AssetKind.foreignCurrency);
-    expect(definition.normalizedSymbol, 'EUR');
-    expect(definition.normalizedUnit, 'eur');
-    expect(definition.normalizedCurrencyCode, 'IDR');
-    expect(definition.normalizedProviderCode, 'ALPHA_VANTAGE');
-    expect(definition.normalizedProviderSymbol, 'EUR/IDR');
-    expect(definition.lotSize, 1);
-    expect(definition.onlinePricingEnabled, isTrue);
-    expect(definition.validate(), isEmpty);
-  });
   testWidgets('requires a stock symbol before saving', (tester) async {
     final repository = _FakeAssetDefinitionRepository();
 

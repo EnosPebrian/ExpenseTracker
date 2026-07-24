@@ -98,7 +98,7 @@ Transaction _sampleTransaction({
         ? 'Asset conversion'
         : 'Konsumsi',
     account: type == TransactionType.assetConversion
-        ? 'Cash Enos -> Gold Holdings'
+        ? 'Cash Enos -> ${assetName ?? 'Measured Asset'}'
         : 'Cash Enos',
     date: timestamp,
     amount: amount,
@@ -205,45 +205,50 @@ void main() {
     expect(rows.single['sync_status'], 'pending');
   });
 
-  test('asset conversion fields survive SQLite round trip', () async {
-    final database = await _TestDatabase.create();
+  test(
+    'foreign-currency conversion fields survive SQLite round trip',
+    () async {
+      final database = await _TestDatabase.create();
 
-    addTearDown(database.dispose);
+      addTearDown(database.dispose);
 
-    final created = await CreateTransaction(database.repository)(
-      _sampleTransaction(
-        id: 'asset-conversion-001',
-        title: 'Gold acquisition',
-        amount: 50000000,
-        type: TransactionType.assetConversion,
-        quantity: 20.5,
-        unit: 'gram',
-        unitPrice: 2439024,
-        assetName: 'Gold Holdings',
-        assetDefinitionId: 'asset-gold',
-        assetAction: AssetAction.buy,
-      ),
-    );
+      final created = await CreateTransaction(database.repository)(
+        _sampleTransaction(
+          id: 'asset-conversion-001',
+          title: 'USD acquisition',
+          amount: 16200000,
+          type: TransactionType.assetConversion,
+          quantity: 1000,
+          unit: 'usd',
+          unitPrice: 16200,
+          assetName: 'US Dollar Cash',
+          assetDefinitionId: 'asset-usd',
+          assetSymbol: 'USD',
+          assetAction: AssetAction.buy,
+        ),
+      );
 
-    await database.reopen();
+      await database.reopen();
 
-    final loaded = await GetTransactions(database.repository)();
+      final loaded = await GetTransactions(database.repository)();
 
-    expect(loaded, hasLength(1));
+      expect(loaded, hasLength(1));
 
-    final transaction = loaded.single;
+      final transaction = loaded.single;
 
-    expect(transaction.id, created.id);
-    expect(transaction.type, TransactionType.assetConversion);
-    expect(transaction.account, 'Cash Enos -> Gold Holdings');
-    expect(transaction.quantity, 20.5);
-    expect(transaction.unit, 'gram');
-    expect(transaction.unitPrice, 2439024);
-    expect(transaction.assetDefinitionId, 'asset-gold');
-    expect(transaction.assetName, 'Gold Holdings');
-    expect(transaction.assetAction, AssetAction.buy);
-    expect(transaction.amount, 50000000);
-  });
+      expect(transaction.id, created.id);
+      expect(transaction.type, TransactionType.assetConversion);
+      expect(transaction.account, 'Cash Enos -> US Dollar Cash');
+      expect(transaction.quantity, 1000);
+      expect(transaction.unit, 'usd');
+      expect(transaction.unitPrice, 16200);
+      expect(transaction.assetDefinitionId, 'asset-usd');
+      expect(transaction.assetName, 'US Dollar Cash');
+      expect(transaction.assetSymbol, 'USD');
+      expect(transaction.assetAction, AssetAction.buy);
+      expect(transaction.amount, 16200000);
+    },
+  );
 
   test('duplicate returned to UI matches the persisted record', () async {
     final database = await _TestDatabase.create();

@@ -457,7 +457,6 @@ class _DefinitionIcon extends StatelessWidget {
       AssetKind.gold => Icons.diamond_outlined,
       AssetKind.stock => Icons.candlestick_chart_outlined,
       AssetKind.crypto => Icons.currency_bitcoin_rounded,
-      AssetKind.foreignCurrency => Icons.currency_exchange_rounded,
       AssetKind.inventory => Icons.inventory_2_outlined,
       AssetKind.other => Icons.account_balance_wallet_outlined,
     };
@@ -537,19 +536,10 @@ class _AssetDefinitionEditorDialogState
     lotSizeController = TextEditingController(
       text: (definition?.lotSize ?? 100).toString(),
     );
-
-    symbolController.addListener(_synchronizeForeignCurrencyFields);
-
-    currencyController.addListener(_synchronizeForeignCurrencyFields);
-
-    _synchronizeForeignCurrencyFields();
   }
 
   @override
   void dispose() {
-    symbolController.removeListener(_synchronizeForeignCurrencyFields);
-
-    currencyController.removeListener(_synchronizeForeignCurrencyFields);
     nameController.dispose();
     symbolController.dispose();
     providerController.dispose();
@@ -617,18 +607,9 @@ class _AssetDefinitionEditorDialogState
                     hintText: 'BBCA',
                   ),
                   validator: (value) {
-                    final isEmpty = value == null || value.trim().isEmpty;
-
-                    if (kind == AssetKind.stock && isEmpty) {
+                    if (kind == AssetKind.stock &&
+                        (value == null || value.trim().isEmpty)) {
                       return 'A stock symbol is required.';
-                    }
-
-                    if (kind == AssetKind.foreignCurrency) {
-                      final normalized = value?.trim().toUpperCase() ?? '';
-
-                      if (!RegExp(r'^[A-Z]{3}$').hasMatch(normalized)) {
-                        return 'Use a three-letter currency symbol.';
-                      }
                     }
 
                     return null;
@@ -657,20 +638,10 @@ class _AssetDefinitionEditorDialogState
                           hintText: 'IDR',
                         ),
                         validator: (value) {
-                          final normalized = value?.trim().toUpperCase() ?? '';
+                          final normalized = value?.trim() ?? '';
 
-                          if (!RegExp(r'^[A-Z]{3}$').hasMatch(normalized)) {
+                          if (normalized.length != 3) {
                             return 'Use a three-letter currency.';
-                          }
-
-                          if (kind == AssetKind.foreignCurrency) {
-                            final sourceCurrency = symbolController.text
-                                .trim()
-                                .toUpperCase();
-
-                            if (sourceCurrency == normalized) {
-                              return 'Source and valuation currencies must differ.';
-                            }
                           }
 
                           return null;
@@ -686,26 +657,7 @@ class _AssetDefinitionEditorDialogState
                           labelText: 'Unit',
                           hintText: 'share',
                         ),
-                        validator: (value) {
-                          final requiredError = _requiredValidator(value);
-
-                          if (requiredError != null) {
-                            return requiredError;
-                          }
-
-                          if (kind == AssetKind.foreignCurrency) {
-                            final symbol = symbolController.text
-                                .trim()
-                                .toLowerCase();
-
-                            if (symbol.length == 3 &&
-                                value!.trim().toLowerCase() != symbol) {
-                              return 'Unit must match the currency symbol.';
-                            }
-                          }
-
-                          return null;
-                        },
+                        validator: _requiredValidator,
                       ),
                     ),
                   ],
@@ -766,30 +718,9 @@ class _AssetDefinitionEditorDialogState
                           'Use the exact symbol required by the provider.',
                     ),
                     validator: (value) {
-                      final normalized = value?.trim().toUpperCase() ?? '';
-
-                      if (kind != AssetKind.gold && normalized.isEmpty) {
+                      if (kind != AssetKind.gold &&
+                          (value == null || value.trim().isEmpty)) {
                         return 'A provider symbol is required.';
-                      }
-
-                      if (kind == AssetKind.foreignCurrency) {
-                        final sourceCurrency = symbolController.text
-                            .trim()
-                            .toUpperCase();
-
-                        final valuationCurrency = currencyController.text
-                            .trim()
-                            .toUpperCase();
-
-                        if (sourceCurrency.length == 3 &&
-                            valuationCurrency.length == 3) {
-                          final expectedPair =
-                              '$sourceCurrency/$valuationCurrency';
-
-                          if (normalized != expectedPair) {
-                            return 'Provider pair must be $expectedPair.';
-                          }
-                        }
                       }
 
                       return null;
@@ -817,33 +748,6 @@ class _AssetDefinitionEditorDialogState
     );
   }
 
-  void _synchronizeForeignCurrencyFields() {
-    if (kind != AssetKind.foreignCurrency) {
-      return;
-    }
-
-    final sourceCurrency = symbolController.text.trim().toUpperCase();
-
-    final valuationCurrency = currencyController.text.trim().toUpperCase();
-
-    if (RegExp(r'^[A-Z]{3}$').hasMatch(sourceCurrency)) {
-      final expectedUnit = sourceCurrency.toLowerCase();
-
-      if (unitController.text != expectedUnit) {
-        unitController.text = expectedUnit;
-      }
-    }
-
-    if (RegExp(r'^[A-Z]{3}$').hasMatch(sourceCurrency) &&
-        RegExp(r'^[A-Z]{3}$').hasMatch(valuationCurrency)) {
-      final expectedPair = '$sourceCurrency/$valuationCurrency';
-
-      if (providerSymbolController.text != expectedPair) {
-        providerSymbolController.text = expectedPair;
-      }
-    }
-  }
-
   void _applyKindDefaults(AssetKind value) {
     switch (value) {
       case AssetKind.gold:
@@ -857,21 +761,6 @@ class _AssetDefinitionEditorDialogState
       case AssetKind.crypto:
         unitController.text = 'coin';
         lotSizeController.text = '1';
-
-      case AssetKind.foreignCurrency:
-        final currentSymbol = symbolController.text.trim().toUpperCase();
-
-        if (!RegExp(r'^[A-Z]{3}$').hasMatch(currentSymbol)) {
-          symbolController.clear();
-        }
-
-        currencyController.text = 'IDR';
-        unitController.text = 'currency';
-        lotSizeController.text = '1';
-        providerController.text = 'alpha_vantage';
-        onlinePricingEnabled = true;
-
-        _synchronizeForeignCurrencyFields();
 
       case AssetKind.inventory:
         unitController.text = 'unit';
@@ -954,7 +843,6 @@ String _kindLabel(AssetKind kind) {
     AssetKind.gold => 'Gold',
     AssetKind.stock => 'Stock',
     AssetKind.crypto => 'Crypto',
-    AssetKind.foreignCurrency => 'Foreign currency',
     AssetKind.inventory => 'Inventory',
     AssetKind.other => 'Other',
   };

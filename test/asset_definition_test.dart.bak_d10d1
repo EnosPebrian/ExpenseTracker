@@ -121,35 +121,7 @@ void main() {
 
     expect(
       definition.validate(),
-      contains('A three-letter foreign-currency symbol is required.'),
-    );
-  });
-  test('foreign currency validation enforces unit and provider pair', () {
-    final wrongUnit = _usdDefinition().copyWith(unit: 'currency');
-
-    expect(
-      wrongUnit.validate(),
-      contains('Foreign-currency unit must be usd.'),
-    );
-
-    final wrongPair = _usdDefinition().copyWith(providerSymbol: 'USD/USD');
-
-    expect(
-      wrongPair.validate(),
-      contains('Foreign-currency provider symbol must be USD/IDR.'),
-    );
-
-    final sameCurrency = _usdDefinition().copyWith(
-      currencyCode: 'USD',
-      providerSymbol: 'USD/USD',
-    );
-
-    expect(
-      sameCurrency.validate(),
-      contains(
-        'Foreign-currency source and valuation currencies '
-        'must be different.',
-      ),
+      contains('A foreign-currency symbol is required.'),
     );
   });
 }

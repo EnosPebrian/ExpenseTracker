@@ -43,14 +43,14 @@ class ConversionSummaryCard extends StatelessWidget {
             const SizedBox(height: 28),
             MetricSmall(
               controller.quantityLabel,
-              '${controller.quantity.toStringAsFixed(2)} '
-              '${controller.unit}',
+              '${controller.quantity == controller.quantity.roundToDouble() ? controller.quantity.toInt() : controller.quantity} '
+              '${controller.isForeignCurrency ? controller.currencySymbol : controller.unit}',
               labelColor: Colors.white54,
               valueColor: Colors.white,
             ),
             const SizedBox(height: 15),
             MetricSmall(
-              'Average unit value',
+              controller.calculatedRateLabel,
               'Rp ${money(controller.unitPrice)}',
               labelColor: Colors.white54,
               valueColor: Colors.white,

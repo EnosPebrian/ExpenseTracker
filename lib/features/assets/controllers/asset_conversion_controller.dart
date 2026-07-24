@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../../transactions/domain/entities/transaction.dart';
 import '../domain/entities/asset_definition.dart';
+import '../domain/entities/asset_kind.dart';
 
 class AssetConversionController extends ChangeNotifier {
   AssetConversionController({
     required List<String> accounts,
     required List<AssetDefinition> assets,
   }) : accounts = List<String>.unmodifiable(accounts),
-       assets = List<AssetDefinition>.unmodifiable(assets) {
+       assets = List<AssetDefinition>.unmodifiable(
+         assets.where((asset) => !asset.isDeleted),
+       ) {
     if (this.accounts.isEmpty) {
       throw ArgumentError.value(
         accounts,
@@ -21,7 +24,7 @@ class AssetConversionController extends ChangeNotifier {
       throw ArgumentError.value(
         assets,
         'assets',
-        'At least one measurable asset is required.',
+        'At least one active measurable asset is required.',
       );
     }
 
@@ -129,12 +132,23 @@ class AssetConversionController extends ChangeNotifier {
     return selectedAssetDefinition.normalizedCurrencyCode;
   }
 
+  bool get isForeignCurrency {
+    return selectedAssetDefinition.kind == AssetKind.foreignCurrency;
+  }
+
+  String get currencySymbol {
+    return selectedAssetDefinition.normalizedSymbol ?? unit.toUpperCase();
+  }
+
   bool get supportsSelectedCurrency {
     return currencyCode == 'IDR';
   }
 
   bool get canSave {
-    return cash > 0 && quantity > 0 && supportsSelectedCurrency;
+    return cash > 0 &&
+        quantity > 0 &&
+        supportsSelectedCurrency &&
+        !selectedAssetDefinition.isDeleted;
   }
 
   String get sourceLabel {
@@ -146,11 +160,28 @@ class AssetConversionController extends ChangeNotifier {
   }
 
   String get cashLabel {
+    if (isForeignCurrency) {
+      return sellAsset ? 'IDR received' : 'IDR paid';
+    }
+
     return sellAsset ? 'Cash value received' : 'Cash paid';
   }
 
   String get quantityLabel {
+    if (isForeignCurrency) {
+      return sellAsset ? '$currencySymbol sold' : '$currencySymbol received';
+    }
+
     return sellAsset ? 'Quantity sold' : 'Quantity received';
+  }
+
+  String get calculatedRateLabel {
+    if (!isForeignCurrency) {
+      return 'Average unit value';
+    }
+
+    return 'Calculated rate: Rp ${_formatInteger(unitPrice)} per '
+        '$currencySymbol';
   }
 
   List<String> get sourceOptions {
@@ -223,6 +254,10 @@ class AssetConversionController extends ChangeNotifier {
   }
 
   Transaction buildTransaction() {
+    if (selectedAssetDefinition.isDeleted) {
+      throw StateError('The selected asset definition is no longer active.');
+    }
+
     if (!supportsSelectedCurrency) {
       throw StateError(
         'Asset Conversion currently supports IDR-valued assets only. '
@@ -270,6 +305,19 @@ class AssetConversionController extends ChangeNotifier {
     }
 
     return '${definition.displayName.trim()} ($symbol)';
+  }
+
+  static String _formatInteger(int value) {
+    final digits = value.abs().toString();
+    final groups = <String>[];
+
+    for (var end = digits.length; end > 0; end -= 3) {
+      final start = (end - 3).clamp(0, end);
+      groups.insert(0, digits.substring(start, end));
+    }
+
+    final prefix = value < 0 ? '-' : '';
+    return '$prefix${groups.join('.')}';
   }
 
   @override

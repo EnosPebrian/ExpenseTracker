@@ -27,6 +27,7 @@ List<AssetDefinition> buildDefaultAssetDefinitions({
       deviceId: deviceId,
       syncStatus: 'local_only',
     ),
+
     AssetDefinition(
       id: 'asset-bitcoin-wallet',
       displayName: 'Bitcoin Wallet',
@@ -65,49 +66,5 @@ List<AssetDefinition> buildDefaultAssetDefinitions({
       deviceId: deviceId,
       syncStatus: 'local_only',
     ),
-    _buildDefaultForeignCurrency(
-      id: 'asset-usd',
-      displayName: 'US Dollar Cash',
-      symbol: 'USD',
-      timestamp: now,
-      deviceId: deviceId,
-    ),
-    _buildDefaultForeignCurrency(
-      id: 'asset-sgd',
-      displayName: 'Singapore Dollar Cash',
-      symbol: 'SGD',
-      timestamp: now,
-      deviceId: deviceId,
-    ),
   ];
-}
-
-AssetDefinition _buildDefaultForeignCurrency({
-  required String id,
-  required String displayName,
-  required String symbol,
-  required DateTime timestamp,
-  required String deviceId,
-}) {
-  final normalizedSymbol = symbol.trim().toUpperCase();
-
-  return AssetDefinition(
-    id: id,
-    displayName: displayName,
-    kind: AssetKind.foreignCurrency,
-    symbol: normalizedSymbol,
-    providerCode: 'alpha_vantage',
-    providerSymbol: '$normalizedSymbol/IDR',
-    exchangeCode: null,
-    currencyCode: 'IDR',
-    unit: normalizedSymbol.toLowerCase(),
-    lotSize: 1,
-    onlinePricingEnabled: true,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    deletedAt: null,
-    version: 1,
-    deviceId: deviceId,
-    syncStatus: 'local_only',
-  );
 }

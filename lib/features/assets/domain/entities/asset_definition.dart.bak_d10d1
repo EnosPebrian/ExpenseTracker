@@ -141,37 +141,8 @@ class AssetDefinition {
       errors.add('A stock symbol is required.');
     }
 
-    if (kind == AssetKind.foreignCurrency) {
-      final currencySymbol = normalizedSymbol;
-
-      if (currencySymbol == null ||
-          !RegExp(r'^[A-Z]{3}$').hasMatch(currencySymbol)) {
-        errors.add('A three-letter foreign-currency symbol is required.');
-      } else {
-        if (currencySymbol == normalizedCurrencyCode) {
-          errors.add(
-            'Foreign-currency source and valuation currencies '
-            'must be different.',
-          );
-        }
-
-        final expectedUnit = currencySymbol.toLowerCase();
-
-        if (normalizedUnit != expectedUnit) {
-          errors.add('Foreign-currency unit must be $expectedUnit.');
-        }
-
-        if (onlinePricingEnabled) {
-          final expectedPair = '$currencySymbol/$normalizedCurrencyCode';
-
-          if (normalizedProviderSymbol != expectedPair) {
-            errors.add(
-              'Foreign-currency provider symbol must be '
-              '$expectedPair.',
-            );
-          }
-        }
-      }
+    if (kind == AssetKind.foreignCurrency && normalizedSymbol == null) {
+      errors.add('A foreign-currency symbol is required.');
     }
 
     if (onlinePricingEnabled &&

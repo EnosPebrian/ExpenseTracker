@@ -46,9 +46,10 @@ class AssetPriceController extends ChangeNotifier {
     return switch (holding.kind) {
       AssetKind.gold => true,
       AssetKind.stock => holding.quoteSymbol != null,
-      AssetKind.foreignCurrency =>
-        _foreignCurrencyConfigurationError(holding) == null,
-      AssetKind.crypto || AssetKind.inventory || AssetKind.other => false,
+      AssetKind.crypto ||
+      AssetKind.foreignCurrency ||
+      AssetKind.inventory ||
+      AssetKind.other => false,
     };
   }
 
@@ -102,10 +103,6 @@ class AssetPriceController extends ChangeNotifier {
       } else if (holding.kind == AssetKind.stock &&
           holding.quoteSymbol == null) {
         error = 'This stock holding does not have a provider or ticker symbol.';
-      } else if (holding.kind == AssetKind.foreignCurrency) {
-        error =
-            _foreignCurrencyConfigurationError(holding) ??
-            'Online pricing is not supported for ${holding.name}.';
       } else {
         error = 'Online pricing is not supported for ${holding.name}.';
       }
@@ -254,21 +251,8 @@ class AssetPriceController extends ChangeNotifier {
           ),
         );
 
-      case AssetKind.foreignCurrency:
-        final configurationError = _foreignCurrencyConfigurationError(holding);
-
-        if (configurationError != null) {
-          throw StateError(configurationError);
-        }
-
-        final pair = _foreignExchangePair(holding);
-
-        quote = await repository.fetchForeignExchangeRate(
-          fromCurrency: pair.fromCurrency,
-          toCurrency: pair.toCurrency,
-        );
-
       case AssetKind.crypto:
+      case AssetKind.foreignCurrency:
       case AssetKind.inventory:
       case AssetKind.other:
         throw StateError(
@@ -305,16 +289,6 @@ class AssetPriceController extends ChangeNotifier {
       );
     }
 
-    final expectedMinorUnitScale = _minorUnitScaleForCurrency(expectedCurrency);
-
-    if (quote.minorUnitScale != expectedMinorUnitScale) {
-      throw StateError(
-        'Minor-unit scale mismatch: expected '
-        '$expectedMinorUnitScale for $expectedCurrency but '
-        'received ${quote.minorUnitScale}.',
-      );
-    }
-
     final expectedUnit = holding.normalizedUnit;
     final returnedUnit = quote.unit.trim().toLowerCase();
 
@@ -328,9 +302,12 @@ class AssetPriceController extends ChangeNotifier {
     final expectedSymbol = switch (holding.kind) {
       AssetKind.gold => holding.quoteSymbol ?? 'XAU',
       AssetKind.stock => holding.quoteSymbol,
-      AssetKind.foreignCurrency => _foreignExchangePair(holding).symbol,
-      AssetKind.crypto || AssetKind.inventory || AssetKind.other => null,
+      AssetKind.crypto ||
+      AssetKind.foreignCurrency ||
+      AssetKind.inventory ||
+      AssetKind.other => null,
     };
+
     if (expectedSymbol != null) {
       final normalizedExpected = expectedSymbol.trim().toUpperCase();
       final normalizedReturned = quote.symbol.trim().toUpperCase();
@@ -342,61 +319,6 @@ class AssetPriceController extends ChangeNotifier {
         );
       }
     }
-  }
-
-  String? _foreignCurrencyConfigurationError(AssetHolding holding) {
-    final sourceCurrency = holding.normalizedSymbol;
-
-    if (sourceCurrency == null ||
-        !RegExp(r'^[A-Z]{3}$').hasMatch(sourceCurrency)) {
-      return 'A three-letter foreign-currency symbol is required '
-          'for ${holding.name}.';
-    }
-
-    final valuationCurrency = holding.normalizedCurrencyCode;
-
-    if (!RegExp(r'^[A-Z]{3}$').hasMatch(valuationCurrency)) {
-      return 'A three-letter valuation currency is required '
-          'for ${holding.name}.';
-    }
-
-    if (sourceCurrency == valuationCurrency) {
-      return 'Foreign-currency source and valuation currencies '
-          'must be different.';
-    }
-
-    final expectedUnit = sourceCurrency.toLowerCase();
-
-    if (holding.normalizedUnit != expectedUnit) {
-      return 'Foreign-currency unit must be $expectedUnit '
-          'for $sourceCurrency.';
-    }
-
-    final expectedPair = '$sourceCurrency/$valuationCurrency';
-    final providerPair = holding.normalizedProviderSymbol;
-
-    if (providerPair == null) {
-      return 'A provider pair such as $expectedPair is required '
-          'for ${holding.name}.';
-    }
-
-    if (providerPair != expectedPair) {
-      return 'Foreign-currency provider pair must be $expectedPair.';
-    }
-
-    return null;
-  }
-
-  ({String fromCurrency, String toCurrency, String symbol})
-  _foreignExchangePair(AssetHolding holding) {
-    final fromCurrency = holding.normalizedSymbol!;
-    final toCurrency = holding.normalizedCurrencyCode;
-
-    return (
-      fromCurrency: fromCurrency,
-      toCurrency: toCurrency,
-      symbol: '$fromCurrency/$toCurrency',
-    );
   }
 
   bool _hasSupportedProviderConfiguration(AssetHolding holding) {

@@ -107,8 +107,8 @@ class _AssetConversionScreenState extends State<AssetConversionScreen> {
                 kicker: 'QUANTITY-BASED ASSETS',
                 title: 'Asset Conversion',
                 subtitle:
-                    'Convert cash into gold, stocks, foreign currencies, '
-                    'crypto, inventory, or another measured asset.',
+                    'Convert cash into gold, stocks, crypto, inventory, '
+                    'or another measured asset.',
               ),
               ResponsivePair(
                 left: AssetConversionForm(

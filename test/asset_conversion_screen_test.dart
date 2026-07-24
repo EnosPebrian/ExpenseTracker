@@ -130,6 +130,48 @@ void main() {
       expect(enabledButton.onPressed, isNotNull);
     },
   );
+
+  testWidgets('foreign currency conversion uses currency-specific fields', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AssetConversionScreen(
+            accounts: const ['Cash Enos'],
+            assets: [_usdDefinition()],
+            onSave: (_) async {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('IDR paid'), findsOneWidget);
+    expect(find.text('USD received'), findsAtLeastNWidgets(1));
+    expect(
+      find.text('Calculated rate: Rp 2.500.000 per USD'),
+      findsAtLeastNWidgets(1),
+    );
+    expect(find.textContaining('shares / lot'), findsNothing);
+
+    final controller = tester.widget<TextField>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.labelText == 'USD received',
+      ),
+    );
+
+    expect(controller.decoration?.suffixText, 'usd');
+  });
 }
 
 AssetDefinition _goldDefinition() {
@@ -147,6 +189,28 @@ AssetDefinition _goldDefinition() {
     onlinePricingEnabled: true,
     createdAt: DateTime.utc(2026, 7, 21),
     updatedAt: DateTime.utc(2026, 7, 21),
+    deletedAt: null,
+    version: 1,
+    deviceId: 'test-device',
+    syncStatus: 'local_only',
+  );
+}
+
+AssetDefinition _usdDefinition() {
+  return AssetDefinition(
+    id: 'asset-usd',
+    displayName: 'US Dollar Cash',
+    kind: AssetKind.foreignCurrency,
+    symbol: 'USD',
+    providerCode: 'alpha_vantage',
+    providerSymbol: 'USD/IDR',
+    exchangeCode: null,
+    currencyCode: 'IDR',
+    unit: 'usd',
+    lotSize: 1,
+    onlinePricingEnabled: true,
+    createdAt: DateTime.utc(2026, 7, 23),
+    updatedAt: DateTime.utc(2026, 7, 23),
     deletedAt: null,
     version: 1,
     deviceId: 'test-device',

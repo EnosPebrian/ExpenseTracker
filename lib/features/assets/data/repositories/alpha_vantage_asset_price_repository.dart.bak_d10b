@@ -116,101 +116,6 @@ class AlphaVantageAssetPriceRepository implements AssetPriceRepository {
   }
 
   @override
-  Future<MarketQuote> fetchForeignExchangeRate({
-    required String fromCurrency,
-    required String toCurrency,
-  }) async {
-    final normalizedFrom = _normalizeCurrencyCode(
-      fromCurrency,
-      argumentName: 'fromCurrency',
-    );
-
-    final normalizedTo = _normalizeCurrencyCode(
-      toCurrency,
-      argumentName: 'toCurrency',
-    );
-
-    if (normalizedFrom == normalizedTo) {
-      throw ArgumentError.value(
-        '$normalizedFrom/$normalizedTo',
-        'currencyPair',
-        'The source and target currencies must be different.',
-      );
-    }
-
-    final data = await _query({
-      'function': 'CURRENCY_EXCHANGE_RATE',
-      'from_currency': normalizedFrom,
-      'to_currency': normalizedTo,
-    });
-
-    final exchangeRateContainer = _asStringMap(
-      data['Realtime Currency Exchange Rate'],
-    );
-
-    if (exchangeRateContainer == null || exchangeRateContainer.isEmpty) {
-      throw const AssetPriceException(
-        'The exchange-rate response did not contain the expected data.',
-      );
-    }
-
-    final responseFrom = exchangeRateContainer['1. From_Currency Code']
-        ?.toString()
-        .trim()
-        .toUpperCase();
-
-    if (responseFrom != null &&
-        responseFrom.isNotEmpty &&
-        responseFrom != normalizedFrom) {
-      throw AssetPriceException(
-        'The exchange-rate response returned source currency '
-        '$responseFrom instead of $normalizedFrom.',
-      );
-    }
-
-    final responseTo = exchangeRateContainer['3. To_Currency Code']
-        ?.toString()
-        .trim()
-        .toUpperCase();
-
-    if (responseTo != null &&
-        responseTo.isNotEmpty &&
-        responseTo != normalizedTo) {
-      throw AssetPriceException(
-        'The exchange-rate response returned target currency '
-        '$responseTo instead of $normalizedTo.',
-      );
-    }
-
-    final exchangeRate = _requiredDouble(
-      exchangeRateContainer['5. Exchange Rate'],
-      fieldName: '$normalizedFrom to $normalizedTo exchange rate',
-    );
-
-    if (exchangeRate <= 0) {
-      throw AssetPriceException(
-        'The $normalizedFrom to $normalizedTo exchange rate '
-        'was not positive.',
-      );
-    }
-
-    final minorUnitScale = _minorUnitScaleForCurrency(normalizedTo);
-
-    return MarketQuote(
-      symbol: '$normalizedFrom/$normalizedTo',
-      priceMinor: (exchangeRate * minorUnitScale).round(),
-      minorUnitScale: minorUnitScale,
-      currencyCode: normalizedTo,
-      unit: normalizedFrom.toLowerCase(),
-      quotedAt:
-          _parseDate(exchangeRateContainer['6. Last Refreshed']) ??
-          DateTime.now().toUtc(),
-      source: 'Alpha Vantage FX',
-      isDelayed: false,
-    );
-  }
-
-  @override
   Future<List<AssetSymbolMatch>> searchStockSymbols(String keywords) async {
     final normalizedKeywords = keywords.trim();
 
@@ -282,12 +187,26 @@ class AlphaVantageAssetPriceRepository implements AssetPriceRepository {
       );
     }
 
-    final usdToIdrQuote = await fetchForeignExchangeRate(
-      fromCurrency: 'USD',
-      toCurrency: 'IDR',
+    final exchangeData = await _query({
+      'function': 'CURRENCY_EXCHANGE_RATE',
+      'from_currency': 'USD',
+      'to_currency': 'IDR',
+    });
+
+    final exchangeRateContainer = _asStringMap(
+      exchangeData['Realtime Currency Exchange Rate'],
     );
 
-    final usdToIdr = usdToIdrQuote.price;
+    if (exchangeRateContainer == null) {
+      throw const AssetPriceException(
+        'The exchange-rate response did not contain the expected data.',
+      );
+    }
+
+    final usdToIdr = _requiredDouble(
+      exchangeRateContainer['5. Exchange Rate'],
+      fieldName: 'USD to IDR exchange rate',
+    );
 
     if (usdToIdr <= 0) {
       throw const AssetPriceException(
@@ -298,7 +217,10 @@ class AlphaVantageAssetPriceRepository implements AssetPriceRepository {
     final idrPerGram = (goldUsdPerTroyOunce * usdToIdr / _gramsPerTroyOunce)
         .round();
 
-    final quotedAt = _extractDate(goldData) ?? usdToIdrQuote.quotedAt;
+    final quotedAt =
+        _extractDate(goldData) ??
+        _parseDate(exchangeRateContainer['6. Last Refreshed']) ??
+        DateTime.now().toUtc();
 
     return MarketQuote(
       symbol: 'XAU',
@@ -458,27 +380,6 @@ class AlphaVantageAssetPriceRepository implements AssetPriceRepository {
     }
   }
 
-  String _normalizeCurrencyCode(String value, {required String argumentName}) {
-    final normalized = value.trim().toUpperCase();
-
-    if (!RegExp(r'^[A-Z]{3}$').hasMatch(normalized)) {
-      throw ArgumentError.value(
-        value,
-        argumentName,
-        'A three-letter currency code is required.',
-      );
-    }
-
-    return normalized;
-  }
-
-  int _minorUnitScaleForCurrency(String currencyCode) {
-    return switch (currencyCode.trim().toUpperCase()) {
-      'IDR' || 'JPY' || 'KRW' => 1,
-      _ => 100,
-    };
-  }
-
   String _normalizeKey(String value) {
     return value.toLowerCase().replaceAll(RegExp('[^a-z0-9]'), '');
   }
@@ -512,34 +413,7 @@ class AlphaVantageAssetPriceRepository implements AssetPriceRepository {
       return null;
     }
 
-    final parsed = DateTime.tryParse(text);
-
-    if (parsed == null) {
-      return null;
-    }
-
-    final hasExplicitTimeZone = RegExp(
-      r'(?:Z|[+-]\d{2}:?\d{2})$',
-      caseSensitive: false,
-    ).hasMatch(text);
-
-    if (hasExplicitTimeZone) {
-      return parsed.toUtc();
-    }
-
-    // Alpha Vantage commonly returns provider timestamps without an explicit
-    // UTC suffix. Interpret those values as UTC instead of the device timezone
-    // so cached quote timestamps remain deterministic across environments.
-    return DateTime.utc(
-      parsed.year,
-      parsed.month,
-      parsed.day,
-      parsed.hour,
-      parsed.minute,
-      parsed.second,
-      parsed.millisecond,
-      parsed.microsecond,
-    );
+    return DateTime.tryParse(text)?.toUtc();
   }
 
   void close() {

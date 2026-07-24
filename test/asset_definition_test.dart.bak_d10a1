@@ -96,62 +96,6 @@ void main() {
       expect(errors, contains('Lot size must be greater than zero.'));
     });
   });
-  test('foreign currency mapping preserves currency identity', () {
-    final definition = _usdDefinition();
-
-    final restored = AssetDefinition.fromRecord(definition.toRecord());
-
-    expect(restored.id, 'asset-usd');
-    expect(restored.displayName, 'US Dollar Cash');
-    expect(restored.kind, AssetKind.foreignCurrency);
-    expect(restored.symbol, 'USD');
-    expect(restored.providerCode, 'ALPHA_VANTAGE');
-    expect(restored.providerSymbol, 'USD/IDR');
-    expect(restored.currencyCode, 'IDR');
-    expect(restored.unit, 'usd');
-    expect(restored.lotSize, 1);
-    expect(restored.onlinePricingEnabled, isTrue);
-
-    expect(restored.marketPriceKey, 'USD');
-    expect(restored.quoteSymbol, 'USD/IDR');
-    expect(restored.validate(), isEmpty);
-  });
-  test('foreign currency validation requires a symbol', () {
-    final definition = _usdDefinition().copyWith(symbol: null);
-
-    expect(
-      definition.validate(),
-      contains('A three-letter foreign-currency symbol is required.'),
-    );
-  });
-  test('foreign currency validation enforces unit and provider pair', () {
-    final wrongUnit = _usdDefinition().copyWith(unit: 'currency');
-
-    expect(
-      wrongUnit.validate(),
-      contains('Foreign-currency unit must be usd.'),
-    );
-
-    final wrongPair = _usdDefinition().copyWith(providerSymbol: 'USD/USD');
-
-    expect(
-      wrongPair.validate(),
-      contains('Foreign-currency provider symbol must be USD/IDR.'),
-    );
-
-    final sameCurrency = _usdDefinition().copyWith(
-      currencyCode: 'USD',
-      providerSymbol: 'USD/USD',
-    );
-
-    expect(
-      sameCurrency.validate(),
-      contains(
-        'Foreign-currency source and valuation currencies '
-        'must be different.',
-      ),
-    );
-  });
 }
 
 AssetDefinition _stockDefinition() {
@@ -191,28 +135,6 @@ AssetDefinition _goldDefinition() {
     onlinePricingEnabled: true,
     createdAt: DateTime.utc(2026, 7, 21),
     updatedAt: DateTime.utc(2026, 7, 21),
-    deletedAt: null,
-    version: 1,
-    deviceId: 'test-device',
-    syncStatus: 'local_only',
-  );
-}
-
-AssetDefinition _usdDefinition() {
-  return AssetDefinition(
-    id: 'asset-usd',
-    displayName: 'US Dollar Cash',
-    kind: AssetKind.foreignCurrency,
-    symbol: 'usd',
-    providerCode: 'alpha_vantage',
-    providerSymbol: 'usd/idr',
-    exchangeCode: null,
-    currencyCode: 'idr',
-    unit: 'USD',
-    lotSize: 1,
-    onlinePricingEnabled: true,
-    createdAt: DateTime.utc(2026, 7, 23),
-    updatedAt: DateTime.utc(2026, 7, 23),
     deletedAt: null,
     version: 1,
     deviceId: 'test-device',

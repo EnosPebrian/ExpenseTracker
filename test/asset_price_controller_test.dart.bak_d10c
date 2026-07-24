@@ -357,135 +357,6 @@ void main() {
     expect(reloadedController.prices.single.roundedPrice, 9500);
     expect(reloadedController.prices.single.isManual, isFalse);
   });
-
-  test('online foreign-currency refresh saves USD to IDR rate', () async {
-    final testStore = await _TestStore.create();
-
-    addTearDown(testStore.dispose);
-
-    final repository = _FakePriceRepository();
-
-    final controller = AssetPriceController(
-      store: testStore.store,
-      repository: repository,
-    );
-
-    addTearDown(controller.dispose);
-
-    final holding = _foreignCurrencyHolding();
-
-    expect(controller.canRefreshHolding(holding), isTrue);
-
-    await controller.refreshHolding(holding);
-
-    expect(repository.requestedFromCurrency, 'USD');
-    expect(repository.requestedToCurrency, 'IDR');
-    expect(controller.error, isNull);
-    expect(controller.prices, hasLength(1));
-
-    final price = controller.prices.single;
-
-    expect(price.assetKey, 'USD');
-    expect(price.symbol, 'USD/IDR');
-    expect(price.roundedPrice, 16000);
-    expect(price.currencyCode, 'IDR');
-    expect(price.unit, 'usd');
-    expect(price.isManual, isFalse);
-  });
-  test('online foreign-currency refresh supports a custom currency', () async {
-    final testStore = await _TestStore.create();
-
-    addTearDown(testStore.dispose);
-
-    final repository = _FakePriceRepository();
-
-    final controller = AssetPriceController(
-      store: testStore.store,
-      repository: repository,
-    );
-
-    addTearDown(controller.dispose);
-
-    final holding = _foreignCurrencyHolding(
-      symbol: 'EUR',
-      displayName: 'Euro Cash',
-    );
-
-    await controller.refreshHolding(holding);
-
-    expect(repository.requestedFromCurrency, 'EUR');
-    expect(repository.requestedToCurrency, 'IDR');
-    expect(controller.error, isNull);
-
-    final price = controller.prices.single;
-
-    expect(price.assetKey, 'EUR');
-    expect(price.symbol, 'EUR/IDR');
-    expect(price.currencyCode, 'IDR');
-    expect(price.unit, 'eur');
-  });
-  test('foreign-currency quote for a different pair is rejected', () async {
-    final testStore = await _TestStore.create();
-
-    addTearDown(testStore.dispose);
-
-    final repository = _FakePriceRepository(
-      foreignExchangeQuoteOverride: MarketQuote(
-        symbol: 'SGD/IDR',
-        priceMinor: 16000,
-        minorUnitScale: 1,
-        currencyCode: 'IDR',
-        unit: 'usd',
-        quotedAt: DateTime.utc(2026, 7, 23),
-        source: 'Fake FX provider',
-      ),
-    );
-
-    final controller = AssetPriceController(
-      store: testStore.store,
-      repository: repository,
-    );
-
-    addTearDown(controller.dispose);
-
-    await controller.refreshHolding(_foreignCurrencyHolding());
-
-    expect(controller.prices, isEmpty);
-    expect(controller.error, contains('Symbol mismatch'));
-    expect(controller.error, contains('expected USD/IDR'));
-    expect(controller.error, contains('received SGD/IDR'));
-  });
-  test(
-    'invalid foreign-currency provider pair is rejected before requesting FX',
-    () async {
-      final testStore = await _TestStore.create();
-
-      addTearDown(testStore.dispose);
-
-      final repository = _FakePriceRepository();
-
-      final controller = AssetPriceController(
-        store: testStore.store,
-        repository: repository,
-      );
-
-      addTearDown(controller.dispose);
-
-      final holding = _foreignCurrencyHolding(providerSymbol: 'USD/USD');
-
-      expect(controller.canRefreshHolding(holding), isFalse);
-
-      await controller.refreshHolding(holding);
-
-      expect(repository.requestedFromCurrency, isNull);
-      expect(repository.requestedToCurrency, isNull);
-      expect(controller.prices, isEmpty);
-      expect(
-        controller.error,
-        'Foreign-currency provider pair must be USD/IDR.',
-      );
-    },
-  );
   test('online gold refresh saves IDR price per gram', () async {
     final testStore = await _TestStore.create();
 
@@ -560,41 +431,6 @@ AssetHolding _legacyStockHolding() {
   );
 }
 
-AssetHolding _foreignCurrencyHolding({
-  String symbol = 'USD',
-  String currencyCode = 'IDR',
-  String? providerSymbol,
-  String? unit,
-  String? displayName,
-}) {
-  final normalizedSymbol = symbol.trim().toUpperCase();
-  final normalizedCurrency = currencyCode.trim().toUpperCase();
-
-  return AssetHolding(
-    assetDefinitionId: 'asset-${normalizedSymbol.toLowerCase()}',
-    providerCode: 'ALPHA_VANTAGE',
-    providerSymbol: providerSymbol ?? '$normalizedSymbol/$normalizedCurrency',
-    currencyCode: normalizedCurrency,
-    onlinePricingEnabled: true,
-    assetKey: normalizedSymbol,
-    name: displayName ?? '$normalizedSymbol Cash',
-    symbol: normalizedSymbol,
-    kind: AssetKind.foreignCurrency,
-    unit: unit ?? normalizedSymbol.toLowerCase(),
-    quantity: 1000,
-    lotSize: 1,
-    costBasis: 16000000,
-    averageCost: 16000,
-    currentPrice: null,
-    marketValue: 16000000,
-    realizedGain: 0,
-    priceSource: null,
-    priceQuotedAt: null,
-    isPriceDelayed: false,
-    isManualPrice: false,
-  );
-}
-
 AssetHolding _goldHolding() {
   return const AssetHolding(
     assetKey: 'Gold Holdings',
@@ -617,13 +453,9 @@ AssetHolding _goldHolding() {
 }
 
 class _FakePriceRepository implements AssetPriceRepository {
-  _FakePriceRepository({
-    this.stockQuoteOverride,
-    this.foreignExchangeQuoteOverride,
-  });
+  _FakePriceRepository({this.stockQuoteOverride});
 
   final MarketQuote? stockQuoteOverride;
-  final MarketQuote? foreignExchangeQuoteOverride;
 
   String? requestedStockSymbol;
   String? requestedCurrencyCode;
@@ -661,16 +493,15 @@ class _FakePriceRepository implements AssetPriceRepository {
     requestedFromCurrency = fromCurrency.trim().toUpperCase();
     requestedToCurrency = toCurrency.trim().toUpperCase();
 
-    return foreignExchangeQuoteOverride ??
-        MarketQuote(
-          symbol: '$requestedFromCurrency/$requestedToCurrency',
-          priceMinor: requestedToCurrency == 'IDR' ? 16000 : 1600000,
-          minorUnitScale: requestedToCurrency == 'IDR' ? 1 : 100,
-          currencyCode: requestedToCurrency!,
-          unit: requestedFromCurrency!.toLowerCase(),
-          quotedAt: DateTime.utc(2026, 7, 23),
-          source: 'Fake FX provider',
-        );
+    return MarketQuote(
+      symbol: '$requestedFromCurrency/$requestedToCurrency',
+      priceMinor: 16000,
+      minorUnitScale: 1,
+      currencyCode: requestedToCurrency!,
+      unit: requestedFromCurrency!.toLowerCase(),
+      quotedAt: DateTime.utc(2026, 7, 23),
+      source: 'Fake FX provider',
+    );
   }
 
   @override

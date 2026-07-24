@@ -7,23 +7,17 @@ import 'package:pilgrim_tracker/features/assets/domain/repositories/asset_defini
 
 void main() {
   group('AssetDefinitionController', () {
-    test('default definitions include core assets and initial currencies', () {
+    test('default definitions preserve the current asset groups', () {
       final definitions = buildDefaultAssetDefinitions(
         timestamp: DateTime.utc(2026, 7, 22),
         deviceId: 'test-device',
       );
 
-      expect(definitions, hasLength(5));
+      expect(definitions, hasLength(3));
 
       expect(
         definitions.map((definition) => definition.displayName),
-        containsAll([
-          'Gold Holdings',
-          'Bitcoin Wallet',
-          'Inventory',
-          'US Dollar Cash',
-          'Singapore Dollar Cash',
-        ]),
+        containsAll(['Gold Holdings', 'Bitcoin Wallet', 'Inventory']),
       );
 
       final gold = definitions.firstWhere(
@@ -34,45 +28,8 @@ void main() {
       expect(gold.currencyCode, 'IDR');
       expect(gold.onlinePricingEnabled, isTrue);
       expect(gold.providerSymbol, 'XAU');
-
-      final foreignCurrencies = definitions
-          .where((definition) => definition.kind == AssetKind.foreignCurrency)
-          .toList();
-
-      expect(foreignCurrencies, hasLength(2));
-
-      final currenciesBySymbol = {
-        for (final definition in foreignCurrencies)
-          definition.normalizedSymbol!: definition,
-      };
-
-      final usd = currenciesBySymbol['USD']!;
-      final sgd = currenciesBySymbol['SGD']!;
-
-      expect(usd.id, 'asset-usd');
-      expect(usd.displayName, 'US Dollar Cash');
-      expect(usd.normalizedProviderCode, 'ALPHA_VANTAGE');
-      expect(usd.providerSymbol, 'USD/IDR');
-      expect(usd.currencyCode, 'IDR');
-      expect(usd.unit, 'usd');
-      expect(usd.lotSize, 1);
-      expect(usd.onlinePricingEnabled, isTrue);
-      expect(usd.marketPriceKey, 'USD');
-      expect(usd.quoteSymbol, 'USD/IDR');
-      expect(usd.validate(), isEmpty);
-
-      expect(sgd.id, 'asset-sgd');
-      expect(sgd.displayName, 'Singapore Dollar Cash');
-      expect(sgd.normalizedProviderCode, 'ALPHA_VANTAGE');
-      expect(sgd.providerSymbol, 'SGD/IDR');
-      expect(sgd.currencyCode, 'IDR');
-      expect(sgd.unit, 'sgd');
-      expect(sgd.lotSize, 1);
-      expect(sgd.onlinePricingEnabled, isTrue);
-      expect(sgd.marketPriceKey, 'SGD');
-      expect(sgd.quoteSymbol, 'SGD/IDR');
-      expect(sgd.validate(), isEmpty);
     });
+
     test('initialize ensures seeds and loads sorted definitions', () async {
       final repository = _FakeAssetDefinitionRepository();
 
@@ -90,14 +47,12 @@ void main() {
 
       expect(controller.isLoading, isFalse);
       expect(controller.error, isNull);
-      expect(controller.definitions, hasLength(5));
+      expect(controller.definitions, hasLength(3));
 
       expect(controller.names, [
         'Bitcoin Wallet',
         'Gold Holdings',
         'Inventory',
-        'Singapore Dollar Cash',
-        'US Dollar Cash',
       ]);
 
       expect(repository.ensureSeedsCallCount, 1);

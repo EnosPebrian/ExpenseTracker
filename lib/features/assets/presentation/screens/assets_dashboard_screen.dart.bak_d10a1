@@ -28,7 +28,8 @@ class AssetsDashboardScreen extends StatelessWidget {
           const PageHeading(
             kicker: 'PORTFOLIO',
             title: 'Assets',
-            subtitle: 'Track quantities, market prices, value, and returns.',
+            subtitle:
+                'Track quantities, lots, market prices, value, and returns.',
           ),
           const SizedBox(height: 14),
           _PriceToolbar(
@@ -56,7 +57,7 @@ class AssetsDashboardScreen extends StatelessWidget {
                     : 1,
                 mainAxisSpacing: 14,
                 crossAxisSpacing: 14,
-                childAspectRatio: constraints.maxWidth > 1050 ? 1.75 : 2.2,
+                childAspectRatio: constraints.maxWidth > 1050 ? 2.05 : 2.2,
                 children: [
                   MetricCard(
                     label: 'Portfolio value',
@@ -381,35 +382,30 @@ class _HoldingCard extends StatelessWidget {
           children: [
             _HoldingMetric(
               label: 'Average cost',
-              value: _unitCurrencyForHolding(holding.averageCost, holding),
+              value: _unitCurrency(holding.averageCost, holding.unit),
             ),
             _HoldingMetric(
               label: 'Current price',
               value: holding.currentPrice == null
                   ? 'Not set'
-                  : _unitCurrencyForHolding(holding.currentPrice!, holding),
+                  : _unitCurrency(holding.currentPrice!, holding.unit),
             ),
             _HoldingMetric(
               label: 'Cost basis',
-              value: _currencyForHolding(holding.costBasis, holding),
+              value: _currency(holding.costBasis),
             ),
             _HoldingMetric(
               label: 'Market value',
-              value: _currencyForHolding(holding.marketValue, holding),
+              value: _currency(holding.marketValue),
             ),
             _HoldingMetric(
               label: 'Unrealized gain',
-              value: _signedCurrencyForHolding(holding.unrealizedGain, holding),
+              value: _signedCurrency(holding.unrealizedGain),
               emphasize: true,
             ),
             _HoldingMetric(
               label: 'Return',
               value: _percentage(holding.unrealizedReturn),
-              emphasize: true,
-            ),
-            _HoldingMetric(
-              label: 'Realized gain',
-              value: _signedCurrencyForHolding(holding.realizedGain, holding),
               emphasize: true,
             ),
           ],
@@ -435,7 +431,6 @@ class _AssetIcon extends StatelessWidget {
       AssetKind.gold => Icons.diamond_outlined,
       AssetKind.stock => Icons.candlestick_chart_outlined,
       AssetKind.crypto => Icons.currency_bitcoin_rounded,
-      AssetKind.foreignCurrency => Icons.currency_exchange_rounded,
       AssetKind.inventory => Icons.inventory_2_outlined,
       AssetKind.other => Icons.account_balance_wallet_outlined,
     };
@@ -516,9 +511,9 @@ class _EmptyPortfolioCard extends StatelessWidget {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'Record a gold, stock, foreign currency, crypto, or '
-                  'inventory purchase from Asset Conversion. Your quantity '
-                  'and cost basis will appear here automatically.',
+                  'Record a gold, stock, crypto, or inventory purchase '
+                  'from Asset Conversion. Your quantity and cost basis '
+                  'will appear here automatically.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: muted, fontSize: 11, height: 1.5),
                 ),
@@ -552,8 +547,8 @@ Future<void> _showManualPriceDialog(
           inputFormatters: const [ThousandsFormatter()],
           decoration: InputDecoration(
             labelText: 'Current price',
-            prefixText: _currencyPrefix(holding.normalizedCurrencyCode),
-            suffixText: '/ ${_holdingUnitLabel(holding)}',
+            prefixText: 'Rp ',
+            suffixText: '/ ${holding.unit}',
             helperText: 'This price will be cached locally.',
           ),
         ),
@@ -606,19 +601,7 @@ String _holdingQuantity({required AssetHolding h24}) {
         '${_quantity(h24.quantity)} shares';
   }
 
-  if (h24.kind == AssetKind.foreignCurrency) {
-    return '${_holdingUnitLabel(h24)} ${_foreignQuantity(h24.quantity)}';
-  }
-
-  return '${_quantity(h24.quantity)} ${_holdingUnitLabel(h24)}';
-}
-
-String _holdingUnitLabel(AssetHolding holding) {
-  if (holding.kind == AssetKind.foreignCurrency) {
-    return holding.normalizedSymbol ?? holding.normalizedUnit.toUpperCase();
-  }
-
-  return holding.unit;
+  return '${_quantity(h24.quantity)} ${h24.unit}';
 }
 
 String _priceDescription(AssetHolding holding) {
@@ -654,23 +637,8 @@ String _quantity(double value) {
       .replaceFirst(RegExp(r'\.$'), '');
 }
 
-String _foreignQuantity(double value) {
-  final normalized = value.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
-  final trimmed = normalized.endsWith('.')
-      ? normalized.substring(0, normalized.length - 1)
-      : normalized;
-  final parts = trimmed.split('.');
-  final integer = parts.first;
-  final grouped = integer.replaceAllMapped(
-    RegExp(r'(?<=\d)(?=(\d{3})+$)'),
-    (_) => ',',
-  );
-
-  return parts.length == 1 ? grouped : '$grouped.${parts[1]}';
-}
-
 String _currency(int value) {
-  return _currencyForCode(value, 'IDR');
+  return 'Rp ${money(value.abs())}';
 }
 
 String _signedCurrency(int value) {
@@ -683,38 +651,8 @@ String _signedCurrency(int value) {
   return '$prefix${_currency(value)}';
 }
 
-String _currencyForHolding(int value, AssetHolding holding) {
-  return _currencyForCode(value, holding.normalizedCurrencyCode);
-}
-
-String _signedCurrencyForHolding(int value, AssetHolding holding) {
-  final prefix = value > 0
-      ? '+'
-      : value < 0
-      ? '-'
-      : '';
-
-  return '$prefix${_currencyForHolding(value, holding)}';
-}
-
-String _unitCurrencyForHolding(int value, AssetHolding holding) {
-  return '${_currencyForHolding(value, holding)}'
-      ' / ${_holdingUnitLabel(holding)}';
-}
-
-String _currencyForCode(int value, String currencyCode) {
-  return '${_currencyPrefix(currencyCode)}'
-      '${money(value.abs())}';
-}
-
-String _currencyPrefix(String currencyCode) {
-  final normalized = currencyCode.trim().toUpperCase();
-
-  if (normalized == 'IDR') {
-    return 'Rp ';
-  }
-
-  return '${normalized.isEmpty ? 'IDR' : normalized} ';
+String _unitCurrency(int value, String unit) {
+  return '${_currency(value)} / $unit';
 }
 
 String _percentage(double value) {

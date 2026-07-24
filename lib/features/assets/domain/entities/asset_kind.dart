@@ -1,1 +1,1 @@
-enum AssetKind { gold, stock, crypto, inventory, other }
+enum AssetKind { gold, stock, crypto, foreignCurrency, inventory, other }

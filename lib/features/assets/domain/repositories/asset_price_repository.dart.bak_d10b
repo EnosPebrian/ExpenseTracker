@@ -14,23 +14,6 @@ abstract interface class AssetPriceRepository {
     required int minorUnitScale,
   });
 
-  /// Fetches the exchange rate from one currency into another currency.
-  ///
-  /// The returned quote represents the amount of [toCurrency] required for
-  /// one unit of [fromCurrency].
-  ///
-  /// Example:
-  ///
-  /// - fromCurrency: USD
-  /// - toCurrency: IDR
-  /// - returned unit: usd
-  /// - returned currencyCode: IDR
-  /// - returned price: IDR per one USD
-  Future<MarketQuote> fetchForeignExchangeRate({
-    required String fromCurrency,
-    required String toCurrency,
-  });
-
   /// Fetches international gold spot price and converts it to IDR per gram.
   Future<MarketQuote> fetchGoldPriceInIdrPerGram();
 
