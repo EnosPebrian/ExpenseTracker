@@ -110,9 +110,19 @@ unitPrice
 assetName
 assetSymbol
 assetAction
+feeAmount
+feeTreatment
+relatedTransactionId
+relationType
 ```
 
 New records must not depend on title/account parsing.
+
+Asset trades using separate-expense fee treatment are coordinated in the
+transaction use-case layer. The repository persists the parent and its managed
+ordinary-expense child through one atomic change set. UI controllers never
+orchestrate the two writes, and generated children cannot be independently
+edited, duplicated, or deleted.
 
 ## 6. Assets feature
 
@@ -131,12 +141,33 @@ features/assets/
   domain/repositories/
     asset_price_repository.dart
   domain/services/
+    asset_numeric_policy.dart
     asset_portfolio_calculator.dart
+    asset_stock_lot_policy.dart
+    asset_trade_validator.dart
+  presentation/formatters/
+    asset_quantity_formatter.dart
   presentation/screens/
     asset_conversion_screen.dart
     assets_dashboard_screen.dart
   presentation/widgets/
 ```
+
+`AssetNumericPolicy` is the single pure-domain source for measurable asset
+precision, new/edit quantity validation, deterministic integer unit-price
+rounding, comparison tolerance, and near-zero normalization. Presentation uses
+`AssetQuantityFormatter`, which applies the same policy while grouping digits
+and trimming unnecessary zeroes. Historical over-precision `REAL` quantities
+remain readable and calculable; the stricter policy applies only when a user
+creates or edits an asset transaction.
+
+`AssetStockLotPolicy` is the pure definition-driven source for stock lot rules.
+Quantities continue to be shares; lots and odd-lot status are derived from the
+linked definition's `lotSize`. `AssetTradeValidator` coordinates that policy
+with chronological oversell validation. New and edited stock trades use the
+quantity available at the candidate date, excluding the original edit record.
+Historical odd-lot transactions remain readable, while cleanup sales may sell
+whole lots or remove the odd residue to leave a whole-lot or zero balance.
 
 Responsibilities:
 
@@ -188,7 +219,17 @@ export 'local_store_web.dart'
     if (dart.library.io) 'local_store_native.dart';
 ```
 
-Native uses versioned SQLite. Web exposes the same method surface but is currently in-memory.
+Native uses versioned SQLite (currently version 10). Web exposes the same method
+surface but is currently in-memory. Both stores provide all-or-nothing managed
+asset-fee parent/child changes.
+
+Asset execution references are optional immutable transaction snapshots.
+Presentation selects a manual or compatible cached quote explicitly; the asset
+controller validates identity and snapshot metadata, while the pure
+`AssetExecutionAnalysis` service calculates direction-aware differences.
+Portfolio, fee, financial-summary, and tithe accounting do not consume this
+analytical metadata. The latest-price cache remains mutable and is not price
+history.
 
 ## 10. Environment configuration
 
@@ -200,7 +241,7 @@ The key is for private/local development only. Public builds need a secure backe
 
 ## 11. Testing
 
-Current verified suite: 93 tests.
+Current verified suite: 297 tests.
 
 Required coverage includes transaction mapping, SQLite round trips, migrations, conversion controller/widget, provider parsing, quote cache, price controller, portfolio calculations, navigation/dashboard widgets, and financial summaries.
 
