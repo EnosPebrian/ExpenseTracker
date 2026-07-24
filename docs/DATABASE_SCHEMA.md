@@ -1,22 +1,18 @@
 # Pilgrim Tracker Database and Persistence Schema
 
-**Snapshot date:** 2026-07-21  
-**Native database version:** 5  
-**Native engine:** SQLite through `sqflite_common_ffi`  
+**Snapshot date:** 2026-07-24
+
+**Native database version:** 10
+
+**Native engine:** SQLite through `sqflite_common_ffi`
+
 **Web preview:** In-memory `LocalStore` fallback
 
 ## Migration policy
 
-Every schema change must:
-
-1. increment the database version
-2. update fresh-install `onCreate`
-3. add an `onUpgrade` branch
-4. preserve existing rows
-5. update record mapping
-6. expose equivalent native and web methods
-7. add migration or round-trip tests
-8. update this file and `PROGRESS.md`
+Every schema change must increment the database version, update fresh-install
+creation, provide a safe upgrade path, preserve existing rows, maintain native
+and web mapping behavior, add migration/round-trip tests, and update this file.
 
 ## Current tables
 
@@ -34,9 +30,19 @@ transaction_type TEXT NOT NULL
 quantity REAL
 unit TEXT
 unit_price INTEGER
+asset_definition_id TEXT
 asset_name TEXT
 asset_symbol TEXT
 asset_action TEXT
+fee_amount INTEGER NOT NULL DEFAULT 0
+fee_treatment TEXT NOT NULL DEFAULT 'none'
+related_transaction_id TEXT
+relation_type TEXT NOT NULL DEFAULT 'none'
+market_reference_unit_price INTEGER
+market_reference_currency_code TEXT
+market_reference_unit TEXT
+market_reference_source TEXT
+market_reference_quoted_at INTEGER
 created_at INTEGER NOT NULL
 updated_at INTEGER NOT NULL
 deleted_at INTEGER
@@ -45,89 +51,67 @@ device_id TEXT NOT NULL
 sync_status TEXT NOT NULL DEFAULT 'local_only'
 ```
 
-Indexes include:
+`amount` remains the gross IDR trade amount. Supported persisted fee treatments
+are `none`, `capitalizeIntoCostBasis`, `deductFromSaleProceeds`, and
+`recordAsSeparateExpense`. Legacy or unknown treatments safely map to `none`
+in the domain entity.
 
-```text
-idx_transactions_date
-idx_transactions_sync
-idx_transactions_project
-idx_transactions_asset(asset_name, asset_action)
-```
+Generated asset-fee expenses use `related_transaction_id` to reference their
+parent asset conversion and persist `relation_type = assetFeeExpense`. Legacy
+rows default to no relationship. The parent and managed child are written in a
+single repository change set and native SQLite transaction.
 
-### `books`
+Indexes include transaction date, sync status, project, asset snapshot, and
+`asset_definition_id` indexes. The managed-fee lookup uses the composite
+`related_transaction_id, relation_type` index.
 
-Transitional master-data table with UUID and sync metadata.
+The five nullable market-reference columns hold an immutable analytical
+snapshot selected explicitly for a parent asset conversion. The price is
+integer IDR per transaction unit; source values are `manual`, `cached_quote`,
+and the forward-compatible `unknown`. No calculated difference is persisted,
+and generated fee expenses keep these columns null.
 
-### `accounts`
+### `asset_definitions`
 
-Stores name and `account_type`, plus UUID and sync metadata. It does not yet persist a dedicated asset definition, lot size, currency, exchange, or provider configuration.
-
-### `categories`
-
-Stores name and category type, plus UUID and sync metadata.
-
-### `projects`
-
-Stores name and active status, plus UUID and sync metadata.
+Stores concrete asset identity, kind, display/market symbols, provider and
+exchange metadata, valuation currency, unit, lot size, online-pricing status,
+soft deletion, and sync/version metadata.
 
 ### `asset_market_prices`
 
-```text
-asset_key TEXT PRIMARY KEY
-symbol TEXT
-price_minor INTEGER NOT NULL
-minor_unit_scale INTEGER NOT NULL DEFAULT 1
-currency_code TEXT NOT NULL
-unit TEXT NOT NULL
-quoted_at INTEGER NOT NULL
-source TEXT NOT NULL
-is_delayed INTEGER NOT NULL DEFAULT 0
-is_manual INTEGER NOT NULL DEFAULT 0
-updated_at INTEGER NOT NULL
-```
+Stores the latest validated or manual price by asset key, including symbol,
+integer price and scale, currency, unit, quote time, source, delay/manual flags,
+and update time. This is a latest-value cache, not price history.
 
-This is a latest-value cache, not historical price storage.
+### Master-data tables
+
+`books`, `accounts`, `categories`, and `projects` retain UUID, version, soft
+deletion, and sync metadata.
 
 ## Version history
 
 - Version 1: initial transaction table
 - Version 2: `transactions.project_id`
 - Version 3: books, accounts, categories, and projects
-- Version 4: `asset_name`, `asset_action`, asset index
-- Version 5: `asset_symbol`, `asset_market_prices`
+- Version 4: asset name/action snapshots and asset index
+- Version 5: asset symbol snapshot and market-price cache
+- Version 6: concrete asset definitions
+- Version 7: `transactions.asset_definition_id`
+- Version 8: persisted `fee_amount` and `fee_treatment`
+- Version 9: managed transaction relation metadata and relation lookup index
+- Version 10: optional execution-reference price snapshot on transactions
 
 ## Web fallback
 
-`local_store_web.dart` currently uses static in-memory lists/maps and must maintain method parity with native storage. Browser reload may reset data.
+`local_store_web.dart` stores the same transaction record maps in memory, so fee,
+relation, and execution-reference fields round-trip through the shared entity mapping. Its managed
+fee change set snapshots and restores the record list on failure. Browser
+reload may reset this preview data.
 
-## Next recommended table
+## Deferred persistence
 
-```text
-asset_definitions
-  id TEXT PRIMARY KEY
-  account_id TEXT
-  display_name TEXT NOT NULL
-  asset_kind TEXT NOT NULL
-  symbol TEXT
-  exchange_code TEXT
-  currency_code TEXT NOT NULL
-  unit TEXT NOT NULL
-  lot_size INTEGER NOT NULL DEFAULT 1
-  online_pricing_enabled INTEGER NOT NULL DEFAULT 0
-  provider_code TEXT
-  provider_symbol TEXT
-  created_at INTEGER NOT NULL
-  updated_at INTEGER NOT NULL
-  deleted_at INTEGER
-  version INTEGER NOT NULL DEFAULT 1
-  device_id TEXT NOT NULL
-  sync_status TEXT NOT NULL
-```
-
-Future persisted additions:
-
-- fee amount and fee treatment
+- historical bid/ask spread and quote-history modeling
+- generalized precision policy
 - price history
-- ledger entries
-- transaction revisions
+- ledger entries and transaction revisions
 - synchronization queue

@@ -6,6 +6,7 @@ import '../../../../core/shared/widgets/metric_card.dart';
 import '../../../../core/shared/widgets/page_layout.dart';
 import '../../controllers/asset_price_controller.dart';
 import '../../domain/entities/asset_portfolio.dart';
+import '../formatters/asset_quantity_formatter.dart';
 
 class AssetsDashboardScreen extends StatelessWidget {
   const AssetsDashboardScreen({
@@ -601,16 +602,7 @@ Future<void> _showManualPriceDialog(
 }
 
 String _holdingQuantity({required AssetHolding h24}) {
-  if (h24.kind == AssetKind.stock) {
-    return '${h24.lots.toStringAsFixed(2)} lots · '
-        '${_quantity(h24.quantity)} shares';
-  }
-
-  if (h24.kind == AssetKind.foreignCurrency) {
-    return '${_holdingUnitLabel(h24)} ${_foreignQuantity(h24.quantity)}';
-  }
-
-  return '${_quantity(h24.quantity)} ${_holdingUnitLabel(h24)}';
+  return AssetQuantityFormatter.holding(h24);
 }
 
 String _holdingUnitLabel(AssetHolding holding) {
@@ -641,32 +633,6 @@ String _priceDescription(AssetHolding holding) {
   }
 
   return '$source · $mode price · updated ${_date(date)}';
-}
-
-String _quantity(double value) {
-  if (value == value.roundToDouble()) {
-    return value.toInt().toString();
-  }
-
-  return value
-      .toStringAsFixed(4)
-      .replaceFirst(RegExp(r'0+$'), '')
-      .replaceFirst(RegExp(r'\.$'), '');
-}
-
-String _foreignQuantity(double value) {
-  final normalized = value.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
-  final trimmed = normalized.endsWith('.')
-      ? normalized.substring(0, normalized.length - 1)
-      : normalized;
-  final parts = trimmed.split('.');
-  final integer = parts.first;
-  final grouped = integer.replaceAllMapped(
-    RegExp(r'(?<=\d)(?=(\d{3})+$)'),
-    (_) => ',',
-  );
-
-  return parts.length == 1 ? grouped : '$grouped.${parts[1]}';
 }
 
 String _currency(int value) {

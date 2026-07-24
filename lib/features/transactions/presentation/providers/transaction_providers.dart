@@ -5,14 +5,26 @@ import '../controllers/transaction_controller.dart';
 
 /// Transitional dependency factory until Riverpod is introduced.
 class TransactionProviders {
-  static TransactionController controller(LocalStore store) {
+  static TransactionController controller(
+    LocalStore store, {
+    AssetDefinitionResolver? assetDefinitionResolver,
+  }) {
     final repository = LocalTransactionRepository(store);
     return TransactionController(
-      create: CreateTransaction(repository),
-      update: UpdateTransaction(repository),
+      create: CreateTransaction(
+        repository,
+        assetDefinitionResolver: assetDefinitionResolver,
+      ),
+      update: UpdateTransaction(
+        repository,
+        assetDefinitionResolver: assetDefinitionResolver,
+      ),
       delete: DeleteTransaction(repository),
       get: GetTransactions(repository),
-      duplicate: DuplicateTransaction(repository),
+      duplicate: DuplicateTransaction(
+        repository,
+        assetDefinitionResolver: assetDefinitionResolver,
+      ),
     );
   }
 }

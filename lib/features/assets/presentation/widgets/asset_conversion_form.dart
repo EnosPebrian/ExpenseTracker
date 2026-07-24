@@ -5,6 +5,10 @@ import '../../../../core/shared/widgets/page_layout.dart';
 import '../../../../core/shared/widgets/searchable_dropdown.dart';
 import '../../controllers/asset_conversion_controller.dart';
 import '../../domain/entities/asset_kind.dart';
+import 'asset_fee_fields.dart';
+import 'asset_execution_reference_fields.dart';
+import 'asset_sale_availability.dart';
+import 'asset_stock_lot_helper.dart';
 
 class AssetConversionForm extends StatelessWidget {
   const AssetConversionForm({
@@ -78,14 +82,27 @@ class AssetConversionForm extends StatelessWidget {
             const SizedBox(height: 12),
             TextField(
               controller: controller.quantityController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+              keyboardType: TextInputType.numberWithOptions(
+                decimal: controller.supportsDecimalQuantity,
               ),
               decoration: InputDecoration(
                 labelText: controller.quantityLabel,
                 suffixText: controller.unit,
+                helperText: controller.quantityPrecisionHint,
+                errorText:
+                    controller.quantityValidationMessage ??
+                    controller.lotValidationMessage,
               ),
             ),
+            if (controller.selectedAssetDefinition.kind == AssetKind.stock &&
+                controller.selectedAssetDefinition.lotSize > 1) ...[
+              const SizedBox(height: 8),
+              AssetStockLotHelper(controller: controller),
+            ],
+            if (controller.sellAsset) ...[
+              const SizedBox(height: 8),
+              AssetSaleAvailability(controller: controller),
+            ],
             if (controller.isForeignCurrency) ...[
               const SizedBox(height: 8),
               Text(
@@ -98,24 +115,9 @@ class AssetConversionForm extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: ValueKey(controller.feeTreatment),
-              initialValue: controller.feeTreatment,
-              decoration: const InputDecoration(labelText: 'Fee treatment'),
-              items: AssetConversionController.feeTreatments
-                  .map(
-                    (treatment) => DropdownMenuItem<String>(
-                      value: treatment,
-                      child: Text(treatment),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  controller.setFeeTreatment(value);
-                }
-              },
-            ),
+            AssetFeeFields(controller: controller),
+            const SizedBox(height: 12),
+            AssetExecutionReferenceFields(controller: controller),
             const SizedBox(height: 12),
 
             _ConversionDateTimeFields(controller: controller),
@@ -172,7 +174,9 @@ class _SelectedAssetCard extends StatelessWidget {
       if (definition.normalizedExchangeCode != null)
         definition.normalizedExchangeCode!,
       if (definition.kind == AssetKind.stock)
-        '${definition.lotSize} shares / lot',
+        definition.lotSize == 1
+            ? 'Whole shares'
+            : '1 lot = ${definition.lotSize} shares',
     ];
 
     final supportsCurrency = controller.supportsSelectedCurrency;

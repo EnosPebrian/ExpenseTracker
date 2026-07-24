@@ -6,18 +6,23 @@ import '../../controllers/asset_conversion_controller.dart';
 import '../widgets/asset_conversion_form.dart';
 import '../widgets/conversion_summary_card.dart';
 import '../../domain/entities/asset_definition.dart';
+import '../../domain/entities/asset_market_price.dart';
 
 class AssetConversionScreen extends StatefulWidget {
   const AssetConversionScreen({
     super.key,
     required this.accounts,
     required this.assets,
+    this.marketPrices = const [],
     required this.onSave,
+    this.existingTransactionsProvider,
   });
 
   final List<String> accounts;
   final List<AssetDefinition> assets;
+  final List<AssetMarketPrice> marketPrices;
   final Future<void> Function(Transaction) onSave;
+  final List<Transaction> Function()? existingTransactionsProvider;
 
   @override
   State<AssetConversionScreen> createState() => _AssetConversionScreenState();
@@ -34,6 +39,8 @@ class _AssetConversionScreenState extends State<AssetConversionScreen> {
     controller = AssetConversionController(
       accounts: widget.accounts,
       assets: widget.assets,
+      marketPrices: widget.marketPrices,
+      existingTransactionsProvider: widget.existingTransactionsProvider,
     );
   }
 

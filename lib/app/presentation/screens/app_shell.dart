@@ -70,7 +70,10 @@ class _AppShellState extends State<AppShell> {
     repository: assetPriceRepository,
   );
 
-  late final transactionController = TransactionProviders.controller(store);
+  late final transactionController = TransactionProviders.controller(
+    store,
+    assetDefinitionResolver: assetDefinitionController.definitionById,
+  );
   late final masterDataController = MasterDataController(
     persist:
         ({
@@ -208,6 +211,7 @@ class _AppShellState extends State<AppShell> {
       projects: masterDataController.projects,
       assets: assetNames,
       assetDefinitions: assetDefinitionController.definitions,
+      assetMarketPrices: assetPriceController.prices,
       defaultProject: 'Life',
       defaultAccount: accounts.isEmpty ? null : accounts.first,
       defaultExpenseCategory: expenses.isEmpty ? null : expenses.first,
@@ -222,6 +226,8 @@ class _AppShellState extends State<AppShell> {
       incomeCategories: masterDataController.incomeCategories,
       projects: masterDataController.projects,
       assets: assetNames,
+      assetDefinitions: assetDefinitionController.definitions,
+      assetMarketPrices: assetPriceController.prices,
     );
   }
 
@@ -327,7 +333,9 @@ class _AppShellState extends State<AppShell> {
       AssetConversionScreen(
         accounts: masterDataController.accounts,
         assets: assetDefinitionController.definitions,
+        marketPrices: assetPriceController.prices,
         onSave: addTransaction,
+        existingTransactionsProvider: () => transactionController.transactions,
       ),
       ProjectsPage(
         projects: masterDataController.projects,

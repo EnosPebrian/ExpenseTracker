@@ -26,6 +26,7 @@ const defaultExpenseCategories = <String>[
   'Hilang Cash',
   'Adjustment',
   'Kerugian',
+  'Asset Fees',
 ];
 
 const defaultIncomeCategories = <String>[

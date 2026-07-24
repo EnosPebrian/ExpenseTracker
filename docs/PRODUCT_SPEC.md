@@ -60,7 +60,7 @@ Assets is the portfolio workspace. It supports:
 
 - gold quantity in grams
 - stock quantity in shares
-- stock lots using 100 shares per lot
+- stock lots using each concrete stock definition's configured lot size
 - weighted-average cost
 - remaining cost basis
 - latest cached or manual market price
@@ -73,7 +73,8 @@ Top metrics are portfolio value, cost basis, unrealized gain, and realized gain.
 
 ### Asset Conversion
 
-Asset Conversion supports buying and selling measured assets, quantity, unit, calculated unit price, date/time, and a stock ticker when the unit is `share`.
+Asset Conversion supports buying and selling concrete measured assets,
+quantity, unit, calculated unit price, and date/time.
 
 Current default groups:
 
@@ -88,7 +89,13 @@ Stock quantity is stored as shares. Lots are derived as:
 lots = shares / lot_size
 ```
 
-The current stock lot size default is 100.
+Stock quantities remain persisted as shares. New buys and normal sales must be
+whole multiples of the selected definition's `lotSize`. Definitions with lot
+size 1 accept any whole-share quantity. Historical odd-lot holdings are not
+rewritten: a sale may sell whole lots, remove the odd residue so the remainder
+is a whole-lot quantity, or fully close the holding. Validation uses shares
+available at the transaction date and excludes the original record during an
+edit.
 
 ## 4. Transaction model
 
@@ -207,14 +214,21 @@ Current quote limitations:
 
 ## 7. Persistence
 
-Native platforms use versioned SQLite, currently version 5.
+Native platforms use versioned SQLite, currently version 10.
 
 Current persisted asset additions:
 
 - `transactions.asset_name`
 - `transactions.asset_symbol`
 - `transactions.asset_action`
+- optional `transactions.market_reference_*` execution snapshot fields
 - `asset_market_prices`
+
+An asset trade may explicitly snapshot a manual or compatible cached IDR-per-
+unit reference quote. The UI compares the gross execution price with this saved
+reference using direction-aware wording. This is informational execution
+analysis, not a verified historical bid/ask spread. It never changes amount,
+cost basis, gains, fees, financial summaries, or tithe.
 
 Web preview uses in-memory collections and may reset after browser reload.
 
@@ -224,7 +238,7 @@ Every persisted change requires a version increment, `onCreate`, `onUpgrade`, na
 
 - gold purchase records quantity, cost, and action
 - stock purchase requires and stores a ticker
-- 1,000 shares displays as 10.00 lots at lot size 100
+- 1,000 shares displays as 10 lots at lot size 100
 - multiple purchases produce weighted-average cost
 - partial sale reduces quantity and cost basis
 - realized gain equals proceeds minus removed cost

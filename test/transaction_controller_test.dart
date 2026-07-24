@@ -9,8 +9,14 @@ class _FakeRepository implements TransactionRepository {
 
   @override
   Future<List<Transaction>> getAll() async {
-    return List<Transaction>.of(saved);
+    return saved.where((item) => item.deletedAt == null).toList();
   }
+
+  @override
+  Future<Transaction?> getAssetFeeExpense(
+    String parentTransactionId, {
+    bool includeDeleted = true,
+  }) async => null;
 
   @override
   Future<void> save(Transaction transaction) async {
@@ -26,6 +32,17 @@ class _FakeRepository implements TransactionRepository {
   @override
   Future<void> softDelete(Transaction transaction) async {
     saved.removeWhere((item) => item.id == transaction.id);
+  }
+
+  @override
+  Future<void> saveAssetFeeChange({
+    required Transaction parent,
+    Transaction? linkedExpense,
+    Transaction? obsoleteLinkedExpense,
+  }) async {
+    await save(parent);
+    if (linkedExpense != null) await save(linkedExpense);
+    if (obsoleteLinkedExpense != null) await save(obsoleteLinkedExpense);
   }
 }
 
@@ -178,5 +195,58 @@ void main() {
       'later-created',
       'earlier-created',
     ]);
+  });
+
+  test('oversell exposes available and requested quantities', () async {
+    final buyDate = DateTime(2026, 7, 1);
+    final repository = _FakeRepository()
+      ..saved.add(
+        Transaction(
+          id: 'buy',
+          title: 'USD acquisition',
+          category: 'Asset conversion',
+          account: 'Cash -> US Dollar Cash',
+          date: buyDate,
+          amount: 16000000,
+          type: TransactionType.assetConversion,
+          quantity: 1000,
+          unit: 'usd',
+          unitPrice: 16000,
+          assetDefinitionId: 'asset-usd',
+          assetName: 'US Dollar Cash',
+          assetSymbol: 'USD',
+          assetAction: AssetAction.buy,
+          createdAt: buyDate,
+        ),
+      );
+    final controller = _createController(repository);
+    addTearDown(controller.dispose);
+    await controller.load();
+
+    await expectLater(
+      controller.createTransaction(
+        Transaction(
+          id: 'sale',
+          title: 'USD sale',
+          category: 'Asset conversion',
+          account: 'US Dollar Cash -> Cash',
+          date: DateTime(2026, 7, 2),
+          amount: 24000000,
+          type: TransactionType.assetConversion,
+          quantity: 1500,
+          unit: 'usd',
+          unitPrice: 16000,
+          assetDefinitionId: 'asset-usd',
+          assetName: 'US Dollar Cash',
+          assetSymbol: 'USD',
+          assetAction: AssetAction.sell,
+        ),
+      ),
+      throwsA(isA<TransactionValidationException>()),
+    );
+
+    expect(controller.assetValidation?.availableQuantity, 1000);
+    expect(controller.assetValidation?.requestedQuantity, 1500);
+    expect(repository.saved, hasLength(1));
   });
 }

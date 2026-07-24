@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../../../core/shared/widgets/searchable_dropdown.dart';
-import '../../../../assets/controllers/asset_conversion_controller.dart';
+import '../../../../assets/presentation/widgets/asset_fee_fields.dart';
+import '../../../../assets/presentation/widgets/asset_execution_reference_fields.dart';
 import '../quick_add_controller.dart';
 
 class QuickAddAdvancedOptions extends StatelessWidget {
@@ -65,25 +66,11 @@ class QuickAddAdvancedOptions extends StatelessWidget {
                 ),
                 if (controller.isAssetConversion) ...[
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    key: ValueKey(controller.assetConversion.feeTreatment),
-                    initialValue: controller.assetConversion.feeTreatment,
-                    decoration: const InputDecoration(
-                      labelText: 'Fee treatment',
-                    ),
-                    items: AssetConversionController.feeTreatments
-                        .map(
-                          (treatment) => DropdownMenuItem<String>(
-                            value: treatment,
-                            child: Text(treatment),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        controller.assetConversion.setFeeTreatment(value);
-                      }
-                    },
+                  AssetFeeFields(controller: controller.assetConversion),
+                  const SizedBox(height: 12),
+                  AssetExecutionReferenceFields(
+                    controller: controller.assetConversion,
+                    compact: true,
                   ),
                 ],
                 const SizedBox(height: 12),

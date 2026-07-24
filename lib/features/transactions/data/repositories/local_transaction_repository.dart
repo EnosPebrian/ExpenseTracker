@@ -11,6 +11,18 @@ class LocalTransactionRepository implements TransactionRepository {
       (await store.getTransactions()).map(Transaction.fromRecord).toList();
 
   @override
+  Future<Transaction?> getAssetFeeExpense(
+    String parentTransactionId, {
+    bool includeDeleted = true,
+  }) async {
+    final record = await store.getAssetFeeExpense(
+      parentTransactionId,
+      includeDeleted: includeDeleted,
+    );
+    return record == null ? null : Transaction.fromRecord(record);
+  }
+
+  @override
   Future<void> save(Transaction transaction) =>
       store.upsertTransaction(transaction.toRecord());
 
@@ -22,4 +34,15 @@ class LocalTransactionRepository implements TransactionRepository {
             DateTime.now().millisecondsSinceEpoch,
         version: transaction.version,
       );
+
+  @override
+  Future<void> saveAssetFeeChange({
+    required Transaction parent,
+    Transaction? linkedExpense,
+    Transaction? obsoleteLinkedExpense,
+  }) => store.saveAssetFeeChange(
+    parent: parent.toRecord(),
+    linkedExpense: linkedExpense?.toRecord(),
+    obsoleteLinkedExpense: obsoleteLinkedExpense?.toRecord(),
+  );
 }

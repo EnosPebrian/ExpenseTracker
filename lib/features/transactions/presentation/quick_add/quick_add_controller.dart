@@ -5,6 +5,7 @@ import '../../domain/entities/transaction.dart';
 import '../controllers/transaction_controller.dart';
 import '../../../assets/domain/entities/asset_definition.dart';
 import '../../../assets/domain/entities/asset_kind.dart';
+import '../../../assets/domain/entities/asset_market_price.dart';
 
 class QuickAddConfig {
   const QuickAddConfig({
@@ -19,6 +20,7 @@ class QuickAddConfig {
       'Inventory',
     ],
     this.assetDefinitions = const [],
+    this.assetMarketPrices = const [],
     this.defaultProject = 'Life',
     this.defaultAccount,
     this.defaultExpenseCategory,
@@ -41,6 +43,7 @@ class QuickAddConfig {
 
   /// Concrete measurable or tradable assets used by Asset Conversion.
   final List<AssetDefinition> assetDefinitions;
+  final List<AssetMarketPrice> assetMarketPrices;
 
   final String defaultProject;
   final String? defaultAccount;
@@ -90,6 +93,8 @@ class QuickAddController extends ChangeNotifier {
     assetConversion = AssetConversionController(
       accounts: config.accounts,
       assets: _resolveAssetDefinitions(config),
+      marketPrices: config.assetMarketPrices,
+      existingTransactionsProvider: () => transactions.transactions,
     );
 
     // The dedicated Asset Conversion screen has demo defaults.
@@ -240,8 +245,8 @@ class QuickAddController extends ChangeNotifier {
         notifyListeners();
         return false;
       }
-      if (assetConversion.quantity <= 0) {
-        error = 'Enter an asset quantity greater than zero.';
+      if (!assetConversion.quantityValidation.isValid) {
+        error = assetConversion.quantityValidationMessage;
         notifyListeners();
         return false;
       }
@@ -335,6 +340,8 @@ class QuickAddController extends ChangeNotifier {
       assetName: asset.displayName.trim(),
       assetSymbol: asset.normalizedSymbol,
       assetAction: conversion.sellAsset ? AssetAction.sell : AssetAction.buy,
+      feeAmount: conversion.feeAmount,
+      feeTreatment: conversion.feeTreatment,
     );
   }
 

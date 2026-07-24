@@ -718,6 +718,259 @@ void main() {
     expect(portfolio.totalUnrealizedGain, 0);
     expect(portfolio.totalRealizedGain, 100000);
   });
+
+  test('capitalized USD buy fee increases cost basis and average cost', () {
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [
+        _conversion(
+          id: 'usd-buy-with-fee',
+          assetDefinitionId: 'asset-usd',
+          assetName: 'US Dollar Cash',
+          assetSymbol: 'USD',
+          action: AssetAction.buy,
+          amount: 16200000,
+          quantity: 1000,
+          unit: 'usd',
+          unitPrice: 16200,
+          feeAmount: 100000,
+          feeTreatment: AssetFeeTreatment.capitalizeIntoCostBasis,
+        ),
+      ],
+      assetDefinitions: [_usdDefinition()],
+    );
+
+    final holding = portfolio.holdings.single;
+    expect(holding.quantity, 1000);
+    expect(holding.costBasis, 16300000);
+    expect(holding.averageCost, 16300);
+  });
+
+  test('weighted average includes capitalized fees from multiple buys', () {
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [
+        _conversion(
+          id: 'usd-buy-1',
+          assetDefinitionId: 'asset-usd',
+          assetName: 'US Dollar Cash',
+          assetSymbol: 'USD',
+          action: AssetAction.buy,
+          amount: 16200000,
+          quantity: 1000,
+          unit: 'usd',
+          unitPrice: 16200,
+          feeAmount: 100000,
+          feeTreatment: AssetFeeTreatment.capitalizeIntoCostBasis,
+        ),
+        _conversion(
+          id: 'usd-buy-2',
+          assetDefinitionId: 'asset-usd',
+          assetName: 'US Dollar Cash',
+          assetSymbol: 'USD',
+          action: AssetAction.buy,
+          amount: 8250000,
+          quantity: 500,
+          unit: 'usd',
+          unitPrice: 16500,
+          feeAmount: 50000,
+          feeTreatment: AssetFeeTreatment.capitalizeIntoCostBasis,
+          date: DateTime(2026, 1, 2),
+        ),
+      ],
+      assetDefinitions: [_usdDefinition()],
+    );
+
+    final holding = portfolio.holdings.single;
+    expect(holding.quantity, 1500);
+    expect(holding.costBasis, 24600000);
+    expect(holding.averageCost, 16400);
+  });
+
+  test('partial sale removes fee-inclusive cost and deducts sell fee', () {
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [
+        _conversion(
+          id: 'usd-buy',
+          assetDefinitionId: 'asset-usd',
+          assetName: 'US Dollar Cash',
+          assetSymbol: 'USD',
+          action: AssetAction.buy,
+          amount: 16200000,
+          quantity: 1000,
+          unit: 'usd',
+          unitPrice: 16200,
+          feeAmount: 100000,
+          feeTreatment: AssetFeeTreatment.capitalizeIntoCostBasis,
+        ),
+        _conversion(
+          id: 'usd-sell',
+          assetDefinitionId: 'asset-usd',
+          assetName: 'US Dollar Cash',
+          assetSymbol: 'USD',
+          action: AssetAction.sell,
+          amount: 6640000,
+          quantity: 400,
+          unit: 'usd',
+          unitPrice: 16600,
+          feeAmount: 40000,
+          feeTreatment: AssetFeeTreatment.deductFromSaleProceeds,
+          date: DateTime(2026, 2, 1),
+        ),
+      ],
+      assetDefinitions: [_usdDefinition()],
+    );
+
+    final holding = portfolio.holdings.single;
+    expect(holding.quantity, 600);
+    expect(holding.costBasis, 9780000);
+    expect(holding.averageCost, 16300);
+    expect(holding.realizedGain, 80000);
+  });
+
+  test('fees do not affect quantity, unit price, or market price', () {
+    final transaction = _conversion(
+      id: 'sgd-buy-with-fee',
+      assetDefinitionId: 'asset-sgd',
+      assetName: 'Singapore Dollar Cash',
+      assetSymbol: 'SGD',
+      action: AssetAction.buy,
+      amount: 30000000,
+      quantity: 2500,
+      unit: 'sgd',
+      unitPrice: 12000,
+      feeAmount: 50000,
+      feeTreatment: AssetFeeTreatment.capitalizeIntoCostBasis,
+    );
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [transaction],
+      assetDefinitions: [_sgdDefinition()],
+      marketPrices: [
+        AssetMarketPrice.manual(
+          assetKey: 'SGD',
+          price: 12150,
+          currencyCode: 'IDR',
+          unit: 'sgd',
+        ),
+      ],
+    );
+
+    final holding = portfolio.holdings.single;
+    expect(transaction.unitPrice, 12000);
+    expect(holding.quantity, 2500);
+    expect(holding.currentPrice, 12150);
+    expect(holding.marketValue, 30375000);
+    expect(holding.costBasis, 30050000);
+    expect(holding.unrealizedGain, 325000);
+  });
+
+  test('fully sold position retains net realized gain after fees', () {
+    final portfolio = AssetPortfolioCalculator.calculate(
+      transactions: [
+        _conversion(
+          id: 'usd-buy',
+          assetDefinitionId: 'asset-usd',
+          assetName: 'US Dollar Cash',
+          assetSymbol: 'USD',
+          action: AssetAction.buy,
+          amount: 16200000,
+          quantity: 1000,
+          unit: 'usd',
+          unitPrice: 16200,
+          feeAmount: 100000,
+          feeTreatment: AssetFeeTreatment.capitalizeIntoCostBasis,
+        ),
+        _conversion(
+          id: 'usd-sell',
+          assetDefinitionId: 'asset-usd',
+          assetName: 'US Dollar Cash',
+          assetSymbol: 'USD',
+          action: AssetAction.sell,
+          amount: 16600000,
+          quantity: 1000,
+          unit: 'usd',
+          unitPrice: 16600,
+          feeAmount: 40000,
+          feeTreatment: AssetFeeTreatment.deductFromSaleProceeds,
+          date: DateTime(2026, 2, 1),
+        ),
+      ],
+      assetDefinitions: [_usdDefinition()],
+    );
+
+    expect(portfolio.holdings, isEmpty);
+    expect(portfolio.totalRealizedGain, 260000);
+  });
+
+  test(
+    'floating residue creates no phantom holding and keeps realized gain',
+    () {
+      final portfolio = AssetPortfolioCalculator.calculate(
+        transactions: [
+          _conversion(
+            id: 'usd-buy-1',
+            assetDefinitionId: 'asset-usd',
+            assetName: 'US Dollar Cash',
+            assetSymbol: 'USD',
+            action: AssetAction.buy,
+            amount: 1620,
+            quantity: 0.1,
+            unit: 'usd',
+            unitPrice: 16200,
+          ),
+          _conversion(
+            id: 'usd-buy-2',
+            assetDefinitionId: 'asset-usd',
+            assetName: 'US Dollar Cash',
+            assetSymbol: 'USD',
+            action: AssetAction.buy,
+            amount: 3240,
+            quantity: 0.2,
+            unit: 'usd',
+            unitPrice: 16200,
+            date: DateTime(2026, 1, 2),
+          ),
+          _conversion(
+            id: 'usd-sell',
+            assetDefinitionId: 'asset-usd',
+            assetName: 'US Dollar Cash',
+            assetSymbol: 'USD',
+            action: AssetAction.sell,
+            amount: 5000,
+            quantity: 0.3,
+            unit: 'usd',
+            unitPrice: 16667,
+            date: DateTime(2026, 1, 3),
+          ),
+        ],
+        assetDefinitions: [_usdDefinition()],
+      );
+
+      expect(portfolio.holdings, isEmpty);
+      expect(portfolio.totalCostBasis, 0);
+      expect(portfolio.totalRealizedGain, 140);
+    },
+  );
+
+  test(
+    'historical over-precision quantity still participates in calculation',
+    () {
+      final portfolio = AssetPortfolioCalculator.calculate(
+        transactions: [
+          _conversion(
+            id: 'legacy-gold',
+            assetName: 'Gold Holdings',
+            action: AssetAction.buy,
+            amount: 3086400,
+            quantity: 1.23456,
+            unit: 'gram',
+            unitPrice: 2500000,
+          ),
+        ],
+      );
+
+      expect(portfolio.holdings.single.quantity, 1.23456);
+      expect(portfolio.holdings.single.costBasis, 3086400);
+    },
+  );
 }
 
 AssetDefinition _bbcaDefinition() {
@@ -796,6 +1049,8 @@ Transaction _conversion({
   required double quantity,
   required String unit,
   required int unitPrice,
+  int feeAmount = 0,
+  AssetFeeTreatment feeTreatment = AssetFeeTreatment.none,
   DateTime? date,
 }) {
   final isSell = action == AssetAction.sell;
@@ -815,5 +1070,7 @@ Transaction _conversion({
     assetName: assetName,
     assetSymbol: assetSymbol,
     assetAction: action,
+    feeAmount: feeAmount,
+    feeTreatment: feeTreatment,
   );
 }

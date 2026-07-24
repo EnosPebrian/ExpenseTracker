@@ -14,6 +14,7 @@ void main() {
     addTearDown(controller.dispose);
 
     controller.setDestination('Bank Central Asia (BBCA)');
+    controller.quantityController.text = '100';
 
     expect(controller.selectedAssetDefinition.id, 'asset-bbca');
 
@@ -98,7 +99,7 @@ void main() {
     controller.cashController.text = '6.640.000';
     controller.quantityController.text = '400';
 
-    expect(controller.cashLabel, 'IDR received');
+    expect(controller.cashLabel, 'Gross proceeds');
     expect(controller.quantityLabel, 'USD sold');
     expect(
       controller.calculatedRateLabel,
@@ -217,6 +218,297 @@ void main() {
       ),
     );
   });
+
+  test('sell exposes availability and blocks oversell before build', () {
+    final purchase = _usdPurchase(1000);
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_usdDefinition()],
+      existingTransactionsProvider: () => [purchase],
+    );
+
+    addTearDown(controller.dispose);
+
+    controller.setSellAsset(true);
+    controller.cashController.text = '24.000.000';
+    controller.quantityController.text = '1500';
+
+    expect(controller.availableQuantity, 1000);
+    expect(controller.canSave, isFalse);
+    expect(controller.oversellMessage, contains('Requested: USD 1500'));
+    expect(
+      controller.buildTransaction,
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('sell up to USD 1000'),
+        ),
+      ),
+    );
+  });
+
+  test('sell exactly equal to availability remains enabled', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_usdDefinition()],
+      existingTransactionsProvider: () => [_usdPurchase(1000)],
+    );
+
+    addTearDown(controller.dispose);
+
+    controller.setSellAsset(true);
+    controller.cashController.text = '16.500.000';
+    controller.quantityController.text = '1000';
+
+    expect(controller.availableQuantity, 1000);
+    expect(controller.oversellMessage, isNull);
+    expect(controller.canSave, isTrue);
+    expect(controller.buildTransaction().assetAction, AssetAction.sell);
+  });
+
+  test('buy fee is capitalized without changing derived unit price', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_usdDefinition()],
+    );
+    addTearDown(controller.dispose);
+
+    controller.cashController.text = '16.200.000';
+    controller.quantityController.text = '1000';
+    controller.feeController.text = '100.000';
+
+    expect(controller.feeAmount, 100000);
+    expect(controller.feeTreatment, AssetFeeTreatment.capitalizeIntoCostBasis);
+    expect(controller.grossTradeAmount, 16200000);
+    expect(controller.totalCashPaid, 16300000);
+    expect(controller.unitPrice, 16200);
+
+    final transaction = controller.buildTransaction();
+    expect(transaction.amount, 16200000);
+    expect(transaction.feeAmount, 100000);
+    expect(transaction.feeTreatment, AssetFeeTreatment.capitalizeIntoCostBasis);
+    expect(transaction.unitPrice, 16200);
+  });
+
+  test('sell fee is deducted from gross proceeds', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_usdDefinition()],
+    );
+    addTearDown(controller.dispose);
+
+    controller.setSellAsset(true);
+    controller.cashController.text = '6.640.000';
+    controller.quantityController.text = '400';
+    controller.feeController.text = '40.000';
+
+    expect(controller.feeTreatment, AssetFeeTreatment.deductFromSaleProceeds);
+    expect(controller.netProceeds, 6600000);
+    expect(controller.unitPrice, 16600);
+    expect(controller.buildTransaction().feeAmount, 40000);
+  });
+
+  test('separate expense keeps portfolio values gross and cash effect net', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_usdDefinition()],
+    );
+    addTearDown(controller.dispose);
+
+    controller.cashController.text = '16.200.000';
+    controller.quantityController.text = '1000';
+    controller.feeController.text = '100.000';
+    controller.setFeeTreatment(AssetFeeTreatment.recordAsSeparateExpense);
+
+    expect(controller.totalCashPaid, 16300000);
+    expect(controller.costBasisAdded, 16200000);
+    expect(controller.buildTransaction().unitPrice, 16200);
+
+    controller.setSellAsset(true);
+    expect(controller.feeTreatment, AssetFeeTreatment.recordAsSeparateExpense);
+    controller.cashController.text = '6.640.000';
+    controller.quantityController.text = '400';
+    controller.feeController.text = '40.000';
+    expect(controller.netProceeds, 6600000);
+    expect(controller.buildTransaction().amount, 6640000);
+  });
+
+  test('action switch resets incompatible fee treatment', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_usdDefinition()],
+    );
+    addTearDown(controller.dispose);
+
+    controller.feeController.text = '100.000';
+    expect(controller.feeTreatment, AssetFeeTreatment.capitalizeIntoCostBasis);
+
+    controller.setSellAsset(true);
+    expect(controller.feeTreatment, AssetFeeTreatment.none);
+    expect(controller.feeController.text, '100.000');
+    expect(controller.canSave, isFalse);
+
+    controller.setFeeTreatment(AssetFeeTreatment.deductFromSaleProceeds);
+    controller.setSellAsset(false);
+    expect(controller.feeTreatment, AssetFeeTreatment.none);
+  });
+
+  test('sell fee equal to gross proceeds is rejected', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_usdDefinition()],
+    );
+    addTearDown(controller.dispose);
+
+    controller.setSellAsset(true);
+    controller.cashController.text = '40.000';
+    controller.quantityController.text = '1';
+    controller.feeController.text = '40.000';
+
+    expect(controller.canSave, isFalse);
+    expect(
+      controller.feeValidationMessage,
+      contains('less than the gross sale amount'),
+    );
+    expect(controller.buildTransaction, throwsStateError);
+    expect(controller.feeController.text, '40.000');
+  });
+
+  test('foreign currency accepts two decimals and rejects a third', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_usdDefinition()],
+    );
+    addTearDown(controller.dispose);
+
+    controller.cashController.text = '16.204.050';
+    controller.quantityController.text = '1000.25';
+    expect(controller.quantityValidation.isValid, isTrue);
+    expect(controller.canSave, isTrue);
+
+    controller.quantityController.text = '1000.257';
+    expect(controller.canSave, isFalse);
+    expect(
+      controller.quantityValidationMessage,
+      'USD supports up to 2 decimal places.',
+    );
+    expect(controller.quantityController.text, '1000.257');
+  });
+
+  test('stock enforces definition lot size and whole shares', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_bbcaDefinition()],
+    );
+    addTearDown(controller.dispose);
+
+    controller.quantityController.text = '100';
+    expect(controller.canSave, isTrue);
+
+    controller.quantityController.text = '150';
+    expect(controller.canSave, isFalse);
+    expect(controller.lotValidationMessage, contains('100, 200, 300'));
+    expect(controller.quantityController.text, '150');
+
+    controller.quantityController.text = '100.5';
+    expect(controller.canSave, isFalse);
+    expect(
+      controller.quantityValidationMessage,
+      'Stock quantity must be entered as whole shares.',
+    );
+  });
+
+  test('lot size one accepts whole shares without lot restriction', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_appleDefinition().copyWith(currencyCode: 'IDR')],
+    );
+    addTearDown(controller.dispose);
+
+    controller.quantityController.text = '17';
+    expect(controller.canSave, isTrue);
+    expect(controller.lotValidationMessage, isNull);
+  });
+
+  test('stock sale allows date-specific odd-lot cleanup', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_bbcaDefinition()],
+      existingTransactionsProvider: () => [
+        _stockTrade(
+          id: 'early-buy',
+          date: DateTime(2026, 7, 1),
+          quantity: 250,
+          action: AssetAction.buy,
+        ),
+        _stockTrade(
+          id: 'future-buy',
+          date: DateTime(2026, 7, 10),
+          quantity: 250,
+          action: AssetAction.buy,
+        ),
+      ],
+    );
+    addTearDown(controller.dispose);
+
+    controller.setSellAsset(true);
+    controller.setDate(DateTime(2026, 7, 5));
+    controller.quantityController.text = '50';
+
+    expect(controller.availableQuantity, 250);
+    expect(controller.lotValidation!.isOddLotCleanup, isTrue);
+    expect(controller.lotValidation!.remainingShares, 200);
+    expect(controller.canSave, isTrue);
+  });
+}
+
+Transaction _stockTrade({
+  required String id,
+  required DateTime date,
+  required double quantity,
+  required AssetAction action,
+}) => Transaction(
+  id: id,
+  title: 'BBCA trade',
+  category: 'Asset conversion',
+  account: action == AssetAction.buy
+      ? 'Cash Enos -> Bank Central Asia'
+      : 'Bank Central Asia -> Cash Enos',
+  date: date,
+  amount: (quantity * 10000).round(),
+  type: TransactionType.assetConversion,
+  quantity: quantity,
+  unit: 'share',
+  unitPrice: 10000,
+  assetDefinitionId: 'asset-bbca',
+  assetName: 'Bank Central Asia',
+  assetSymbol: 'BBCA',
+  assetAction: action,
+  createdAt: date,
+  updatedAt: date,
+);
+
+Transaction _usdPurchase(double quantity) {
+  final date = DateTime(2026, 7, 1);
+  return Transaction(
+    id: 'usd-buy',
+    title: 'USD acquisition',
+    category: 'Asset conversion',
+    account: 'Cash Enos -> US Dollar Cash',
+    date: date,
+    amount: (quantity * 16200).round(),
+    type: TransactionType.assetConversion,
+    quantity: quantity,
+    unit: 'usd',
+    unitPrice: 16200,
+    assetDefinitionId: 'asset-usd',
+    assetName: 'US Dollar Cash',
+    assetSymbol: 'USD',
+    assetAction: AssetAction.buy,
+    createdAt: date,
+    updatedAt: date,
+  );
 }
 
 AssetDefinition _goldDefinition() {

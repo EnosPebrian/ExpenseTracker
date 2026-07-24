@@ -4,6 +4,9 @@ import '../../../transactions/domain/entities/transaction.dart';
 import '../entities/asset_market_price.dart';
 import '../entities/asset_portfolio.dart';
 import '../entities/asset_definition.dart';
+import 'asset_trade_fee_accounting.dart';
+import 'asset_numeric_policy.dart';
+import 'asset_transaction_identity.dart';
 
 class AssetPortfolioCalculator {
   const AssetPortfolioCalculator._();
@@ -42,18 +45,20 @@ class AssetPortfolioCalculator {
                   (transaction.quantity ?? 0) > 0;
             })
             .toList(growable: false)
-          ..sort(_compareTransactions);
+          ..sort(AssetTransactionIdentity.compareChronologically);
 
     final states = <String, _HoldingState>{};
 
     for (final transaction in conversions) {
-      final action = _resolveAction(transaction);
+      final action = AssetTransactionIdentity.resolveAction(transaction);
       final definition = _findDefinition(
         transaction: transaction,
         definitionById: definitionById,
       );
 
-      final snapshotName = _resolveAssetName(transaction, action);
+      final snapshotName = AssetTransactionIdentity.resolveAssetName(
+        transaction,
+      );
 
       final assetName = definition?.displayName.trim() ?? snapshotName;
 
@@ -67,9 +72,7 @@ class AssetPortfolioCalculator {
 
       final assetKey = symbol ?? assetName;
 
-      final groupingKey = definition == null
-          ? 'legacy:${_normalizeKey(assetKey)}'
-          : 'definition:${_normalizeKey(definition.id)}';
+      final groupingKey = AssetTransactionIdentity.key(transaction);
 
       final quantity = transaction.quantity ?? 0;
 
@@ -82,7 +85,11 @@ class AssetPortfolioCalculator {
 
       final kind =
           definition?.kind ??
-          _resolveKind(unit: unit, assetName: assetName, symbol: symbol);
+          AssetNumericPolicy.inferKind(
+            unit: unit,
+            assetName: assetName,
+            symbol: symbol,
+          );
 
       final lotSize =
           definition?.lotSize ?? (kind == AssetKind.stock ? 100 : 1);
@@ -112,8 +119,13 @@ class AssetPortfolioCalculator {
 
       switch (action) {
         case AssetAction.buy:
-          state.quantity += quantity;
-          state.costBasis += transaction.amount;
+          state.quantity = AssetNumericPolicy.normalizeQuantity(
+            state.quantity + quantity,
+            state.kind,
+          );
+          state.costBasis += AssetTradeFeeAccounting.buyCostContribution(
+            transaction,
+          );
 
         case AssetAction.sell:
           if (state.quantity <= 0 || state.costBasis <= 0) {
@@ -124,14 +136,23 @@ class AssetPortfolioCalculator {
           final averageCostBeforeSale = state.costBasis / state.quantity;
           final removedCost = averageCostBeforeSale * matchedQuantity;
 
-          final proceedsPerUnit = transaction.amount / quantity;
+          final netProceeds = AssetTradeFeeAccounting.netSaleProceeds(
+            transaction,
+          );
+          final proceedsPerUnit = netProceeds / quantity;
           final matchedProceeds = proceedsPerUnit * matchedQuantity;
 
-          state.quantity -= matchedQuantity;
+          state.quantity = AssetNumericPolicy.normalizeQuantity(
+            state.quantity - matchedQuantity,
+            state.kind,
+          );
           state.costBasis -= removedCost;
           state.realizedGain += matchedProceeds - removedCost;
 
-          if (state.quantity.abs() < 0.0000001) {
+          if (AssetNumericPolicy.isEffectivelyZero(
+            state.quantity,
+            state.kind,
+          )) {
             state.quantity = 0;
             state.costBasis = 0;
           }
@@ -299,44 +320,6 @@ class AssetPortfolioCalculator {
     return true;
   }
 
-  static AssetAction _resolveAction(Transaction transaction) {
-    final storedAction = transaction.assetAction;
-
-    if (storedAction != null) {
-      return storedAction;
-    }
-
-    final normalizedTitle = transaction.title.toLowerCase();
-
-    if (normalizedTitle.contains('sale') || normalizedTitle.contains('sell')) {
-      return AssetAction.sell;
-    }
-
-    return AssetAction.buy;
-  }
-
-  static String _resolveAssetName(Transaction transaction, AssetAction action) {
-    final storedName = transaction.assetName?.trim();
-
-    if (storedName != null && storedName.isNotEmpty) {
-      return storedName;
-    }
-
-    final accountParts = transaction.account
-        .split('->')
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .toList(growable: false);
-
-    if (accountParts.length >= 2) {
-      return action == AssetAction.sell
-          ? accountParts.first
-          : accountParts.last;
-    }
-
-    return transaction.title.trim();
-  }
-
   static String? _normalizedSymbol(String? value) {
     final normalized = value?.trim().toUpperCase();
 
@@ -355,46 +338,6 @@ class AssetPortfolioCalculator {
     }
 
     return normalized;
-  }
-
-  static AssetKind _resolveKind({
-    required String unit,
-    required String assetName,
-    required String? symbol,
-  }) {
-    final normalizedUnit = unit.toLowerCase();
-    final normalizedName = assetName.toLowerCase();
-
-    if (normalizedUnit == 'share' || symbol != null) {
-      return AssetKind.stock;
-    }
-
-    if (normalizedUnit == 'gram' || normalizedName.contains('gold')) {
-      return AssetKind.gold;
-    }
-
-    if (normalizedUnit == 'btc' ||
-        normalizedUnit == 'coin' ||
-        normalizedName.contains('bitcoin') ||
-        normalizedName.contains('crypto')) {
-      return AssetKind.crypto;
-    }
-
-    if (normalizedName.contains('inventory')) {
-      return AssetKind.inventory;
-    }
-
-    return AssetKind.other;
-  }
-
-  static int _compareTransactions(Transaction left, Transaction right) {
-    final dateComparison = left.date.compareTo(right.date);
-
-    if (dateComparison != 0) {
-      return dateComparison;
-    }
-
-    return left.createdAt.compareTo(right.createdAt);
   }
 
   static String _normalizeKey(String value) {

@@ -23,7 +23,7 @@ class LocalStore {
 
     _database = await openDatabase(
       resolvedDatabasePath,
-      version: 7,
+      version: 10,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
         await db.execute('''
@@ -43,6 +43,15 @@ asset_definition_id TEXT,
 asset_name TEXT,
 asset_symbol TEXT,
             asset_action TEXT,
+            fee_amount INTEGER NOT NULL DEFAULT 0,
+            fee_treatment TEXT NOT NULL DEFAULT 'none',
+            related_transaction_id TEXT,
+            relation_type TEXT NOT NULL DEFAULT 'none',
+            market_reference_unit_price INTEGER,
+            market_reference_currency_code TEXT,
+            market_reference_unit TEXT,
+            market_reference_source TEXT,
+            market_reference_quoted_at INTEGER,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             deleted_at INTEGER,
@@ -68,6 +77,10 @@ asset_symbol TEXT,
         await db.execute(
           'CREATE INDEX idx_transactions_asset_definition '
           'ON transactions(asset_definition_id)',
+        );
+        await db.execute(
+          'CREATE INDEX idx_transactions_relation '
+          'ON transactions(related_transaction_id, relation_type)',
         );
         await db.execute(
           '''CREATE TABLE IF NOT EXISTS books (
@@ -278,6 +291,52 @@ asset_symbol TEXT,
             'ON transactions(asset_definition_id)',
           );
         }
+        if (oldVersion < 8) {
+          await db.execute(
+            'ALTER TABLE transactions '
+            'ADD COLUMN fee_amount INTEGER NOT NULL DEFAULT 0',
+          );
+          await db.execute(
+            'ALTER TABLE transactions '
+            "ADD COLUMN fee_treatment TEXT NOT NULL DEFAULT 'none'",
+          );
+        }
+        if (oldVersion < 9) {
+          await db.execute(
+            'ALTER TABLE transactions '
+            'ADD COLUMN related_transaction_id TEXT',
+          );
+          await db.execute(
+            'ALTER TABLE transactions '
+            "ADD COLUMN relation_type TEXT NOT NULL DEFAULT 'none'",
+          );
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_transactions_relation '
+            'ON transactions(related_transaction_id, relation_type)',
+          );
+        }
+        if (oldVersion < 10) {
+          await db.execute(
+            'ALTER TABLE transactions '
+            'ADD COLUMN market_reference_unit_price INTEGER',
+          );
+          await db.execute(
+            'ALTER TABLE transactions '
+            'ADD COLUMN market_reference_currency_code TEXT',
+          );
+          await db.execute(
+            'ALTER TABLE transactions '
+            'ADD COLUMN market_reference_unit TEXT',
+          );
+          await db.execute(
+            'ALTER TABLE transactions '
+            'ADD COLUMN market_reference_source TEXT',
+          );
+          await db.execute(
+            'ALTER TABLE transactions '
+            'ADD COLUMN market_reference_quoted_at INTEGER',
+          );
+        }
       },
     );
   }
@@ -293,6 +352,22 @@ asset_symbol TEXT,
     where: 'deleted_at IS NULL',
     orderBy: 'transaction_date DESC, created_at DESC',
   );
+
+  Future<Map<String, Object?>?> getAssetFeeExpense(
+    String parentTransactionId, {
+    bool includeDeleted = true,
+  }) async {
+    final records = await db.query(
+      'transactions',
+      where:
+          'related_transaction_id = ? AND relation_type = ?'
+          '${includeDeleted ? '' : ' AND deleted_at IS NULL'}',
+      whereArgs: [parentTransactionId, 'assetFeeExpense'],
+      orderBy: 'created_at ASC',
+      limit: 1,
+    );
+    return records.isEmpty ? null : records.first;
+  }
 
   Future<void> upsertTransaction(Map<String, Object?> record) => db.insert(
     'transactions',
@@ -315,6 +390,29 @@ asset_symbol TEXT,
     where: 'id = ?',
     whereArgs: [id],
   );
+
+  Future<void> saveAssetFeeChange({
+    required Map<String, Object?> parent,
+    Map<String, Object?>? linkedExpense,
+    Map<String, Object?>? obsoleteLinkedExpense,
+  }) {
+    return db.transaction((transaction) async {
+      Future<void> upsert(Map<String, Object?> record) => transaction.insert(
+        'transactions',
+        record,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      await upsert(parent);
+      if (linkedExpense != null) {
+        await upsert(linkedExpense);
+      }
+      if (obsoleteLinkedExpense != null &&
+          obsoleteLinkedExpense['id'] != linkedExpense?['id']) {
+        await upsert(obsoleteLinkedExpense);
+      }
+    });
+  }
 
   Future<List<Map<String, Object?>>> getAssetMarketPrices() {
     return db.query('asset_market_prices', orderBy: 'updated_at DESC');

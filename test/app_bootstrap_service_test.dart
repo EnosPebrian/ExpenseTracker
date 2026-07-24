@@ -56,6 +56,12 @@ class _FakeTransactionRepository implements TransactionRepository {
   }
 
   @override
+  Future<Transaction?> getAssetFeeExpense(
+    String parentTransactionId, {
+    bool includeDeleted = true,
+  }) async => null;
+
+  @override
   Future<void> save(Transaction transaction) async {
     saved.add(transaction);
   }
@@ -63,6 +69,17 @@ class _FakeTransactionRepository implements TransactionRepository {
   @override
   Future<void> softDelete(Transaction transaction) async {
     saved.removeWhere((item) => item.id == transaction.id);
+  }
+
+  @override
+  Future<void> saveAssetFeeChange({
+    required Transaction parent,
+    Transaction? linkedExpense,
+    Transaction? obsoleteLinkedExpense,
+  }) async {
+    saved.add(parent);
+    if (linkedExpense != null) saved.add(linkedExpense);
+    if (obsoleteLinkedExpense != null) saved.add(obsoleteLinkedExpense);
   }
 }
 

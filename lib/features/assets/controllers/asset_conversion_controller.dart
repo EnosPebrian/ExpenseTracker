@@ -1,14 +1,30 @@
 import 'package:flutter/material.dart';
 
 import '../../transactions/domain/entities/transaction.dart';
+import '../../transactions/domain/entities/asset_market_reference_source.dart';
 import '../domain/entities/asset_definition.dart';
 import '../domain/entities/asset_kind.dart';
+import '../domain/entities/asset_market_price.dart';
+import '../domain/services/asset_execution_analysis.dart';
+import '../domain/services/asset_numeric_policy.dart';
+import '../domain/services/asset_stock_lot_policy.dart';
+import '../domain/services/asset_trade_validator.dart';
+import '../domain/services/asset_transaction_sequence_validator.dart';
+import 'asset_execution_reference_controller.dart';
 
 class AssetConversionController extends ChangeNotifier {
   AssetConversionController({
     required List<String> accounts,
     required List<AssetDefinition> assets,
+    List<AssetMarketPrice> marketPrices = const [],
+    this.existingTransactionsProvider,
+    this.sequenceValidator = const AssetTransactionSequenceValidator(),
+    AssetTradeValidator? tradeValidator,
   }) : accounts = List<String>.unmodifiable(accounts),
+       marketPrices = List<AssetMarketPrice>.unmodifiable(marketPrices),
+       tradeValidator =
+           tradeValidator ??
+           AssetTradeValidator(sequenceValidator: sequenceValidator),
        assets = List<AssetDefinition>.unmodifiable(
          assets.where((asset) => !asset.isDeleted),
        ) {
@@ -57,17 +73,24 @@ class AssetConversionController extends ChangeNotifier {
     source = this.accounts.first;
     destination = _assetOptions.first;
 
+    executionReference = AssetExecutionReferenceController(
+      definitionProvider: () => selectedAssetDefinition,
+      marketPrices: this.marketPrices,
+      onChanged: _handleInputChanged,
+    );
+
     cashController.addListener(_handleInputChanged);
     quantityController.addListener(_handleInputChanged);
+    feeController.addListener(_handleFeeInputChanged);
   }
-
-  static const feeTreatments = <String>[
-    'Capitalize into cost basis',
-    'Record as separate expense',
-  ];
 
   final List<String> accounts;
   final List<AssetDefinition> assets;
+  final List<AssetMarketPrice> marketPrices;
+  final List<Transaction> Function()? existingTransactionsProvider;
+  final AssetTransactionSequenceValidator sequenceValidator;
+  final AssetTradeValidator tradeValidator;
+  late final AssetExecutionReferenceController executionReference;
 
   final Map<String, AssetDefinition> _assetsByOption = {};
   late final List<String> _assetOptions;
@@ -80,12 +103,20 @@ class AssetConversionController extends ChangeNotifier {
     text: '20',
   );
 
+  final TextEditingController feeController = TextEditingController();
+
+  TextEditingController get referencePriceController =>
+      executionReference.priceController;
+  AssetMarketReferenceSource? get marketReferenceSource =>
+      executionReference.source;
+  DateTime? get marketReferenceQuotedAt => executionReference.quotedAt;
+
   bool sellAsset = false;
 
   late String source;
   late String destination;
 
-  String feeTreatment = feeTreatments.first;
+  AssetFeeTreatment feeTreatment = AssetFeeTreatment.none;
   DateTime selectedDate = DateTime.now();
   TimeOfDay selectedTime = TimeOfDay.now();
 
@@ -103,11 +134,137 @@ class AssetConversionController extends ChangeNotifier {
   }
 
   int get unitPrice {
-    if (quantity <= 0) {
+    if (cash <= 0 || !quantityValidation.isValid) {
       return 0;
     }
 
-    return (cash / quantity).round();
+    return AssetNumericPolicy.deriveUnitPrice(amount: cash, quantity: quantity);
+  }
+
+  int? get marketReferenceUnitPrice => executionReference.unitPrice;
+
+  AssetMarketPrice? get latestCompatibleMarketPrice =>
+      executionReference.latestCompatible;
+
+  String? get marketReferenceValidationMessage =>
+      executionReference.validationMessage;
+
+  AssetExecutionAnalysisResult? get executionAnalysis {
+    final reference = marketReferenceUnitPrice;
+    if (reference == null || unitPrice <= 0 || !quantityValidation.isValid) {
+      return null;
+    }
+    return AssetExecutionAnalysis.calculate(
+      action: sellAsset ? AssetAction.sell : AssetAction.buy,
+      quantity: quantity,
+      executionUnitPrice: unitPrice,
+      referenceUnitPrice: reference,
+    );
+  }
+
+  void useManualMarketReference() => executionReference.useManual();
+
+  bool useLatestCachedMarketReference() => executionReference.useLatestCached();
+
+  void clearMarketReference() => executionReference.clear();
+
+  AssetQuantityValidationResult get quantityValidation =>
+      AssetNumericPolicy.validateQuantity(
+        quantity: quantity,
+        kind: selectedAssetDefinition.kind,
+        symbol: selectedAssetDefinition.normalizedSymbol,
+      );
+
+  String? get quantityValidationMessage => quantityValidation.message;
+
+  int get quantityDecimalPlaces =>
+      AssetNumericPolicy.quantityDecimalPlacesFor(selectedAssetDefinition.kind);
+
+  bool get supportsDecimalQuantity =>
+      selectedAssetDefinition.kind != AssetKind.stock;
+
+  String get quantityPrecisionHint =>
+      selectedAssetDefinition.kind == AssetKind.stock
+      ? 'Enter whole shares.'
+      : 'Supports up to $quantityDecimalPlaces decimal places.';
+
+  int get lotSize => selectedAssetDefinition.lotSize;
+
+  double get requestedLots => lotSize > 0 ? quantity / lotSize : 0;
+
+  int get feeAmount {
+    return int.tryParse(feeController.text.replaceAll(RegExp(r'[^0-9]'), '')) ??
+        0;
+  }
+
+  int get grossTradeAmount => cash;
+
+  int get totalCashPaid {
+    return cash + (feeTreatment == AssetFeeTreatment.none ? 0 : feeAmount);
+  }
+
+  int get netProceeds {
+    return cash - (feeTreatment == AssetFeeTreatment.none ? 0 : feeAmount);
+  }
+
+  int get costBasisAdded =>
+      cash +
+      (feeTreatment == AssetFeeTreatment.capitalizeIntoCostBasis
+          ? feeAmount
+          : 0);
+
+  int get cashEffectUnitPrice {
+    if (!quantityValidation.isValid) return 0;
+    final amount = sellAsset ? netProceeds : totalCashPaid;
+    if (amount <= 0) return 0;
+    return AssetNumericPolicy.deriveUnitPrice(
+      amount: amount,
+      quantity: quantity,
+    );
+  }
+
+  bool get recordsFeeAsExpense =>
+      feeTreatment == AssetFeeTreatment.recordAsSeparateExpense;
+
+  List<AssetFeeTreatment> get feeTreatmentOptions => [
+    AssetFeeTreatment.none,
+    sellAsset
+        ? AssetFeeTreatment.deductFromSaleProceeds
+        : AssetFeeTreatment.capitalizeIntoCostBasis,
+    AssetFeeTreatment.recordAsSeparateExpense,
+  ];
+
+  String feeTreatmentLabel(AssetFeeTreatment treatment) {
+    return switch (treatment) {
+      AssetFeeTreatment.none => 'No fee',
+      AssetFeeTreatment.capitalizeIntoCostBasis => 'Add fee to cost basis',
+      AssetFeeTreatment.deductFromSaleProceeds => 'Deduct fee from proceeds',
+      AssetFeeTreatment.recordAsSeparateExpense => 'Record fee as expense',
+    };
+  }
+
+  String? get feeValidationMessage {
+    if (feeAmount == 0) {
+      return null;
+    }
+
+    if (feeTreatment == AssetFeeTreatment.none) {
+      return 'Choose how to handle the transaction fee.';
+    }
+
+    if (!feeTreatmentOptions.contains(feeTreatment)) {
+      return sellAsset
+          ? 'Sell fees can only be deducted from proceeds or recorded as an expense.'
+          : 'Buy fees can only be added to cost basis or recorded as an expense.';
+    }
+
+    if (sellAsset &&
+        feeTreatment == AssetFeeTreatment.deductFromSaleProceeds &&
+        feeAmount >= cash) {
+      return 'The transaction fee must be less than the gross sale amount.';
+    }
+
+    return null;
   }
 
   String get selectedAssetOption {
@@ -144,11 +301,59 @@ class AssetConversionController extends ChangeNotifier {
     return currencyCode == 'IDR';
   }
 
-  bool get canSave {
-    return cash > 0 &&
-        quantity > 0 &&
-        supportsSelectedCurrency &&
-        !selectedAssetDefinition.isDeleted;
+  bool get canSave =>
+      _hasValidInputs &&
+      (tradeValidation?.isValid ?? true) &&
+      (lotValidation?.isValid ?? true);
+
+  AssetTradeValidationResult? get tradeValidation {
+    if (existingTransactionsProvider == null || !quantityValidation.isValid) {
+      return null;
+    }
+
+    return tradeValidator.validateCandidate(
+      existingTransactions: existingTransactionsProvider!(),
+      candidate: _buildCandidate(),
+      definition: selectedAssetDefinition,
+    );
+  }
+
+  AssetStockLotValidationResult? get lotValidation {
+    if (selectedAssetDefinition.kind != AssetKind.stock ||
+        !quantityValidation.isValid) {
+      return null;
+    }
+
+    final coordinated = tradeValidation?.lotValidation;
+    if (coordinated != null) {
+      return coordinated;
+    }
+
+    return tradeValidator.stockLotPolicy.evaluate(
+      definition: selectedAssetDefinition,
+      action: sellAsset ? AssetAction.sell : AssetAction.buy,
+      requestedShares: quantity,
+      availableShares: sellAsset ? quantity : 0,
+    );
+  }
+
+  String? get lotValidationMessage => lotValidation?.message;
+
+  AssetSequenceValidationResult? get saleValidation {
+    if (!sellAsset ||
+        existingTransactionsProvider == null ||
+        !quantityValidation.isValid) {
+      return null;
+    }
+
+    return tradeValidation?.sequenceValidation;
+  }
+
+  double? get availableQuantity => saleValidation?.availableQuantity;
+
+  String? get oversellMessage {
+    final result = saleValidation;
+    return result != null && !result.isValid ? result.message : null;
   }
 
   String get sourceLabel {
@@ -160,11 +365,7 @@ class AssetConversionController extends ChangeNotifier {
   }
 
   String get cashLabel {
-    if (isForeignCurrency) {
-      return sellAsset ? 'IDR received' : 'IDR paid';
-    }
-
-    return sellAsset ? 'Cash value received' : 'Cash paid';
+    return sellAsset ? 'Gross proceeds' : 'Trade amount';
   }
 
   String get quantityLabel {
@@ -209,6 +410,10 @@ class AssetConversionController extends ChangeNotifier {
 
     sellAsset = value;
 
+    if (!feeTreatmentOptions.contains(feeTreatment)) {
+      feeTreatment = AssetFeeTreatment.none;
+    }
+
     source = sellAsset ? _assetOptions.first : accounts.first;
     destination = sellAsset ? accounts.first : _assetOptions.first;
 
@@ -233,12 +438,17 @@ class AssetConversionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setFeeTreatment(String value) {
-    if (!feeTreatments.contains(value) || feeTreatment == value) {
+  void setFeeTreatment(AssetFeeTreatment value) {
+    if (!feeTreatmentOptions.contains(value) || feeTreatment == value) {
       return;
     }
 
     feeTreatment = value;
+
+    if (value == AssetFeeTreatment.none) {
+      feeController.clear();
+    }
+
     notifyListeners();
   }
 
@@ -265,12 +475,53 @@ class AssetConversionController extends ChangeNotifier {
       );
     }
 
-    if (!canSave) {
+    final referenceError = marketReferenceValidationMessage;
+    if (referenceError != null) {
+      throw StateError(referenceError);
+    }
+
+    if (!_hasValidInputs) {
+      final quantityError = quantityValidationMessage;
+
+      if (quantityError != null) {
+        throw StateError(quantityError);
+      }
+
+      final feeError = feeValidationMessage;
+
+      if (feeError != null) {
+        throw StateError(feeError);
+      }
+
       throw StateError(
         'Cash value and quantity must both be greater than zero.',
       );
     }
 
+    final lotResult = lotValidation;
+    if (lotResult != null && !lotResult.isValid) {
+      throw StateError(lotResult.message ?? 'The stock lot is invalid.');
+    }
+
+    final validation = tradeValidation;
+
+    if (validation != null && !validation.isValid) {
+      throw StateError(validation.message ?? 'The asset trade is invalid.');
+    }
+
+    return _buildCandidate();
+  }
+
+  bool get _hasValidInputs {
+    return cash > 0 &&
+        quantityValidation.isValid &&
+        supportsSelectedCurrency &&
+        !selectedAssetDefinition.isDeleted &&
+        feeValidationMessage == null &&
+        marketReferenceValidationMessage == null;
+  }
+
+  Transaction _buildCandidate({double? quantityOverride}) {
     final asset = selectedAssetDefinition;
     final symbol = asset.normalizedSymbol;
 
@@ -283,17 +534,40 @@ class AssetConversionController extends ChangeNotifier {
       date: transactionDate,
       amount: cash,
       type: TransactionType.assetConversion,
-      quantity: quantity,
+      quantity: quantityOverride ?? quantity,
       unit: asset.normalizedUnit,
       unitPrice: unitPrice,
       assetDefinitionId: asset.id,
       assetName: asset.displayName.trim(),
       assetSymbol: symbol,
       assetAction: sellAsset ? AssetAction.sell : AssetAction.buy,
+      feeAmount: feeAmount,
+      feeTreatment: feeTreatment,
+      marketReferenceUnitPrice: marketReferenceUnitPrice,
+      marketReferenceCurrencyCode: marketReferenceSource == null
+          ? null
+          : selectedAssetDefinition.normalizedCurrencyCode,
+      marketReferenceUnit: marketReferenceSource == null
+          ? null
+          : selectedAssetDefinition.normalizedUnit,
+      marketReferenceSource: marketReferenceSource,
+      marketReferenceQuotedAt: marketReferenceQuotedAt,
     );
   }
 
   void _handleInputChanged() {
+    notifyListeners();
+  }
+
+  void _handleFeeInputChanged() {
+    if (feeAmount == 0) {
+      feeTreatment = AssetFeeTreatment.none;
+    } else if (feeTreatment == AssetFeeTreatment.none) {
+      feeTreatment = sellAsset
+          ? AssetFeeTreatment.deductFromSaleProceeds
+          : AssetFeeTreatment.capitalizeIntoCostBasis;
+    }
+
     notifyListeners();
   }
 
@@ -324,9 +598,12 @@ class AssetConversionController extends ChangeNotifier {
   void dispose() {
     cashController.removeListener(_handleInputChanged);
     quantityController.removeListener(_handleInputChanged);
+    feeController.removeListener(_handleFeeInputChanged);
 
     cashController.dispose();
     quantityController.dispose();
+    feeController.dispose();
+    executionReference.dispose();
 
     super.dispose();
   }

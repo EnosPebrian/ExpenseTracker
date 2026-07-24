@@ -7,7 +7,24 @@ class LocalStore {
   static final Map<String, List<String>> _master = {};
   Future<void> initialize() async {}
   Future<List<Map<String, Object?>>> getTransactions() async =>
-      List.unmodifiable(_records);
+      List.unmodifiable(
+        _records.where((record) => record['deleted_at'] == null),
+      );
+
+  Future<Map<String, Object?>?> getAssetFeeExpense(
+    String parentTransactionId, {
+    bool includeDeleted = true,
+  }) async {
+    for (final record in _records) {
+      if (record['related_transaction_id'] == parentTransactionId &&
+          record['relation_type'] == 'assetFeeExpense' &&
+          (includeDeleted || record['deleted_at'] == null)) {
+        return Map<String, Object?>.of(record);
+      }
+    }
+    return null;
+  }
+
   Future<void> upsertTransaction(Map<String, Object?> record) async {
     _records.removeWhere((item) => item['id'] == record['id']);
     _records.add(Map.of(record));
@@ -26,6 +43,29 @@ class LocalStore {
         'sync_status': 'pending',
         ...?version == null ? null : {'version': version},
       };
+    }
+  }
+
+  Future<void> saveAssetFeeChange({
+    required Map<String, Object?> parent,
+    Map<String, Object?>? linkedExpense,
+    Map<String, Object?>? obsoleteLinkedExpense,
+  }) async {
+    final snapshot = _records.map(Map<String, Object?>.of).toList();
+    try {
+      await upsertTransaction(parent);
+      if (linkedExpense != null) {
+        await upsertTransaction(linkedExpense);
+      }
+      if (obsoleteLinkedExpense != null &&
+          obsoleteLinkedExpense['id'] != linkedExpense?['id']) {
+        await upsertTransaction(obsoleteLinkedExpense);
+      }
+    } catch (_) {
+      _records
+        ..clear()
+        ..addAll(snapshot);
+      rethrow;
     }
   }
 

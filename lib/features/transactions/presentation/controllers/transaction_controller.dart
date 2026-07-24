@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../assets/domain/services/asset_transaction_sequence_validator.dart';
 import '../../domain/entities/transaction.dart';
 import '../../domain/usecases/transaction_usecases.dart';
 
@@ -20,18 +21,20 @@ class TransactionController extends ChangeNotifier {
   final List<Transaction> transactions = [];
   bool isLoading = false;
   String? error;
+  AssetSequenceValidationResult? assetValidation;
 
   Future<void> load({List<Transaction> seed = const []}) async {
     isLoading = true;
     error = null;
+    assetValidation = null;
     notifyListeners();
     try {
       var loaded = await get();
       if (loaded.isEmpty && seed.isNotEmpty) {
-        loaded = [];
         for (final transaction in seed) {
-          loaded.add(await create(transaction));
+          await create(transaction);
         }
+        loaded = await get();
       }
       transactions
         ..clear()
@@ -48,32 +51,22 @@ class TransactionController extends ChangeNotifier {
 
   Future<void> createTransaction(Transaction transaction) async {
     await _run(() async {
-      transactions.add(await create(transaction));
-
-      _sortTransactions();
+      await create(transaction);
+      await _refreshTransactions();
     });
   }
 
   Future<void> updateTransaction(Transaction transaction) async {
     await _run(() async {
-      final updated = await update(transaction);
-
-      final index = transactions.indexWhere((item) => item.id == updated.id);
-
-      if (index >= 0) {
-        transactions[index] = updated;
-      } else {
-        transactions.add(updated);
-      }
-
-      _sortTransactions();
+      await update(transaction);
+      await _refreshTransactions();
     });
   }
 
   Future<void> deleteTransaction(Transaction transaction) async {
     await _run(() async {
       await delete(transaction);
-      transactions.removeWhere((item) => item.id == transaction.id);
+      await _refreshTransactions();
     });
   }
 
@@ -85,14 +78,20 @@ class TransactionController extends ChangeNotifier {
     await _run(() async {
       copy = await duplicate(transaction, withoutAmount: withoutAmount);
 
-      transactions.add(copy!);
-      _sortTransactions();
+      await _refreshTransactions();
     });
     return copy;
   }
 
   void _sortTransactions() {
     transactions.sort(_compareTransactions);
+  }
+
+  Future<void> _refreshTransactions() async {
+    transactions
+      ..clear()
+      ..addAll(await get());
+    _sortTransactions();
   }
 
   static int _compareTransactions(Transaction left, Transaction right) {
@@ -107,10 +106,15 @@ class TransactionController extends ChangeNotifier {
 
   Future<void> _run(Future<void> Function() operation) async {
     error = null;
+    assetValidation = null;
     notifyListeners();
 
     try {
       await operation();
+    } on TransactionValidationException catch (exception) {
+      error = exception.toString();
+      assetValidation = exception.assetValidation;
+      rethrow;
     } catch (exception) {
       error = exception.toString();
       rethrow;
