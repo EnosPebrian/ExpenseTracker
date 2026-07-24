@@ -347,9 +347,11 @@ asset_symbol TEXT,
     return value;
   }
 
-  Future<List<Map<String, Object?>>> getTransactions() => db.query(
+  Future<List<Map<String, Object?>>> getTransactions({
+    bool includeDeleted = false,
+  }) => db.query(
     'transactions',
-    where: 'deleted_at IS NULL',
+    where: includeDeleted ? null : 'deleted_at IS NULL',
     orderBy: 'transaction_date DESC, created_at DESC',
   );
 

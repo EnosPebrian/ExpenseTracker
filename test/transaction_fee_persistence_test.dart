@@ -150,6 +150,11 @@ void main() {
       expect(transaction['unit'], 'usd');
       expect(transaction['unit_price'], 16200);
       expect(transaction['amount'], 16200000);
+      expect(transaction['deleted_at'], isNull);
+      expect(transaction['version'], 3);
+      expect(transaction['device_id'], 'legacy-device');
+      expect(transaction['sync_status'], 'synced');
+      expect(transaction['market_reference_unit_price'], isNull);
       expect(await upgraded.query('asset_definitions'), hasLength(1));
       expect(
         (await upgraded.query('asset_market_prices')).single['price_minor'],

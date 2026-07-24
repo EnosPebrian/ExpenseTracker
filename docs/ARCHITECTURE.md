@@ -169,9 +169,42 @@ quantity available at the candidate date, excluding the original edit record.
 Historical odd-lot transactions remain readable, while cleanup sales may sell
 whole lots or remove the odd residue to leave a whole-lot or zero balance.
 
+`AssetDefinitionIntegrityPolicy` is the pure-domain validation boundary for new
+and edited concrete asset definitions. It normalizes identity comparisons at
+validation time without rewriting stored history. Stock identity is symbol plus
+exchange, with a missing exchange treated as potentially conflicting; non-stock
+definitions protect their established market-price identity. Online provider
+code and symbol pairs are unique across asset kinds, and archived definitions
+participate in all conflict checks. The controller applies the policy immediately
+before persistence and during seed initialization. Archive/restore coordination
+is provided by the D13B usage policy and controller lifecycle flow.
+
+`AssetDefinitionUsagePolicy` derives definition lifecycle state from transaction
+history. Links use only `assetDefinitionId`; snapshot names and symbols never
+link concrete definitions. Soft-deleted asset conversions remain historical
+links but do not affect open quantity, while generated fee expenses are ignored.
+Open quantity reuses `AssetPortfolioCalculator` and D12D numeric normalization.
+The controller blocks archiving open holdings, restores the same persisted row
+only after D13A validation, and protects kind, symbol, exchange, currency, unit,
+and lot size once any historical transaction is linked. Display name and online
+provider configuration remain editable subject to integrity checks.
+
+Asset catalog discovery is presentation-only. `AssetDefinitionCatalogQuery`
+holds local search, lifecycle, kind, pricing, and sort state, while the pure
+`AssetDefinitionCatalogFilter` derives a deterministic view without mutating
+controller or repository state. `AssetDefinitionFormPresets` supplies
+create-only suggestions and respects dirty fields; persistence validation still
+flows through `AssetDefinitionController` and `AssetDefinitionIntegrityPolicy`.
+
 Responsibilities:
 
 - `AssetConversionController`: form state, validation, explicit buy/sell transaction creation
+- `AssetDefinitionController`: save-time integrity coordination and field errors
+- `AssetDefinitionIntegrityPolicy`: pure structural and identity conflict rules
+- `AssetDefinitionUsagePolicy`: pure usage, archive eligibility, and linked-edit rules
+- `AssetDefinitionCatalogFilter`: pure presentation catalog filtering and sorting
+- `AssetDefinitionFormPresets`: create-only, dirty-field-aware form suggestions
+- `AssetDefinitionRetirementPolicy`: exact-ID legacy retirement, buy/sell eligibility, and restore/edit restrictions
 - `AssetPortfolioCalculator`: pure weighted-average calculations and legacy compatibility
 - `AssetPriceRepository`: provider contract
 - `AlphaVantageAssetPriceRepository`: HTTP/provider parsing
@@ -276,3 +309,18 @@ Do not:
 - assume every stock uses IDR
 - silently oversell
 - commit API keys
+
+## 14. Obsolete asset-definition compatibility
+
+The retired generic stock definition is recognized only by the fixed ID
+`asset-stock-portfolio`; display names never trigger retirement behavior.
+`AssetDefinitionRetirementPolicy` owns this identity and the associated
+archive, buy, sell, edit, and restore rules.
+
+Bootstrap excludes this definition from fresh seeds. The definition controller
+soft-archives an existing unused or fully closed row using the normal lifecycle
+metadata. An open legacy position remains active only as a sell target and is
+automatically archived after its quantity reaches zero. Transaction use cases,
+Asset Conversion, Quick Add, and transaction editing enforce the same sell-only
+rule. Historical transaction snapshots and portfolio fallback remain intact;
+no transaction relinking or schema migration is involved.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../../core/shared/widgets/searchable_dropdown.dart';
 import '../../../../assets/presentation/widgets/asset_sale_availability.dart';
 import '../../../../assets/presentation/widgets/asset_stock_lot_helper.dart';
+import '../../../../assets/presentation/widgets/legacy_asset_definition_warning.dart';
 import '../../../../assets/domain/entities/asset_kind.dart';
 import '../quick_add_controller.dart';
 
@@ -75,6 +76,10 @@ class QuickAddAssetAccountFields extends StatelessWidget {
           options: conversion.sourceOptions,
           onChanged: conversion.setSource,
         ),
+        if (conversion.isLegacyCloseOnly) ...[
+          const SizedBox(height: 10),
+          const LegacyAssetDefinitionWarning(compact: true),
+        ],
         const SizedBox(height: 14),
         SearchableSelect(
           label: conversion.destinationLabel,

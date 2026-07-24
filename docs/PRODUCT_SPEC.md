@@ -79,9 +79,22 @@ quantity, unit, calculated unit price, and date/time.
 Current default groups:
 
 - Gold Holdings
-- Stock Portfolio
 - Bitcoin Wallet
 - Inventory
+- US Dollar Cash
+- Singapore Dollar Cash
+
+Stocks are created as concrete definitions with their own symbol, exchange,
+currency, unit, and lot size. The obsolete generic `asset-stock-portfolio`
+definition is retained only for fixed-ID historical close-position
+compatibility and is never offered for new purchases.
+
+If that exact legacy definition has an open historical holding, it is clearly
+identified as legacy and may only be sold down under the normal oversell, lot,
+precision, fee, and execution-reference rules. It is soft-archived after the
+holding closes and can never be restored or identity-edited. A user-created
+definition with the same display name but a different ID follows normal asset
+rules.
 
 Stock quantity is stored as shares. Lots are derived as:
 
@@ -247,6 +260,50 @@ Every persisted change requires a version increment, `onCreate`, `onUpgrade`, na
 - no API key leaves manual pricing usable
 - asset conversions do not affect ordinary income/expense
 - static analysis and tests pass
+
+### Asset-definition integrity
+
+- stock symbols are unique per normalized exchange; a missing exchange cannot
+  bypass a matching-symbol conflict
+- distinct explicit exchanges may use the same stock symbol
+- non-stock definitions cannot duplicate their established market-price identity
+- online pricing requires provider code and provider symbol
+- normalized provider code and symbol pairs are unique across all asset kinds
+- archived definitions continue to reserve symbol, market-price, and provider
+  identities so historical links remain unambiguous
+- disabling online pricing retains optional provider configuration
+- validation failures stay in the asset editor with actionable field errors
+- archive and restore actions use the definition lifecycle rules below
+
+### Asset-definition lifecycle
+
+- unused definitions and fully closed historical positions may be archived
+- definitions with an open quantity cannot be archived
+- archive preserves the definition ID, historical transactions, execution
+  snapshots, realized gain, and cached market prices
+- archived definitions are excluded from new conversions but remain available
+  for historical portfolio resolution
+- restore reactivates the same definition row and reruns all D13A identity checks
+- definitions linked to any historical asset transaction may edit display name
+  and provider configuration only
+- linked kind, symbol, exchange, valuation currency, unit, and lot size are
+  read-only because historical accounting depends on them
+- archive/restore does not relink or rewrite transactions
+
+### Asset-definition catalog
+
+- search is immediate, local, case-insensitive, and whitespace-normalized across
+  visible asset identity fields
+- lifecycle, multi-kind, and pricing filters compose without changing stored
+  definitions; clear filters preserves the selected lifecycle
+- definitions sort by normalized name, recent update, kind, or symbol with a
+  stable definition-ID tie-breaker
+- catalog state and preset-selection state are not persisted
+- create-form defaults and explicit IDX/FX preset actions never overwrite dirty
+  values, enable online pricing, bypass integrity checks, or alter protected
+  linked fields
+- active, filtered, and archived empty states present only contextually safe
+  actions and remain usable on narrow layouts
 
 ## 9. Known product gaps
 

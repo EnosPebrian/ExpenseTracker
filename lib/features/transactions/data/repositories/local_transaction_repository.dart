@@ -7,8 +7,10 @@ class LocalTransactionRepository implements TransactionRepository {
   final LocalStore store;
 
   @override
-  Future<List<Transaction>> getAll() async =>
-      (await store.getTransactions()).map(Transaction.fromRecord).toList();
+  Future<List<Transaction>> getAll({bool includeDeleted = false}) async =>
+      (await store.getTransactions(
+        includeDeleted: includeDeleted,
+      )).map(Transaction.fromRecord).toList();
 
   @override
   Future<Transaction?> getAssetFeeExpense(

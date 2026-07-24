@@ -4,6 +4,8 @@ import 'package:pilgrim_tracker/features/assets/controllers/asset_definition_con
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_definition.dart';
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_kind.dart';
 import 'package:pilgrim_tracker/features/assets/domain/repositories/asset_definition_repository.dart';
+import 'package:pilgrim_tracker/features/assets/domain/services/asset_definition_integrity_policy.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
 
 void main() {
   group('AssetDefinitionController', () {
@@ -201,12 +203,319 @@ void main() {
 
       final invalid = _bbcaDefinition().copyWith(symbol: null, lotSize: 0);
 
-      await expectLater(controller.save(invalid), throwsArgumentError);
+      await expectLater(
+        controller.save(invalid),
+        throwsA(isA<AssetDefinitionIntegrityException>()),
+      );
 
       expect(controller.isSaving, isFalse);
       expect(controller.error, isNotNull);
       expect(repository.upsertCallCount, 0);
       expect(controller.definitions, isEmpty);
+    });
+
+    test(
+      'conflicting candidate is not persisted and exposes field error',
+      () async {
+        final repository = _FakeAssetDefinitionRepository();
+        await repository.upsert(_bbcaDefinition());
+        final initialWrites = repository.upsertCallCount;
+        final controller = AssetDefinitionController(repository: repository);
+
+        await expectLater(
+          controller.save(
+            _bbcaDefinition().copyWith(
+              id: 'asset-bbca-copy',
+              displayName: 'BBCA Copy',
+              providerSymbol: 'OTHER',
+            ),
+          ),
+          throwsA(isA<AssetDefinitionIntegrityException>()),
+        );
+
+        expect(repository.upsertCallCount, initialWrites);
+        expect(
+          controller.fieldError(AssetDefinitionIntegrityField.symbol),
+          contains('already exists'),
+        );
+      },
+    );
+
+    test('conflicting edit is blocked while editing itself succeeds', () async {
+      final repository = _FakeAssetDefinitionRepository();
+      final bbca = _bbcaDefinition();
+      final bbri = bbca.copyWith(
+        id: 'asset-bbri',
+        displayName: 'Bank Rakyat Indonesia',
+        symbol: 'BBRI',
+        providerSymbol: 'BBRI.JK',
+      );
+      await repository.upsert(bbca);
+      await repository.upsert(bbri);
+      final controller = AssetDefinitionController(repository: repository);
+
+      final edited = await controller.save(
+        bbca.copyWith(displayName: 'Bank Central Asia Tbk'),
+      );
+      expect(edited.displayName, 'Bank Central Asia Tbk');
+
+      await expectLater(
+        controller.save(bbri.copyWith(symbol: 'BBCA', providerSymbol: 'OTHER')),
+        throwsA(isA<AssetDefinitionIntegrityException>()),
+      );
+      expect((await repository.getById(bbri.id))?.symbol, 'BBRI');
+    });
+
+    test('archived definitions participate in conflict checks', () async {
+      final repository = _FakeAssetDefinitionRepository();
+      await repository.upsert(
+        _bbcaDefinition().copyWith(deletedAt: DateTime.utc(2026, 7, 23)),
+      );
+      final controller = AssetDefinitionController(repository: repository);
+
+      await expectLater(
+        controller.save(
+          _bbcaDefinition().copyWith(
+            id: 'asset-bbca-new',
+            providerSymbol: 'OTHER',
+          ),
+        ),
+        throwsA(isA<AssetDefinitionIntegrityException>()),
+      );
+      expect(controller.error, contains('archived'));
+    });
+
+    test('field errors clear after correction', () async {
+      final repository = _FakeAssetDefinitionRepository();
+      await repository.upsert(_bbcaDefinition());
+      final controller = AssetDefinitionController(repository: repository);
+
+      await expectLater(
+        controller.save(
+          _bbcaDefinition().copyWith(id: 'asset-copy', providerSymbol: 'OTHER'),
+        ),
+        throwsA(isA<AssetDefinitionIntegrityException>()),
+      );
+      expect(controller.integrityResult, isNotNull);
+
+      controller.clearValidationErrors();
+
+      expect(controller.integrityResult, isNull);
+      expect(controller.error, isNull);
+    });
+
+    test(
+      'seed bootstrap stays idempotent and rejects seed conflicts',
+      () async {
+        final repository = _FakeAssetDefinitionRepository();
+        final controller = AssetDefinitionController(repository: repository);
+        final seed = _bbcaDefinition();
+
+        await controller.initialize(seeds: [seed]);
+        await controller.initialize(seeds: [seed]);
+
+        expect(repository.getAll(), completion(hasLength(1)));
+
+        await controller.initialize(
+          seeds: [
+            seed.copyWith(
+              id: 'asset-conflicting-seed',
+              providerSymbol: 'OTHER',
+            ),
+          ],
+        );
+
+        expect(repository.getAll(), completion(hasLength(1)));
+        expect(controller.error, contains('already exists'));
+      },
+    );
+
+    test(
+      'unused definition archives and restores with the same metadata',
+      () async {
+        final repository = _FakeAssetDefinitionRepository();
+        final definition = _bbcaDefinition();
+        await repository.upsert(definition);
+        final controller = AssetDefinitionController(
+          repository: repository,
+          now: () => DateTime.utc(2026, 7, 24),
+        );
+        await controller.initialize();
+
+        await controller.archive(definition);
+
+        expect(controller.definitions, isEmpty);
+        expect(controller.archivedDefinitions.single.id, definition.id);
+        expect(controller.archivedDefinitions.single.version, 2);
+
+        await controller.archive(definition);
+        expect(controller.archivedDefinitions.single.version, 2);
+
+        final restored = await controller.restore(definition);
+        expect(restored.id, definition.id);
+        expect(restored.createdAt, definition.createdAt);
+        expect(restored.providerSymbol, definition.providerSymbol);
+        expect(restored.version, 3);
+        expect(controller.definitions.single.id, definition.id);
+        expect(controller.archivedDefinitions, isEmpty);
+
+        final repeated = await controller.restore(restored);
+        expect(repeated.id, definition.id);
+        expect(
+          repository.getAll(includeDeleted: true),
+          completion(hasLength(1)),
+        );
+      },
+    );
+
+    test(
+      'open holding blocks archive but fully sold history allows it',
+      () async {
+        final repository = _FakeAssetDefinitionRepository();
+        final definition = _bbcaDefinition();
+        await repository.upsert(definition);
+        final transactions = <Transaction>[
+          _assetTransaction(definition: definition, quantity: 500),
+        ];
+        final controller = AssetDefinitionController(
+          repository: repository,
+          transactionsProvider: () async => transactions,
+        );
+        await controller.initialize();
+
+        await expectLater(
+          controller.archive(definition),
+          throwsA(isA<AssetDefinitionLifecycleException>()),
+        );
+        expect(controller.definitions, hasLength(1));
+
+        transactions.add(
+          _assetTransaction(
+            id: 'sell',
+            definition: definition,
+            quantity: 500,
+            action: AssetAction.sell,
+          ),
+        );
+        await controller.archive(definition);
+
+        expect(controller.archivedDefinitions.single.id, definition.id);
+        expect(transactions, hasLength(2));
+      },
+    );
+
+    test(
+      'linked definition allows safe edits and preserves snapshots',
+      () async {
+        final repository = _FakeAssetDefinitionRepository();
+        final definition = _bbcaDefinition();
+        final transaction = _assetTransaction(definition: definition);
+        await repository.upsert(definition);
+        final controller = AssetDefinitionController(
+          repository: repository,
+          transactionsProvider: () async => [transaction],
+        );
+        await controller.initialize();
+
+        final saved = await controller.save(
+          definition.copyWith(
+            displayName: 'BCA Tbk',
+            providerCode: 'manual_provider',
+            providerSymbol: 'BCA',
+            onlinePricingEnabled: false,
+          ),
+        );
+
+        expect(saved.displayName, 'BCA Tbk');
+        expect(saved.providerCode, 'MANUAL_PROVIDER');
+        expect(transaction.assetName, 'Bank Central Asia');
+        expect(transaction.assetSymbol, 'BBCA');
+      },
+    );
+
+    test('linked identity edit and archived edit are blocked', () async {
+      final repository = _FakeAssetDefinitionRepository();
+      final definition = _bbcaDefinition();
+      final transactions = [_assetTransaction(definition: definition)];
+      await repository.upsert(definition);
+      final controller = AssetDefinitionController(
+        repository: repository,
+        transactionsProvider: () async => transactions,
+      );
+      await controller.initialize();
+
+      await expectLater(
+        controller.save(definition.copyWith(symbol: 'BBRI')),
+        throwsA(isA<AssetDefinitionLifecycleException>()),
+      );
+      expect(controller.error, contains('Symbol cannot be changed'));
+      expect((await repository.getById(definition.id))?.symbol, 'BBCA');
+
+      await repository.softDelete(
+        definition.id,
+        deletedAt: DateTime.utc(2026, 7, 24),
+      );
+      await expectLater(
+        controller.save(definition.copyWith(displayName: 'Changed')),
+        throwsA(isA<AssetDefinitionLifecycleException>()),
+      );
+      expect(controller.error, contains('Restore this asset'));
+    });
+
+    test('linked safe-field edits still run D13A provider checks', () async {
+      final repository = _FakeAssetDefinitionRepository();
+      final definition = _bbcaDefinition();
+      final other = definition.copyWith(
+        id: 'asset-bbri',
+        displayName: 'Bank Rakyat Indonesia',
+        symbol: 'BBRI',
+        providerSymbol: 'BBRI.JK',
+      );
+      await repository.upsert(definition);
+      await repository.upsert(other);
+      final controller = AssetDefinitionController(
+        repository: repository,
+        transactionsProvider: () async => [
+          _assetTransaction(definition: definition),
+        ],
+      );
+      await controller.initialize();
+
+      await expectLater(
+        controller.save(definition.copyWith(providerSymbol: 'BBRI.JK')),
+        throwsA(isA<AssetDefinitionIntegrityException>()),
+      );
+      expect(controller.error, contains('already used'));
+    });
+
+    test('restore is blocked by active symbol or provider conflicts', () async {
+      final repository = _FakeAssetDefinitionRepository();
+      final archived = _bbcaDefinition().copyWith(
+        id: 'asset-archived',
+        deletedAt: DateTime.utc(2026, 7, 23),
+      );
+      await repository.upsert(archived);
+      await repository.upsert(_bbcaDefinition());
+      final controller = AssetDefinitionController(repository: repository);
+      await controller.initialize();
+
+      await expectLater(
+        controller.restore(archived),
+        throwsA(isA<AssetDefinitionIntegrityException>()),
+      );
+      expect(controller.error, contains('Cannot restore'));
+      expect((await repository.getById(archived.id))?.isDeleted, isTrue);
+
+      final providerOnly = archived.copyWith(
+        symbol: 'BBRI',
+        providerSymbol: 'BBCA.JK',
+      );
+      await repository.upsert(providerOnly);
+      await expectLater(
+        controller.restore(providerOnly),
+        throwsA(isA<AssetDefinitionIntegrityException>()),
+      );
+      expect(controller.error, contains('already used'));
     });
   });
 }
@@ -235,6 +544,30 @@ AssetDefinition _bbcaDefinition({
     version: version,
     deviceId: 'test-device',
     syncStatus: syncStatus,
+  );
+}
+
+Transaction _assetTransaction({
+  String id = 'buy',
+  required AssetDefinition definition,
+  double quantity = 100,
+  AssetAction action = AssetAction.buy,
+}) {
+  return Transaction(
+    id: id,
+    title: '${action.name} ${definition.displayName}',
+    category: 'Asset conversion',
+    account: 'Cash -> ${definition.displayName}',
+    date: DateTime.utc(2026, 7, 24),
+    amount: (quantity * 1000).round(),
+    type: TransactionType.assetConversion,
+    quantity: quantity,
+    unit: definition.unit,
+    unitPrice: 1000,
+    assetDefinitionId: definition.id,
+    assetName: definition.displayName,
+    assetSymbol: definition.symbol,
+    assetAction: action,
   );
 }
 

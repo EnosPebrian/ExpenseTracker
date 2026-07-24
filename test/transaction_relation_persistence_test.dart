@@ -140,6 +140,11 @@ void main() {
     expect(restored.assetSymbol, 'USD');
     expect(restored.relatedTransactionId, isNull);
     expect(restored.relationType, TransactionRelationType.none);
+    expect(restored.version, 3);
+    expect(restored.deviceId, 'device-a');
+    expect(restored.syncStatus, 'synced');
+    expect(restored.deletedAt, isNull);
+    expect(restored.marketReferenceUnitPrice, isNull);
 
     final verificationDatabase = await databaseFactory.openDatabase(
       databasePath,

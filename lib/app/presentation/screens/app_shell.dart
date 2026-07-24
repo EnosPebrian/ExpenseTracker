@@ -18,6 +18,7 @@ import '../../../features/reports/presentation/screens/reports_page.dart';
 import '../../../features/tithe/presentation/screens/tithe_page.dart';
 import '../../../features/tithe/domain/tithe_policy.dart';
 import '../../../features/transactions/domain/entities/transaction.dart';
+import '../../../features/transactions/data/repositories/local_transaction_repository.dart';
 import '../../../features/transactions/presentation/edit/edit_transaction_screen.dart';
 import '../../../features/transactions/presentation/edit/transaction_form.dart';
 import '../../../features/transactions/presentation/providers/transaction_providers.dart';
@@ -55,8 +56,15 @@ class _AppShellState extends State<AppShell> {
   late final LocalAssetDefinitionRepository assetDefinitionRepository =
       LocalAssetDefinitionRepository(store);
 
+  late final LocalTransactionRepository assetUsageTransactionRepository =
+      LocalTransactionRepository(store);
+
   late final AssetDefinitionController assetDefinitionController =
-      AssetDefinitionController(repository: assetDefinitionRepository);
+      AssetDefinitionController(
+        repository: assetDefinitionRepository,
+        transactionsProvider: () =>
+            assetUsageTransactionRepository.getAll(includeDeleted: true),
+      );
 
   late final AlphaVantageAssetPriceRepository? assetPriceRepository =
       AppEnvironment.hasAlphaVantageApiKey
@@ -73,6 +81,7 @@ class _AppShellState extends State<AppShell> {
   late final transactionController = TransactionProviders.controller(
     store,
     assetDefinitionResolver: assetDefinitionController.definitionById,
+    afterMutation: assetDefinitionController.reload,
   );
   late final masterDataController = MasterDataController(
     persist:
@@ -95,8 +104,6 @@ class _AppShellState extends State<AppShell> {
     store: store,
     transactionController: transactionController,
   );
-
-  final List<String> assetNames = defaultAssetNames;
 
   @override
   void initState() {
@@ -209,7 +216,6 @@ class _AppShellState extends State<AppShell> {
       expenseCategories: expenses,
       incomeCategories: incomes,
       projects: masterDataController.projects,
-      assets: assetNames,
       assetDefinitions: assetDefinitionController.definitions,
       assetMarketPrices: assetPriceController.prices,
       defaultProject: 'Life',
@@ -225,7 +231,6 @@ class _AppShellState extends State<AppShell> {
       expenseCategories: masterDataController.expenseCategories,
       incomeCategories: masterDataController.incomeCategories,
       projects: masterDataController.projects,
-      assets: assetNames,
       assetDefinitions: assetDefinitionController.definitions,
       assetMarketPrices: assetPriceController.prices,
     );
@@ -265,7 +270,7 @@ class _AppShellState extends State<AppShell> {
     final assetPortfolio = AssetPortfolioCalculator.calculate(
       transactions: transactions,
       marketPrices: assetPriceController.prices,
-      assetDefinitions: assetDefinitionController.definitions,
+      assetDefinitions: assetDefinitionController.allDefinitions,
     );
 
     final currentMonthSummary = FinancialSummary.calculate(

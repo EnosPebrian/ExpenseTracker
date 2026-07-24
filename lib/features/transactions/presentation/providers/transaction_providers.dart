@@ -8,6 +8,7 @@ class TransactionProviders {
   static TransactionController controller(
     LocalStore store, {
     AssetDefinitionResolver? assetDefinitionResolver,
+    Future<void> Function()? afterMutation,
   }) {
     final repository = LocalTransactionRepository(store);
     return TransactionController(
@@ -25,6 +26,7 @@ class TransactionProviders {
         repository,
         assetDefinitionResolver: assetDefinitionResolver,
       ),
+      afterMutation: afterMutation,
     );
   }
 }

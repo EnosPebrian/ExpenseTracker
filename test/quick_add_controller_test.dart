@@ -13,8 +13,10 @@ class _FakeRepository implements TransactionRepository {
   bool throwOnSave = false;
 
   @override
-  Future<List<Transaction>> getAll() async {
-    return saved.where((item) => item.deletedAt == null).toList();
+  Future<List<Transaction>> getAll({bool includeDeleted = false}) async {
+    return saved
+        .where((item) => includeDeleted || item.deletedAt == null)
+        .toList();
   }
 
   @override
@@ -79,12 +81,12 @@ TransactionController _createTransactionController(
   );
 }
 
-const _quickAddConfig = QuickAddConfig(
-  accounts: ['Cash Enos', 'BNI Enos'],
-  expenseCategories: ['Konsumsi'],
-  incomeCategories: ['Gaji Enos'],
-  projects: ['Life', 'Tebu Nai'],
-  assets: ['Gold Holdings', 'Stock Portfolio', 'Bitcoin Wallet', 'Inventory'],
+final _quickAddConfig = QuickAddConfig(
+  accounts: const ['Cash Enos', 'BNI Enos'],
+  expenseCategories: const ['Konsumsi'],
+  incomeCategories: const ['Gaji Enos'],
+  projects: const ['Life', 'Tebu Nai'],
+  assetDefinitions: [_goldDefinition()],
 );
 
 void main() {
@@ -458,6 +460,26 @@ AssetDefinition _bbcaDefinition() => AssetDefinition(
   currencyCode: 'IDR',
   unit: 'share',
   lotSize: 100,
+  onlinePricingEnabled: false,
+  createdAt: DateTime.utc(2026),
+  updatedAt: DateTime.utc(2026),
+  deletedAt: null,
+  version: 1,
+  deviceId: 'test',
+  syncStatus: 'local_only',
+);
+
+AssetDefinition _goldDefinition() => AssetDefinition(
+  id: 'legacy-gold-holdings',
+  displayName: 'Gold Holdings',
+  kind: AssetKind.gold,
+  symbol: null,
+  providerCode: null,
+  providerSymbol: null,
+  exchangeCode: null,
+  currencyCode: 'IDR',
+  unit: 'gram',
+  lotSize: 1,
   onlinePricingEnabled: false,
   createdAt: DateTime.utc(2026),
   updatedAt: DateTime.utc(2026),

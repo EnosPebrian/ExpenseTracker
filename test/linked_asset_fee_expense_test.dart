@@ -3,6 +3,7 @@ import 'package:pilgrim_tracker/features/analytics/domain/financial_summary.dart
 import 'package:pilgrim_tracker/features/assets/domain/services/asset_trade_fee_accounting.dart';
 import 'package:pilgrim_tracker/features/assets/domain/services/asset_portfolio_calculator.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/asset_market_reference_source.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction_relation_type.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/repositories/transaction_repository.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/usecases/transaction_usecases.dart';
@@ -12,8 +13,12 @@ class _AtomicRepository implements TransactionRepository {
   bool failAtomicWrite = false;
 
   @override
-  Future<List<Transaction>> getAll() async =>
-      records.where((transaction) => transaction.deletedAt == null).toList();
+  Future<List<Transaction>> getAll({bool includeDeleted = false}) async =>
+      records
+          .where(
+            (transaction) => includeDeleted || transaction.deletedAt == null,
+          )
+          .toList();
 
   @override
   Future<Transaction?> getAssetFeeExpense(
@@ -97,6 +102,11 @@ Transaction _parent({
     assetAction: action,
     feeAmount: feeAmount,
     feeTreatment: treatment,
+    marketReferenceUnitPrice: action == AssetAction.buy ? 16250 : 16700,
+    marketReferenceCurrencyCode: 'IDR',
+    marketReferenceUnit: 'usd',
+    marketReferenceSource: AssetMarketReferenceSource.manual,
+    marketReferenceQuotedAt: date ?? DateTime(2026, 7, 24, 9),
   );
 }
 
@@ -112,6 +122,7 @@ void main() {
       expect(active, hasLength(2));
       expect(child, isNotNull);
       expect(child!.type, TransactionType.expense);
+      expect(created.marketReferenceUnitPrice, 16250);
       expect(child.amount, 100000);
       expect(child.account, 'Cash Enos');
       expect(child.projectId, 'life');
@@ -124,6 +135,7 @@ void main() {
       expect(child.marketReferenceQuotedAt, isNull);
       expect(child.feeAmount, 0);
       expect(child.assetDefinitionId, isNull);
+      expect(child.quantity, isNull);
 
       final failedRepository = _AtomicRepository()..failAtomicWrite = true;
       await expectLater(
@@ -157,6 +169,15 @@ void main() {
     expect(updatedChild.date, changedDate);
     expect(updatedChild.account, 'BNI Enos');
     expect(updatedChild.projectId, 'tebu-nai');
+    expect(await repository.getAll(), hasLength(2));
+    expect(
+      repository.records.where(
+        (transaction) =>
+            transaction.relatedTransactionId == created.id &&
+            transaction.deletedAt == null,
+      ),
+      hasLength(1),
+    );
   });
 
   test(
@@ -198,8 +219,13 @@ void main() {
       final duplicateChild = await repository.getAssetFeeExpense(duplicate.id);
 
       expect(duplicate.id, isNot(created.id));
+      expect(duplicate.feeAmount, created.feeAmount);
+      expect(duplicate.feeTreatment, created.feeTreatment);
+      expect(duplicate.marketReferenceUnitPrice, isNull);
+      expect(duplicate.marketReferenceSource, isNull);
       expect(duplicateChild!.id, isNot(originalChild!.id));
       expect(duplicateChild.relatedTransactionId, duplicate.id);
+      expect(duplicateChild.marketReferenceUnitPrice, isNull);
 
       await DeleteTransaction(repository)(duplicate);
       final deletedChild = await repository.getAssetFeeExpense(duplicate.id);

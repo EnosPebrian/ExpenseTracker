@@ -8,8 +8,10 @@ class _FakeRepository implements TransactionRepository {
   final saved = <Transaction>[];
 
   @override
-  Future<List<Transaction>> getAll() async {
-    return saved.where((item) => item.deletedAt == null).toList();
+  Future<List<Transaction>> getAll({bool includeDeleted = false}) async {
+    return saved
+        .where((item) => includeDeleted || item.deletedAt == null)
+        .toList();
   }
 
   @override

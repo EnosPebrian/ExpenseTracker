@@ -10,7 +10,7 @@ import 'package:pilgrim_tracker/features/transactions/presentation/screens/trans
 
 class _FailingDeleteRepository implements TransactionRepository {
   @override
-  Future<List<Transaction>> getAll() async {
+  Future<List<Transaction>> getAll({bool includeDeleted = false}) async {
     return const [];
   }
 

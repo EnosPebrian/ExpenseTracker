@@ -47,7 +47,7 @@ class _FakeTransactionRepository implements TransactionRepository {
   bool throwOnGet = false;
 
   @override
-  Future<List<Transaction>> getAll() async {
+  Future<List<Transaction>> getAll({bool includeDeleted = false}) async {
     if (throwOnGet) {
       throw StateError('database unavailable');
     }

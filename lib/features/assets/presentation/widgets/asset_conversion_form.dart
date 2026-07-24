@@ -9,6 +9,7 @@ import 'asset_fee_fields.dart';
 import 'asset_execution_reference_fields.dart';
 import 'asset_sale_availability.dart';
 import 'asset_stock_lot_helper.dart';
+import 'legacy_asset_definition_warning.dart';
 
 class AssetConversionForm extends StatelessWidget {
   const AssetConversionForm({
@@ -79,6 +80,10 @@ class AssetConversionForm extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _SelectedAssetCard(controller: controller),
+            if (controller.isLegacyCloseOnly) ...[
+              const SizedBox(height: 10),
+              const LegacyAssetDefinitionWarning(),
+            ],
             const SizedBox(height: 12),
             TextField(
               controller: controller.quantityController,

@@ -1,6 +1,7 @@
 import '../../../assets/domain/entities/asset_definition.dart';
 import '../../../assets/domain/services/asset_transaction_sequence_validator.dart';
 import '../../../assets/domain/services/asset_numeric_policy.dart';
+import '../../../assets/domain/services/asset_definition_retirement_policy.dart';
 import '../../../assets/domain/services/asset_trade_validator.dart';
 import '../entities/transaction.dart';
 import '../entities/transaction_relation_type.dart';
@@ -338,6 +339,14 @@ Future<void> _validateCandidate({
   }
 
   final definitionId = candidate.assetDefinitionId?.trim();
+  const retirementPolicy = AssetDefinitionRetirementPolicy();
+  if (retirementPolicy.isRetiredSystemId(definitionId) &&
+      candidate.assetAction != AssetAction.sell) {
+    throw TransactionValidationException(
+      'This legacy stock definition can only be used to close its existing '
+      'holding. Create a concrete stock definition for future purchases.',
+    );
+  }
   final definition = definitionId == null || definitionId.isEmpty
       ? null
       : assetDefinitionResolver?.call(definitionId);

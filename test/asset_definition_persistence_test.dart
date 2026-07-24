@@ -6,6 +6,9 @@ import 'package:pilgrim_tracker/core/database/local_store.dart';
 import 'package:pilgrim_tracker/features/assets/data/repositories/local_asset_definition_repository.dart';
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_definition.dart';
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_kind.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_market_price.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart'
+    as domain;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -64,6 +67,14 @@ void main() {
     final definition = _stockDefinition();
 
     await store.upsertAssetDefinition(definition.toRecord());
+    await store.upsertAssetMarketPrice(
+      AssetMarketPrice.manual(
+        assetKey: 'BBCA',
+        symbol: 'BBCA',
+        price: 9500,
+        unit: 'share',
+      ).toRecord(),
+    );
 
     await store.softDeleteAssetDefinition(
       definition.id,
@@ -80,7 +91,45 @@ void main() {
     expect(includingDeleted.single['deleted_at'], isNotNull);
     expect(includingDeleted.single['version'], 2);
     expect(includingDeleted.single['sync_status'], 'pending');
+    expect(await store.getAssetMarketPrices(), hasLength(1));
   });
+
+  test(
+    'soft-deleted transactions can be loaded for historical usage',
+    () async {
+      final store = LocalStore(databasePath: databasePath);
+      await store.initialize();
+      addTearDown(store.close);
+      final transaction = domain.Transaction(
+        id: 'asset-buy',
+        title: 'Buy BBCA',
+        category: 'Asset conversion',
+        account: 'Cash -> BBCA',
+        date: DateTime.utc(2026, 7, 24),
+        amount: 100000,
+        type: domain.TransactionType.assetConversion,
+        quantity: 100,
+        unit: 'share',
+        unitPrice: 1000,
+        assetDefinitionId: 'asset-bbca',
+        assetName: 'Bank Central Asia',
+        assetSymbol: 'BBCA',
+        assetAction: domain.AssetAction.buy,
+      );
+      await store.upsertTransaction(transaction.toRecord());
+      await store.softDeleteTransaction(
+        transaction.id,
+        DateTime.utc(2026, 7, 25).millisecondsSinceEpoch,
+        version: 2,
+      );
+
+      expect(await store.getTransactions(), isEmpty);
+      final historical = await store.getTransactions(includeDeleted: true);
+      expect(historical, hasLength(1));
+      expect(historical.single['asset_definition_id'], 'asset-bbca');
+      expect(historical.single['deleted_at'], isNotNull);
+    },
+  );
 
   test('asset definition seeds are idempotent', () async {
     final store = LocalStore(databasePath: databasePath);
@@ -184,6 +233,20 @@ WHERE type = 'index'
 ''');
 
       expect(assetDefinitionIndexes, isNotEmpty);
+      expect(
+        (await upgradedDatabase.rawQuery(
+          'PRAGMA user_version',
+        )).single['user_version'],
+        10,
+      );
+      expect(
+        transactionColumns.map((column) => column['name']),
+        containsAll([
+          'fee_amount',
+          'related_transaction_id',
+          'market_reference_unit_price',
+        ]),
+      );
     },
   );
 

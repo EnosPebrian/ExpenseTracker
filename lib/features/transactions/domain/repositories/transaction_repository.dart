@@ -1,7 +1,7 @@
 import '../entities/transaction.dart';
 
 abstract interface class TransactionRepository {
-  Future<List<Transaction>> getAll();
+  Future<List<Transaction>> getAll({bool includeDeleted = false});
   Future<Transaction?> getAssetFeeExpense(
     String parentTransactionId, {
     bool includeDeleted = true,

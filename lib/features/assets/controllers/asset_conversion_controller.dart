@@ -7,6 +7,8 @@ import '../domain/entities/asset_kind.dart';
 import '../domain/entities/asset_market_price.dart';
 import '../domain/services/asset_execution_analysis.dart';
 import '../domain/services/asset_numeric_policy.dart';
+import '../domain/services/asset_definition_retirement_policy.dart';
+import '../domain/services/asset_definition_usage_policy.dart';
 import '../domain/services/asset_stock_lot_policy.dart';
 import '../domain/services/asset_trade_validator.dart';
 import '../domain/services/asset_transaction_sequence_validator.dart';
@@ -19,15 +21,14 @@ class AssetConversionController extends ChangeNotifier {
     List<AssetMarketPrice> marketPrices = const [],
     this.existingTransactionsProvider,
     this.sequenceValidator = const AssetTransactionSequenceValidator(),
+    this.retirementPolicy = const AssetDefinitionRetirementPolicy(),
+    this.usagePolicy = const AssetDefinitionUsagePolicy(),
     AssetTradeValidator? tradeValidator,
   }) : accounts = List<String>.unmodifiable(accounts),
        marketPrices = List<AssetMarketPrice>.unmodifiable(marketPrices),
        tradeValidator =
            tradeValidator ??
-           AssetTradeValidator(sequenceValidator: sequenceValidator),
-       assets = List<AssetDefinition>.unmodifiable(
-         assets.where((asset) => !asset.isDeleted),
-       ) {
+           AssetTradeValidator(sequenceValidator: sequenceValidator) {
     if (this.accounts.isEmpty) {
       throw ArgumentError.value(
         accounts,
@@ -36,17 +37,13 @@ class AssetConversionController extends ChangeNotifier {
       );
     }
 
-    if (this.assets.isEmpty) {
-      throw ArgumentError.value(
-        assets,
-        'assets',
-        'At least one active measurable asset is required.',
-      );
-    }
+    final activeAssets = assets.where((asset) => !asset.isDeleted).toList();
+    final transactions = existingTransactionsProvider?.call() ?? const [];
+    final selectableAssets = <AssetDefinition>[];
+    final buyOptionLabels = <String>[];
+    final sellOptionLabels = <String>[];
 
-    final optionLabels = <String>[];
-
-    for (final asset in this.assets) {
+    for (final asset in activeAssets) {
       final validationErrors = asset.validate();
 
       if (validationErrors.isNotEmpty) {
@@ -65,13 +62,31 @@ class AssetConversionController extends ChangeNotifier {
       }
 
       _assetsByOption[optionLabel] = asset;
-      optionLabels.add(optionLabel);
+      final usage = usagePolicy.analyze(
+        definition: asset,
+        transactions: transactions,
+      );
+      final canBuy = retirementPolicy.canBuy(asset);
+      final canSell = retirementPolicy.canSell(asset, usage);
+      if (canBuy || canSell) selectableAssets.add(asset);
+      if (canBuy) buyOptionLabels.add(optionLabel);
+      if (canSell) sellOptionLabels.add(optionLabel);
     }
 
-    _assetOptions = List<String>.unmodifiable(optionLabels);
+    if (buyOptionLabels.isEmpty) {
+      throw ArgumentError.value(
+        assets,
+        'assets',
+        'At least one active measurable asset available for purchase is required.',
+      );
+    }
+
+    this.assets = List<AssetDefinition>.unmodifiable(selectableAssets);
+    _buyAssetOptions = List<String>.unmodifiable(buyOptionLabels);
+    _sellAssetOptions = List<String>.unmodifiable(sellOptionLabels);
 
     source = this.accounts.first;
-    destination = _assetOptions.first;
+    destination = _buyAssetOptions.first;
 
     executionReference = AssetExecutionReferenceController(
       definitionProvider: () => selectedAssetDefinition,
@@ -85,15 +100,18 @@ class AssetConversionController extends ChangeNotifier {
   }
 
   final List<String> accounts;
-  final List<AssetDefinition> assets;
+  late final List<AssetDefinition> assets;
   final List<AssetMarketPrice> marketPrices;
   final List<Transaction> Function()? existingTransactionsProvider;
   final AssetTransactionSequenceValidator sequenceValidator;
   final AssetTradeValidator tradeValidator;
+  final AssetDefinitionRetirementPolicy retirementPolicy;
+  final AssetDefinitionUsagePolicy usagePolicy;
   late final AssetExecutionReferenceController executionReference;
 
   final Map<String, AssetDefinition> _assetsByOption = {};
-  late final List<String> _assetOptions;
+  late final List<String> _buyAssetOptions;
+  late final List<String> _sellAssetOptions;
 
   final TextEditingController cashController = TextEditingController(
     text: '50.000.000',
@@ -293,6 +311,10 @@ class AssetConversionController extends ChangeNotifier {
     return selectedAssetDefinition.kind == AssetKind.foreignCurrency;
   }
 
+  bool get isLegacyCloseOnly {
+    return retirementPolicy.isRetiredSystemDefinition(selectedAssetDefinition);
+  }
+
   String get currencySymbol {
     return selectedAssetDefinition.normalizedSymbol ?? unit.toUpperCase();
   }
@@ -386,11 +408,11 @@ class AssetConversionController extends ChangeNotifier {
   }
 
   List<String> get sourceOptions {
-    return sellAsset ? _assetOptions : accounts;
+    return sellAsset ? _sellAssetOptions : accounts;
   }
 
   List<String> get destinationOptions {
-    return sellAsset ? accounts : _assetOptions;
+    return sellAsset ? accounts : _buyAssetOptions;
   }
 
   DateTime get transactionDate {
@@ -414,8 +436,8 @@ class AssetConversionController extends ChangeNotifier {
       feeTreatment = AssetFeeTreatment.none;
     }
 
-    source = sellAsset ? _assetOptions.first : accounts.first;
-    destination = sellAsset ? accounts.first : _assetOptions.first;
+    source = sellAsset ? _sellAssetOptions.first : accounts.first;
+    destination = sellAsset ? accounts.first : _buyAssetOptions.first;
 
     notifyListeners();
   }
@@ -466,6 +488,13 @@ class AssetConversionController extends ChangeNotifier {
   Transaction buildTransaction() {
     if (selectedAssetDefinition.isDeleted) {
       throw StateError('The selected asset definition is no longer active.');
+    }
+
+    if (!sellAsset && !retirementPolicy.canBuy(selectedAssetDefinition)) {
+      throw StateError(
+        'This legacy stock definition can only be used to close its existing '
+        'holding.',
+      );
     }
 
     if (!supportsSelectedCurrency) {

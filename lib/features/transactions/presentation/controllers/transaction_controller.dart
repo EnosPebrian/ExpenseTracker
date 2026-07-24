@@ -11,12 +11,14 @@ class TransactionController extends ChangeNotifier {
     required this.delete,
     required this.get,
     required this.duplicate,
+    this.afterMutation,
   });
   final CreateTransaction create;
   final UpdateTransaction update;
   final DeleteTransaction delete;
   final GetTransactions get;
   final DuplicateTransaction duplicate;
+  final Future<void> Function()? afterMutation;
 
   final List<Transaction> transactions = [];
   bool isLoading = false;
@@ -111,6 +113,7 @@ class TransactionController extends ChangeNotifier {
 
     try {
       await operation();
+      await afterMutation?.call();
     } on TransactionValidationException catch (exception) {
       error = exception.toString();
       assetValidation = exception.assetValidation;

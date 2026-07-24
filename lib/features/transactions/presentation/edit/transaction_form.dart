@@ -3,6 +3,7 @@ import '../../../../core/shared/formatters/thousands_formatter.dart';
 import '../../../assets/domain/entities/asset_definition.dart';
 import '../../../assets/domain/entities/asset_market_price.dart';
 import '../../../assets/domain/services/asset_market_reference_policy.dart';
+import '../../../assets/domain/services/asset_definition_retirement_policy.dart';
 import '../../domain/entities/asset_market_reference_source.dart';
 import '../../domain/entities/transaction.dart';
 
@@ -14,7 +15,6 @@ class TransactionFormOptions {
     required this.expenseCategories,
     required this.incomeCategories,
     required this.projects,
-    this.assets = const [],
     this.assetDefinitions = const [],
     this.assetMarketPrices = const [],
   });
@@ -23,15 +23,19 @@ class TransactionFormOptions {
   final List<String> expenseCategories;
   final List<String> incomeCategories;
   final List<String> projects;
-  final List<String> assets;
   final List<AssetDefinition> assetDefinitions;
   final List<AssetMarketPrice> assetMarketPrices;
 
-  List<String> get assetOptions {
-    final values = <String>[...assets];
-    for (final definition in assetDefinitions.where(
-      (definition) => !definition.isDeleted,
-    )) {
+  List<String> assetOptionsFor(Transaction transaction) {
+    const retirementPolicy = AssetDefinitionRetirementPolicy();
+    final values = <String>[];
+    for (final definition in assetDefinitions) {
+      if (definition.isDeleted) continue;
+      final legacySell =
+          retirementPolicy.isRetiredSystemDefinition(definition) &&
+          retirementPolicy.isRetiredSystemId(transaction.assetDefinitionId) &&
+          transaction.assetAction == AssetAction.sell;
+      if (!retirementPolicy.canBuy(definition) && !legacySell) continue;
       final option = assetOptionLabel(definition);
       if (!values.contains(option)) values.add(option);
     }
@@ -120,7 +124,7 @@ class _TransactionFormState extends State<TransactionForm> {
 
   List<String> get movementOptions => <String>{
     ...widget.options.accounts,
-    ...widget.options.assetOptions,
+    ...widget.options.assetOptionsFor(widget.transaction),
   }.toList();
 
   String _firstDifferent(String value) => movementOptions.firstWhere(
@@ -306,7 +310,9 @@ class _TransactionFormState extends State<TransactionForm> {
                     widget.options.accounts,
                     account,
                   ),
-                  assetOptions: widget.options.assetOptions,
+                  assetOptions: widget.options.assetOptionsFor(
+                    widget.transaction,
+                  ),
                   categoryOptions: _withCurrent(categories, category),
                   projectOptions: _withCurrent([
                     'No project',
@@ -362,6 +368,14 @@ class _TransactionFormState extends State<TransactionForm> {
         : destinationAccount;
     for (final definition in widget.options.assetDefinitions) {
       if (definition.isDeleted) continue;
+      const retirementPolicy = AssetDefinitionRetirementPolicy();
+      if (retirementPolicy.isRetiredSystemDefinition(definition) &&
+          !(retirementPolicy.isRetiredSystemId(
+                widget.transaction.assetDefinitionId,
+              ) &&
+              action == AssetAction.sell)) {
+        continue;
+      }
       if (selectedOption ==
               TransactionFormOptions.assetOptionLabel(definition) ||
           selectedOption == definition.displayName.trim()) {

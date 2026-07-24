@@ -53,13 +53,6 @@ const defaultProjectNames = <String>[
   'Anak 1',
 ];
 
-const defaultAssetNames = <String>[
-  'Gold Holdings',
-  'Stock Portfolio',
-  'Bitcoin Wallet',
-  'Inventory',
-];
-
 const defaultAccountNames = <String>[
   'BNI Enos',
   'Jenius Enos',

@@ -10,6 +10,61 @@ import 'package:pilgrim_tracker/features/transactions/domain/entities/transactio
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide Transaction;
 
 void main() {
+  test('fresh database creates the complete version 10 schema', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'pilgrim-fresh-v10-',
+    );
+    final databasePath = p.join(directory.path, 'test.db');
+    addTearDown(() async {
+      if (directory.existsSync()) await directory.delete(recursive: true);
+    });
+
+    final store = LocalStore(databasePath: databasePath);
+    await store.initialize();
+    await store.close();
+
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    final database = await databaseFactory.openDatabase(
+      databasePath,
+      options: OpenDatabaseOptions(readOnly: true),
+    );
+    addTearDown(database.close);
+    expect(
+      (await database.rawQuery('PRAGMA user_version')).single['user_version'],
+      10,
+    );
+    final columns = (await database.rawQuery(
+      'PRAGMA table_info(transactions)',
+    )).map((column) => column['name']).toSet();
+    expect(
+      columns,
+      containsAll(<String>{
+        'asset_definition_id',
+        'fee_amount',
+        'fee_treatment',
+        'related_transaction_id',
+        'relation_type',
+        'market_reference_unit_price',
+        'market_reference_currency_code',
+        'market_reference_unit',
+        'market_reference_source',
+        'market_reference_quoted_at',
+        'deleted_at',
+        'version',
+        'device_id',
+        'sync_status',
+      }),
+    );
+    final tables = (await database.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table'",
+    )).map((row) => row['name']).toSet();
+    expect(
+      tables,
+      containsAll(['transactions', 'asset_definitions', 'asset_market_prices']),
+    );
+  });
+
   test(
     'v9 migration preserves data and reference snapshot round-trips',
     () async {
@@ -102,6 +157,10 @@ void main() {
       expect(legacy.feeAmount, 100000);
       expect(legacy.relationType, TransactionRelationType.assetFeeExpense);
       expect(legacy.marketReferenceUnitPrice, isNull);
+      expect(legacy.version, 2);
+      expect(legacy.deviceId, 'test');
+      expect(legacy.syncStatus, 'synced');
+      expect(legacy.deletedAt, isNull);
 
       final referenceTime = DateTime.utc(2026, 7, 24, 8, 30);
       final referenced = Transaction(

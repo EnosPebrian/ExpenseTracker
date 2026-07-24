@@ -9,7 +9,9 @@ import 'package:pilgrim_tracker/features/transactions/domain/usecases/transactio
 class FakeTransactionRepository implements TransactionRepository {
   final saved = <Transaction>[];
   @override
-  Future<List<Transaction>> getAll() async => List.of(saved);
+  Future<List<Transaction>> getAll({bool includeDeleted = false}) async => saved
+      .where((transaction) => includeDeleted || transaction.deletedAt == null)
+      .toList();
   @override
   Future<Transaction?> getAssetFeeExpense(
     String parentTransactionId, {
@@ -653,7 +655,7 @@ class _FailingReadRepository implements TransactionRepository {
   bool deleted = false;
 
   @override
-  Future<List<Transaction>> getAll() {
+  Future<List<Transaction>> getAll({bool includeDeleted = false}) {
     throw StateError('Ordinary deletion must not load asset history.');
   }
 

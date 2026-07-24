@@ -6,10 +6,11 @@ class LocalStore {
   static final List<Map<String, Object?>> _assetDefinitions = [];
   static final Map<String, List<String>> _master = {};
   Future<void> initialize() async {}
-  Future<List<Map<String, Object?>>> getTransactions() async =>
-      List.unmodifiable(
-        _records.where((record) => record['deleted_at'] == null),
-      );
+  Future<List<Map<String, Object?>>> getTransactions({
+    bool includeDeleted = false,
+  }) async => List.unmodifiable(
+    _records.where((record) => includeDeleted || record['deleted_at'] == null),
+  );
 
   Future<Map<String, Object?>?> getAssetFeeExpense(
     String parentTransactionId, {
