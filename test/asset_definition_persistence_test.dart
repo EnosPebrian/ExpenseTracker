@@ -237,7 +237,7 @@ WHERE type = 'index'
         (await upgradedDatabase.rawQuery(
           'PRAGMA user_version',
         )).single['user_version'],
-        10,
+        LocalStore.schemaVersion,
       );
       expect(
         transactionColumns.map((column) => column['name']),

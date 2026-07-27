@@ -1,4 +1,4 @@
-package com.example.pilgrim_tracker
+package com.enospebrian.pilgrimtracker
 
 import io.flutter.embedding.android.FlutterActivity
 

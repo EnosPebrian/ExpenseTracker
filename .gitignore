@@ -32,6 +32,11 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+.env
+.env.*
+!.env.example
+/supabase/.branches/
+/supabase/.temp/
 
 # Symbolication related
 app.*.symbols

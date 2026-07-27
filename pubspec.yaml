@@ -1,5 +1,5 @@
 name: pilgrim_tracker
-description: "A new Flutter project."
+description: "Pilgrim Tracker local-first personal finance application."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -39,10 +39,12 @@ dependencies:
   path: ^1.9.1
   uuid: ^4.6.0
   http: ^1.6.0
+  supabase_flutter: ^2.16.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.4
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

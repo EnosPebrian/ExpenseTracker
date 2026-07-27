@@ -167,7 +167,7 @@ void main() {
       (await verificationDatabase.rawQuery(
         'PRAGMA user_version',
       )).single['user_version'],
-      10,
+      LocalStore.schemaVersion,
     );
   });
 }

@@ -1,0 +1,17 @@
+flutter_launcher_icons:
+  android: true
+  image_path: assets/branding/pilgrim_tracker_icon_1024.png
+  min_sdk_android: 24
+  adaptive_icon_background: "#101828"
+  adaptive_icon_foreground: assets/branding/pilgrim_tracker_icon_foreground_1024.png
+  adaptive_icon_foreground_inset: 16
+  adaptive_icon_monochrome: assets/branding/pilgrim_tracker_icon_monochrome_1024.png
+  web:
+    generate: true
+    image_path: assets/branding/pilgrim_tracker_icon_1024.png
+    background_color: "#101828"
+    theme_color: "#101828"
+  windows:
+    generate: true
+    image_path: assets/branding/pilgrim_tracker_icon_1024.png
+    icon_size: 256

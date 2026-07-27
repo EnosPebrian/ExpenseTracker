@@ -162,7 +162,7 @@ void main() {
       );
 
       final version = await upgraded.rawQuery('PRAGMA user_version');
-      expect(version.single['user_version'], 10);
+      expect(version.single['user_version'], LocalStore.schemaVersion);
     },
   );
 }

@@ -181,3 +181,140 @@ syncStatus
 ```
 
 Then migrate v5 safely, seed defaults, integrate conversion selection, use configured lot/currency, reject quote-currency mismatch, add oversell validation/fees, and preserve all 93 tests.
+
+## BETA-01 — Structured Accounts, Opening Balances, and Local Profile
+
+Completed on 2026-07-26:
+
+- stable structured `Account` records with legacy name-list compatibility;
+- signed integer starting balances with nullable effective dates;
+- pure account balance calculation with date, deletion, asset-fee, and legacy
+  transfer rules;
+- real account cards plus create/edit/remove starting-balance UI and old-entry
+  warning;
+- lightweight persistent local profile and session;
+- SQLite version 11 fresh schema and historical/v10 migration;
+- native reopen, web parity, bootstrap idempotence, reporting isolation, and
+  responsive widget coverage.
+
+Final verification: 29 focused BETA-01 tests and 431 full-suite tests passed;
+Flutter analysis reported no issues; the web build and WebAssembly dry run
+succeeded.
+
+D14 remains open. Owner-signed Android artifacts, Android runtime/reopen proof,
+the final branded Windows build/runtime/reopen checklist, and any still-open
+release checklist gates remain separate release work.
+
+## BETA-02 — Household, Members, Books, and Sync-Ready Local Architecture
+
+Completed on 2026-07-26:
+
+- authoritative `FinancialBook` boundary and local `HouseholdMember` model;
+- one idempotent default household with the local profile as owner;
+- active book/member session persistence and per-book store reads/seeds;
+- joint or member-owned accounts plus owner filtering;
+- active-member attribution for new and duplicated transactions;
+- Household Settings with local add, rename, role display, and active selection;
+- SQLite version 12 migration and equivalent in-memory web behavior;
+- documented Supabase/RLS direction and durable offline-sync requirements.
+
+BETA-02 does not provide cloud identity, invitations, synchronization, or
+two-device sharing. D14 remains open until BETA-05 acceptance and the remaining
+release gates complete.
+
+Final verification: 20 focused BETA-02/accounting tests and 442 full-suite
+tests passed; Flutter analysis reported no issues; the web build and WebAssembly
+dry run succeeded.
+
+## BETA-04B — Controlled initial upload and secondary download
+
+Completed locally on 2026-07-26:
+
+- SQLite version 15 durable initialization state, manifest, progress, safe
+  errors, snapshot boundary, and upload/download staging with web parity;
+- owner-confirmed one-time primary upload, enforced server-side against an
+  occupied remote mirror, using stable bounded idempotent batches;
+- authorized stable secondary download with non-merge target protection,
+  atomic integrity validation/activation, member mapping, and no outbox echo;
+- interruption resume, safe cancellation, and cursor handoff to one immediate
+  incremental synchronization run;
+- focused Initial Synchronization UI under Cloud Sharing; and
+- a 17-assertion pgTAP suite for claims, idempotency, completion,
+  authorization, and cross-book denial.
+
+BETA-04 remains open for BETA-04C conflict-resolution UX and synchronization
+polish. BETA-05 remains responsible for real Enos/Grace two-device proof.
+
+Final verification: 35 focused tests and 493 full-suite tests passed; Flutter
+analysis reported no issues; the web release build and Wasm dry run succeeded.
+The 17-assertion BETA-04B pgTAP suite was authored but not executed because the
+Supabase CLI is unavailable locally.
+
+## BETA-04A — Durable outbox and cursor protocol
+
+Completed on 2026-07-26:
+
+- SQLite version 14 durable outbox, per-book cursor/initialization state, and
+  conflict persistence with native/web parity;
+- atomic local record plus outbox writes for all seven syncable entity types;
+- authenticated, membership-scoped, idempotent and version-aware Supabase push;
+- monotonic book-scoped pull with atomic local batch/cursor commit;
+- tombstones, interrupted-send recovery, bounded retry, single-flight runs,
+  durable version conflicts, and calm Cloud Sharing status;
+- explicit primary-upload/secondary-download guard preventing accidental
+  historical transfer before BETA-04B.
+
+Final verification: 29 focused tests and 484 full-suite tests passed; Flutter
+analysis reported no issues; the web build and Wasm dry run succeeded. The
+16-assertion pgTAP suite was authored but not executed because Supabase CLI is
+unavailable locally. BETA-04 remains open for BETA-04C.
+
+## BETA-04A — Durable outbox and cursor protocol
+
+Completed on 2026-07-26:
+
+- SQLite version 14 durable outbox, per-book cursor/initialization state, and
+  conflict persistence with native/web parity;
+- atomic local record plus outbox writes for all seven syncable entity types;
+- authenticated, membership-scoped, idempotent and version-aware Supabase push;
+- monotonic book-scoped pull with atomic local batch/cursor commit;
+- tombstones, interrupted-send recovery, bounded retry, single-flight runs,
+  durable version conflicts, and calm Cloud Sharing status;
+- explicit primary-upload/secondary-download guard preventing accidental
+  historical transfer before BETA-04B.
+
+Final verification: 29 focused tests and 484 full-suite tests passed; Flutter
+analysis reported no issues; the web build and Wasm dry run succeeded. The
+16-assertion pgTAP suite was authored but not executed because Supabase CLI is
+unavailable locally. BETA-04 remains open for BETA-04C.
+
+## BETA-03 — Supabase authentication and household authorization
+
+Implemented on 2026-07-26:
+
+- optional Supabase Flutter initialization through public `--dart-define`
+  configuration with fully usable unconfigured/offline local mode;
+- email OTP request, verification, restored session, and remote-only sign-out;
+- remote books, memberships, invitations, financial mirror tables, monotonic
+  change cursor, least-privilege grants, and membership-scoped RLS;
+- idempotent household linking and invitation create/discover/accept operations;
+- Cloud Sharing UI inside Household Settings with an explicit no-sync warning;
+- SQLite version 13 additive remote-link/member-auth mapping and web parity.
+
+BETA-03 does not synchronize financial rows. BETA-04 remains responsible for
+the durable outbox, server cursor exchange, idempotent transfer, tombstones,
+conflict resolution, retries, and recovery.
+
+Final verification: 25 focused tests passed (19 new BETA-03 tests), 461 tests
+passed in the full suite, Flutter analysis reported no issues, and the web
+release build plus Wasm dry run succeeded. The 19-assertion pgTAP suite was
+authored but not executed because Supabase CLI is unavailable locally.
+
+Final verification: 25 focused tests passed (19 new BETA-03 tests), 461 tests
+passed in the full suite, Flutter analysis reported no issues, and the web
+release build plus Wasm dry run succeeded. The 19-assertion pgTAP suite was
+authored but not executed because Supabase CLI is unavailable locally.
+
+Final verification: 20 focused BETA-02/accounting tests and 442 full-suite
+tests passed; Flutter analysis reported no issues; the web build and WebAssembly
+dry run succeeded.

@@ -23,4 +23,5 @@ const appDestinations = <AppDestination>[
   AppDestination(label: 'Projects', icon: Icons.work_outline_rounded),
   AppDestination(label: 'Tithe', icon: Icons.volunteer_activism_outlined),
   AppDestination(label: 'Reports', icon: Icons.insights_outlined),
+  AppDestination(label: 'Household', icon: Icons.group_outlined),
 ];

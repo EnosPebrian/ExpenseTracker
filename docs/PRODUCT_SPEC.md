@@ -227,7 +227,7 @@ Current quote limitations:
 
 ## 7. Persistence
 
-Native platforms use versioned SQLite, currently version 10.
+Native platforms use versioned SQLite, currently version 15.
 
 Current persisted asset additions:
 
@@ -307,20 +307,75 @@ Every persisted change requires a version increment, `onCreate`, `onUpgrade`, na
 
 ## 9. Known product gaps
 
-- persistent asset definitions
-- configurable lot size, currency, exchange, and provider symbol
 - persistent browser database
-- fee amount/treatment persistence
-- oversell prevention before save
-- multi-currency and FX
 - price history and charts
 - market-value allocation chart
-- cash/liabilities integrated into net worth
-- asset identity/ticker edit flow
 - stock-symbol search UI
 - secure quote proxy
 - automatic refresh/rate-limit policy
-- first-class additional asset types
 - Drift, Riverpod, and GoRouter migrations
 - full ledger/revisions
-- synchronization, import/export, and backup/restore
+- initial synchronization, conflict-resolution UI, import/export, and
+  backup/restore
+- PIN or biometric application lock
+- production Android and Windows signing credentials
+- Windows installer and automatic updates
+- app-store listing assets
+
+## 10. Release posture
+
+Android and Windows are the primary release targets. Web remains a development
+preview whose in-memory data may reset after reload. Version `1.0.0+1` is the
+current build metadata, not a declaration that public 1.0 release gates have
+passed.
+
+D14C establishes permanent Android ID `com.enospebrian.pilgrimtracker`, Windows
+company `Enos Pebrian`, and original cross-platform branding. Android NDK r28c
+is repaired and technical APK/AAB artifacts build successfully, but they use an
+explicitly opted-in debug certificate and are not Play-ready. Android runtime
+and native release database reopen tests remain required, as do the final
+branded Windows/web builds and Windows runtime proof. The product is therefore
+not yet an approved controlled release candidate.
+
+## 11. BETA-01 account and profile behavior
+
+Accounts are structured local records with stable identity, type, currency,
+and an optional dated starting position. Money is stored as signed integer
+minor units. A configured zero is valid; disabling the starting position saves
+zero and a null effective date. The profile default currency supplies the
+initial currency for newly created accounts.
+
+The starting position is immediately before transactions on its effective
+local calendar date. Transactions on that date are included; earlier
+transactions stay visible but do not affect the account balance. Income and
+asset-sale proceeds increase cash; expenses and asset buys decrease it; the
+existing fee-treatment rules are applied once. Legacy transfers remain zero in
+account balance calculations when direction is ambiguous.
+
+Starting positions are account metadata, never generated transactions. They do
+not change income, expenses, cash flow, activity, categories, projects, tithe,
+asset quantity, cost basis, or realized/unrealized gains.
+
+First launch collects a display name and default currency for a lightweight
+device-local profile. It has no email, password, OAuth, backend, recovery,
+biometrics, PIN, or synchronization and must not be presented as secure
+authentication. Existing databases receive a safe local default profile during
+the version-11 migration.
+
+## 12. BETA-02 household and attribution behavior
+
+A financial book is the household data boundary. Existing data migrates into
+one default book, and the device profile becomes its first owner member. Local
+members identify people only; they are not passwords, authenticated accounts,
+or interchangeable cloud identities. The active member persists on the device;
+BETA-03 may map it to an authenticated user without replacing it.
+
+Accounts may be joint or associated with a member. Transactions record who
+entered them, defaulting new Quick Add, normal, duplicated, and asset-conversion
+records to the active member. Ownership and attribution are descriptive and do
+not change balances, reporting, tithe, portfolio quantities, cost basis, fees,
+or gains. BETA-03 provides cloud identity, authorization, and invitations.
+BETA-04A provides the durable incremental protocol. BETA-04B provides a
+confirmed, empty-remote initial upload and stable non-merge secondary download
+before incremental sync may run. Conflict UX and real two-device proof remain
+BETA-04C/BETA-05.

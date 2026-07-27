@@ -48,6 +48,8 @@ class SaveAssetConversionWithFee {
 
     if (existing == null) {
       return Transaction(
+        bookId: parent.bookId,
+        enteredByMemberId: parent.enteredByMemberId,
         projectId: parent.projectId,
         title: title,
         category: assetFeeExpenseCategory,

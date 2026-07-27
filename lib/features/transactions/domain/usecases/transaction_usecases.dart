@@ -284,6 +284,8 @@ class DuplicateTransaction {
   }) async {
     _ensureNotManagedExpense(original);
     final duplicate = Transaction(
+      bookId: original.bookId,
+      enteredByMemberId: original.enteredByMemberId,
       projectId: original.projectId,
       title: original.title,
       category: original.category,

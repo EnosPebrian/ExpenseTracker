@@ -24,6 +24,13 @@ class TransactionController extends ChangeNotifier {
   bool isLoading = false;
   String? error;
   AssetSequenceValidationResult? assetValidation;
+  String? activeBookId;
+  String? activeMemberId;
+
+  void setActiveContext({required String? bookId, required String? memberId}) {
+    activeBookId = bookId;
+    activeMemberId = memberId;
+  }
 
   Future<void> load({List<Transaction> seed = const []}) async {
     isLoading = true;
@@ -53,7 +60,7 @@ class TransactionController extends ChangeNotifier {
 
   Future<void> createTransaction(Transaction transaction) async {
     await _run(() async {
-      await create(transaction);
+      await create(_withActiveContext(transaction));
       await _refreshTransactions();
     });
   }
@@ -78,11 +85,24 @@ class TransactionController extends ChangeNotifier {
   }) async {
     Transaction? copy;
     await _run(() async {
-      copy = await duplicate(transaction, withoutAmount: withoutAmount);
+      copy = await duplicate(
+        transaction.copyWith(
+          bookId: activeBookId ?? transaction.bookId,
+          enteredByMemberId: activeMemberId,
+        ),
+        withoutAmount: withoutAmount,
+      );
 
       await _refreshTransactions();
     });
     return copy;
+  }
+
+  Transaction _withActiveContext(Transaction transaction) {
+    return transaction.copyWith(
+      bookId: transaction.bookId ?? activeBookId,
+      enteredByMemberId: transaction.enteredByMemberId ?? activeMemberId,
+    );
   }
 
   void _sortTransactions() {

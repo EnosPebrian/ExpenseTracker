@@ -20,6 +20,7 @@ class TransactionDetailScreen {
     required Transaction transaction,
     required TransactionController controller,
     ValueChanged<Transaction>? onEdit,
+    String? enteredByName,
   }) {
     return showDialog<void>(
       context: context,
@@ -28,6 +29,7 @@ class TransactionDetailScreen {
           transaction: transaction,
           controller: controller,
           onEdit: onEdit,
+          enteredByName: enteredByName,
         );
       },
     );
@@ -47,11 +49,13 @@ class _TransactionDetailDialog extends StatefulWidget {
     required this.transaction,
     required this.controller,
     required this.onEdit,
+    required this.enteredByName,
   });
 
   final Transaction transaction;
   final TransactionController controller;
   final ValueChanged<Transaction>? onEdit;
+  final String? enteredByName;
 
   @override
   State<_TransactionDetailDialog> createState() =>
@@ -247,6 +251,10 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
                   ),
                 ),
                 _DetailLine(label: 'Sync', value: transaction.syncStatus),
+                _DetailLine(
+                  label: 'Entered by',
+                  value: widget.enteredByName ?? 'Legacy / unknown',
+                ),
                 if (isManagedFeeExpense) ...[
                   const SizedBox(height: 12),
                   const Text(

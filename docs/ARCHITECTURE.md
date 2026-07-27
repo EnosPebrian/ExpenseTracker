@@ -252,7 +252,7 @@ export 'local_store_web.dart'
     if (dart.library.io) 'local_store_native.dart';
 ```
 
-Native uses versioned SQLite (currently version 10). Web exposes the same method
+Native uses versioned SQLite (currently version 15). Web exposes the same method
 surface but is currently in-memory. Both stores provide all-or-nothing managed
 asset-fee parent/child changes.
 
@@ -274,7 +274,7 @@ The key is for private/local development only. Public builds need a secure backe
 
 ## 11. Testing
 
-Current verified suite: 297 tests.
+Current verified suite: 401 tests.
 
 Required coverage includes transaction mapping, SQLite round trips, migrations, conversion controller/widget, provider parsing, quote cache, price controller, portfolio calculations, navigation/dashboard widgets, and financial summaries.
 
@@ -324,3 +324,79 @@ automatically archived after its quantity reaches zero. Transaction use cases,
 Asset Conversion, Quick Add, and transaction editing enforce the same sell-only
 rule. Historical transaction snapshots and portfolio fallback remain intact;
 no transaction relinking or schema migration is involved.
+
+## 15. Persistence hardening
+
+D14A treats native SQLite as the durable reference implementation and the web
+store as an in-memory behavioral preview. Both stores preserve the current
+transaction, fee/relation, execution-reference, asset-definition lifecycle,
+market-price, and soft-delete metadata contracts. Native linked parent/child
+changes use a SQLite transaction; web applies the same change set with snapshot
+rollback.
+
+At D14A, version 10 was verified from fresh creation and from historical
+versions 1, 3, 5, 7, 8, and 9. Reopen tests reconstruct repositories and calculations from
+persisted records rather than retaining pre-close domain objects. Bootstrap is
+idempotent across reopen and does not overwrite user definition configuration
+or restore archived rows.
+
+## 16. Platform release posture
+
+Android and Windows remain the intended native release targets. Both use the
+same Dart domain and feature boundaries; platform runners contain only startup,
+identity, permission, and packaging configuration. Native durability remains
+SQLite version 15. Web is a buildable development preview backed by the
+in-memory store and is not a durable production client.
+
+Optional online pricing is configured at compile time and Android declares
+INTERNET permission for its HTTPS provider. A missing provider key remains a
+supported state because manual prices are available.
+
+Permanent platform identity is `com.enospebrian.pilgrimtracker` on Android and
+`Enos Pebrian` company metadata on Windows. Cross-platform icons derive from
+committed SVG/PNG masters through `flutter_launcher_icons`. Android release
+signing loads untracked owner properties when present; debug signing requires
+an explicit technical-build environment opt-in and never represents the
+production identity. Windows certificate identity remains owner-controlled.
+
+## 17. Structured accounts and local profile
+
+BETA-01 adds an immutable `Account` domain entity while preserving
+`List<String> accounts` for existing transaction, Quick Add, and conversion
+forms. `MasterDataController` owns validation and structured account mutation;
+SQLite/web stores accept record maps. Account identity and metadata survive
+renames, and active duplicate names are rejected case-insensitively.
+
+`AccountBalanceCalculator` is a pure domain service. With an opening date, the
+opening amount is the position immediately before transactions on that local
+calendar date; active matching transactions on or after that date are applied.
+Without a date, all active matching transactions retain the earlier behavior.
+Ambiguous legacy transfers contribute zero because their record does not encode
+both sides or direction. Opening balances never become transactions and remain
+outside reports, tithe, activity, project/category totals, and portfolio math.
+
+The local profile stores only display name and default currency. `AppShell`
+coordinates first-run setup and uses the profile currency for new/default
+accounts. The session is restored locally after reopen; it is not secure
+authentication, synchronization, or an online identity.
+
+## 18. Household and financial-book boundary
+
+BETA-02 makes `FinancialBook` the authoritative financial-data boundary.
+Accounts, categories, projects, transactions, asset definitions, and cached or
+manual market prices are written and read under the active book. Bootstrap is
+idempotent per book, and legacy null scopes are attached to the migrated book.
+
+`HouseholdMember` represents a local person with an owner/member role. It is
+not an authentication account. Accounts may be joint or reference one member;
+transactions record the active member as read-only entry attribution. Neither
+field affects accounting calculations. The device-local session retains the
+active profile, book, and member.
+
+SQLite remains the local source of truth. BETA-03 adds authenticated users,
+memberships, PostgreSQL authorization, invitations, and RLS. BETA-04A adds an
+atomic durable outbox, idempotent version-aware push, monotonic cursor pull,
+tombstones, interruption recovery, and durable conflicts. BETA-04B adds a
+stable staged snapshot boundary, owner-only empty-remote upload, authorized
+non-merge download, integrity validation, and cursor handoff. Realtime remains
+non-authoritative and is deferred to BETA-04C.

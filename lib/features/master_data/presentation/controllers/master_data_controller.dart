@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../domain/entities/account.dart';
+
 typedef MasterDataPersist =
     Future<void> Function({
       required String entity,
@@ -8,17 +10,23 @@ typedef MasterDataPersist =
       String? categoryType,
     });
 
+typedef AccountPersist = Future<void> Function(Account account);
+
 class MasterDataController extends ChangeNotifier {
-  MasterDataController({required this.persist});
+  MasterDataController({required this.persist, this.persistAccount});
 
   final MasterDataPersist persist;
+  final AccountPersist? persistAccount;
 
   final _accounts = <String>[];
+  final _accountRecords = <Account>[];
   final _expenseCategories = <String>[];
   final _incomeCategories = <String>[];
   final _projects = <String>[];
 
   List<String> get accounts => List<String>.unmodifiable(_accounts);
+  List<Account> get accountRecords =>
+      List<Account>.unmodifiable(_accountRecords);
 
   List<String> get expenseCategories =>
       List<String>.unmodifiable(_expenseCategories);
@@ -30,6 +38,7 @@ class MasterDataController extends ChangeNotifier {
 
   void replaceAll({
     required Iterable<String> accounts,
+    Iterable<Account>? accountRecords,
     required Iterable<String> expenseCategories,
     required Iterable<String> incomeCategories,
     required Iterable<String> projects,
@@ -37,6 +46,10 @@ class MasterDataController extends ChangeNotifier {
     _accounts
       ..clear()
       ..addAll(accounts);
+
+    _accountRecords
+      ..clear()
+      ..addAll(accountRecords ?? accounts.map((name) => Account(name: name)));
 
     _expenseCategories
       ..clear()
@@ -87,6 +100,21 @@ class MasterDataController extends ChangeNotifier {
       throw StateError('$normalizedName already exists.');
     }
 
+    if (entity == 'accounts' && persistAccount != null) {
+      final existing = previousName == null
+          ? null
+          : _accountRecords.cast<Account?>().firstWhere(
+              (account) => account?.name == previousName,
+              orElse: () => null,
+            );
+      await saveAccount(
+        existing == null
+            ? Account(name: normalizedName)
+            : existing.copyWith(name: normalizedName),
+      );
+      return;
+    }
+
     await persist(
       entity: entity,
       name: normalizedName,
@@ -102,6 +130,66 @@ class MasterDataController extends ChangeNotifier {
       target.add(normalizedName);
     }
 
+    notifyListeners();
+  }
+
+  Future<void> saveAccount(Account account) async {
+    final normalizedName = account.name.trim();
+    if (normalizedName.isEmpty) {
+      throw ArgumentError.value(
+        account.name,
+        'name',
+        'Account name cannot be empty.',
+      );
+    }
+
+    final currentIndex = _accountRecords.indexWhere(
+      (item) => item.id == account.id,
+    );
+    final duplicate = _accountRecords.indexWhere(
+      (item) =>
+          item.deletedAt == null &&
+          item.name.trim().toLowerCase() == normalizedName.toLowerCase() &&
+          item.id != account.id,
+    );
+    if (duplicate >= 0) {
+      throw StateError('$normalizedName already exists.');
+    }
+
+    final now = DateTime.now();
+    final prepared = currentIndex >= 0
+        ? account.copyWith(
+            name: normalizedName,
+            createdAt: _accountRecords[currentIndex].createdAt,
+            updatedAt: now,
+            version: _accountRecords[currentIndex].version + 1,
+            syncStatus: 'pending',
+          )
+        : account.copyWith(
+            name: normalizedName,
+            updatedAt: now,
+            syncStatus: 'pending',
+          );
+
+    final writer = persistAccount;
+    if (writer == null) {
+      await persist(entity: 'accounts', name: normalizedName);
+    } else {
+      await writer(prepared);
+    }
+
+    if (currentIndex >= 0) {
+      _accountRecords[currentIndex] = prepared;
+    } else {
+      _accountRecords.add(prepared);
+    }
+    _accounts
+      ..clear()
+      ..addAll(
+        _accountRecords
+            .where((item) => item.deletedAt == null)
+            .map((item) => item.name),
+      );
     notifyListeners();
   }
 

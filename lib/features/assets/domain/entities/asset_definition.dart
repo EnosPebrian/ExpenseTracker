@@ -3,6 +3,7 @@ import 'asset_kind.dart';
 class AssetDefinition {
   const AssetDefinition({
     required this.id,
+    this.bookId,
     required this.displayName,
     required this.kind,
     required this.symbol,
@@ -24,6 +25,7 @@ class AssetDefinition {
   static const Object _unset = Object();
 
   final String id;
+  final String? bookId;
   final String displayName;
   final AssetKind kind;
 
@@ -199,6 +201,7 @@ class AssetDefinition {
 
   AssetDefinition copyWith({
     String? id,
+    Object? bookId = _unset,
     String? displayName,
     AssetKind? kind,
     Object? symbol = _unset,
@@ -218,6 +221,7 @@ class AssetDefinition {
   }) {
     return AssetDefinition(
       id: id ?? this.id,
+      bookId: identical(bookId, _unset) ? this.bookId : bookId as String?,
       displayName: displayName ?? this.displayName,
       kind: kind ?? this.kind,
       symbol: identical(symbol, _unset) ? this.symbol : symbol as String?,
@@ -248,6 +252,7 @@ class AssetDefinition {
   Map<String, Object?> toRecord() {
     return <String, Object?>{
       'id': id,
+      'book_id': bookId,
       'display_name': displayName,
       'asset_kind': kind.name,
       'symbol': normalizedSymbol,
@@ -270,6 +275,7 @@ class AssetDefinition {
   factory AssetDefinition.fromRecord(Map<String, Object?> record) {
     return AssetDefinition(
       id: _requiredString(record['id']),
+      bookId: _optionalString(record['book_id']),
       displayName: _requiredString(record['display_name']),
       kind: AssetKind.values.byName(_requiredString(record['asset_kind'])),
       symbol: _optionalString(record['symbol']),

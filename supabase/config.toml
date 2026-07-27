@@ -1,0 +1,7 @@
+project_id = "pilgrim-tracker"
+
+[auth]
+enabled = true
+
+[functions.create-book-invitation]
+verify_jwt = true

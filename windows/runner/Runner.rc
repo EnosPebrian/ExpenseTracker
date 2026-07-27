@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "pilgrim_tracker" "\0"
+            VALUE "CompanyName", "Enos Pebrian" "\0"
+            VALUE "FileDescription", "Pilgrim Tracker" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "pilgrim_tracker" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Enos Pebrian. All rights reserved." "\0"
             VALUE "OriginalFilename", "pilgrim_tracker.exe" "\0"
-            VALUE "ProductName", "pilgrim_tracker" "\0"
+            VALUE "ProductName", "Pilgrim Tracker" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

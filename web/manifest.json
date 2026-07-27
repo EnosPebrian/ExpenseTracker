@@ -1,11 +1,11 @@
 {
-    "name": "pilgrim_tracker",
-    "short_name": "pilgrim_tracker",
+    "name": "Pilgrim Tracker",
+    "short_name": "Pilgrim Tracker",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#101828",
+    "theme_color": "#101828",
+    "description": "Pilgrim Tracker local-first personal finance application.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

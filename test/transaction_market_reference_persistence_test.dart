@@ -10,7 +10,7 @@ import 'package:pilgrim_tracker/features/transactions/domain/entities/transactio
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide Transaction;
 
 void main() {
-  test('fresh database creates the complete version 10 schema', () async {
+  test('fresh database creates the complete final schema', () async {
     final directory = await Directory.systemTemp.createTemp(
       'pilgrim-fresh-v10-',
     );
@@ -32,7 +32,7 @@ void main() {
     addTearDown(database.close);
     expect(
       (await database.rawQuery('PRAGMA user_version')).single['user_version'],
-      10,
+      LocalStore.schemaVersion,
     );
     final columns = (await database.rawQuery(
       'PRAGMA table_info(transactions)',
@@ -209,7 +209,7 @@ void main() {
         (await verificationDatabase.rawQuery(
           'PRAGMA user_version',
         )).single['user_version'],
-        10,
+        LocalStore.schemaVersion,
       );
       expect(
         (await verificationDatabase.query(

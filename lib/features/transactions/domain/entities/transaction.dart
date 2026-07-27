@@ -19,6 +19,8 @@ class Transaction {
 
   Transaction({
     String? id,
+    this.bookId,
+    this.enteredByMemberId,
     this.projectId,
     required this.title,
     required this.category,
@@ -54,6 +56,8 @@ class Transaction {
        updatedAt = updatedAt ?? DateTime.now();
 
   final String id;
+  final String? bookId;
+  final String? enteredByMemberId;
   final String? projectId;
 
   final String title;
@@ -139,6 +143,8 @@ class Transaction {
 
   Transaction copyWith({
     String? id,
+    Object? bookId = _unset,
+    Object? enteredByMemberId = _unset,
     Object? projectId = _unset,
     String? title,
     String? category,
@@ -171,6 +177,10 @@ class Transaction {
   }) {
     return Transaction(
       id: id ?? this.id,
+      bookId: identical(bookId, _unset) ? this.bookId : bookId as String?,
+      enteredByMemberId: identical(enteredByMemberId, _unset)
+          ? this.enteredByMemberId
+          : enteredByMemberId as String?,
       projectId: identical(projectId, _unset)
           ? this.projectId
           : projectId as String?,
@@ -239,6 +249,8 @@ class Transaction {
   Map<String, Object?> toRecord() {
     return {
       'id': id,
+      'book_id': bookId,
+      'entered_by_member_id': enteredByMemberId,
       'project_id': projectId,
       'title': title,
       'category': category,
@@ -278,6 +290,8 @@ class Transaction {
 
     return Transaction(
       id: record['id'] as String,
+      bookId: record['book_id'] as String?,
+      enteredByMemberId: record['entered_by_member_id'] as String?,
       projectId: record['project_id'] as String?,
       title: record['title'] as String,
       category: record['category'] as String,
