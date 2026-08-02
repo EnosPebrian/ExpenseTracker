@@ -55,10 +55,65 @@ void main() {
       ),
     );
 
-    expect(find.text('Cloud sharing is not configured'), findsOneWidget);
+    expect(
+      find.text('This app build does not include cloud-sharing configuration.'),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const ValueKey('household-member-grace')));
     await tester.pump();
     expect(selected?.id, grace.id);
+  });
+
+  testWidgets(
+    'saved remote link plus missing build configuration is explicit',
+    (tester) async {
+      final controller = CloudSharingController(
+        repository: const UnconfiguredCloudSharingRepository(),
+      );
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CloudSharingSection(
+              controller: controller,
+              book: book.copyWith(remoteLinkedAt: DateTime(2026, 7, 30)),
+              members: [enos],
+              activeMemberId: enos.id,
+            ),
+          ),
+        ),
+      );
+      expect(
+        find.textContaining('saved cloud link, but this app build'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('linked household signed out copy separates link and session', (
+    tester,
+  ) async {
+    final controller = CloudSharingController(
+      repository: _WidgetCloudRepository(),
+    );
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CloudSharingSection(
+            controller: controller,
+            book: book.copyWith(remoteLinkedAt: DateTime(2026, 7, 30)),
+            members: [enos],
+            activeMemberId: enos.id,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Household linked · device signed out'), findsOneWidget);
+    expect(find.textContaining('currently signed out'), findsOneWidget);
+    expect(find.byKey(const Key('cloud-sharing-error')), findsNothing);
   });
 
   testWidgets('email OTP UI sends normalized email and reaches verify state', (
@@ -149,6 +204,84 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('invited member cannot link an independent local household', (
+    tester,
+  ) async {
+    final repository = _WidgetCloudRepository(
+      user: const CloudAuthUser(id: 'auth-grace', email: 'grace@example.test'),
+      memberships: const [
+        CloudBookMembership(
+          id: 'remote-membership',
+          bookId: 'remote-shared-book',
+          householdMemberId: 'remote-grace',
+          role: CloudMembershipRole.member,
+          status: 'active',
+        ),
+      ],
+    );
+    final controller = CloudSharingController(repository: repository);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CloudSharingSection(
+            controller: controller,
+            book: book,
+            members: [grace],
+            activeMemberId: grace.id,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Membership active'), findsOneWidget);
+    expect(find.byKey(const Key('cloud-link-household')), findsNothing);
+  });
+
+  testWidgets('pending invitation suppresses local household linking', (
+    tester,
+  ) async {
+    final repository = _WidgetCloudRepository(
+      user: const CloudAuthUser(id: 'auth-grace', email: 'grace@example.test'),
+      invitations: [
+        CloudBookInvitation(
+          id: 'pending-invitation',
+          bookId: 'remote-shared-book',
+          email: 'grace@example.test',
+          householdMemberId: 'remote-grace',
+          role: CloudMembershipRole.member,
+          status: 'pending',
+          expiresAt: DateTime(2026, 8, 4),
+        ),
+      ],
+    );
+    final controller = CloudSharingController(repository: repository);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CloudSharingSection(
+            controller: controller,
+            book: book,
+            members: [grace],
+            activeMemberId: grace.id,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Invitation pending'), findsOneWidget);
+    expect(find.byKey(const Key('cloud-link-household')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('accept-invitation-pending-invitation')),
+      findsOneWidget,
+    );
+  });
 }
 
 class _WidgetCloudRepository implements CloudSharingRepository {
@@ -164,11 +297,20 @@ class _WidgetCloudRepository implements CloudSharingRepository {
   String? requestedEmail;
 
   @override
-  bool get isConfigured => true;
+  CloudConfigurationDiagnostics get diagnostics =>
+      const CloudConfigurationDiagnostics(
+        configuration: CloudConfigurationState.configured,
+        urlValid: true,
+        publishableKeyPresent: true,
+        authInitialization: CloudAuthInitializationState.initialized,
+      );
   @override
   CloudAuthUser? get currentUser => user;
   @override
   Stream<CloudAuthUser?> get authChanges => const Stream.empty();
+
+  @override
+  Future<void> restoreAuthSession() async {}
 
   @override
   Future<void> requestEmailOtp(String email) async => requestedEmail = email;

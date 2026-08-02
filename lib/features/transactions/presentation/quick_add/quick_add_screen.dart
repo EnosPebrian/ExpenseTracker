@@ -11,7 +11,26 @@ class QuickAddScreen {
     BuildContext context, {
     required TransactionController transactionController,
     required QuickAddConfig config,
+    VoidCallback? onAddAccount,
+    VoidCallback? onAddCategory,
   }) {
+    if (config.accounts.isEmpty) {
+      return _showMissingSetupDialog(
+        context,
+        message:
+            'Add an account and opening balance before recording activity.',
+        actionLabel: 'Add account',
+        onAction: onAddAccount,
+      );
+    }
+    if (config.expenseCategories.isEmpty) {
+      return _showMissingSetupDialog(
+        context,
+        message: 'Add an expense category before recording a transaction.',
+        actionLabel: 'Add category',
+        onAction: onAddCategory,
+      );
+    }
     return showDialog<void>(
       context: context,
       barrierColor: const Color(0x66000000),
@@ -21,6 +40,36 @@ class QuickAddScreen {
           config: config,
         );
       },
+    );
+  }
+
+  static Future<void> _showMissingSetupDialog(
+    BuildContext context, {
+    required String message,
+    required String actionLabel,
+    required VoidCallback? onAction,
+  }) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Set up your finances'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: onAction == null
+                ? null
+                : () {
+                    Navigator.pop(dialogContext);
+                    onAction();
+                  },
+            child: Text(actionLabel),
+          ),
+        ],
+      ),
     );
   }
 }

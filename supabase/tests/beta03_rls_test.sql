@@ -1,5 +1,13 @@
 begin;
 create extension if not exists pgtap;
+set local role postgres;
+select set_config(
+  'search_path',
+  format('public,%I', namespace.nspname),
+  true
+) from pg_extension extension
+join pg_namespace namespace on namespace.oid = extension.extnamespace
+where extension.extname = 'pgtap';
 select plan(19);
 
 insert into auth.users(id, aud, role, email, email_confirmed_at, created_at, updated_at)
@@ -18,6 +26,9 @@ insert into public.book_memberships(id, book_id, user_id, role, status) values
   ('30000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'owner', 'active'),
   ('30000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 'member', 'active'),
   ('30000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000003', 'owner', 'active');
+insert into public.book_sync_initializations(book_id, status, completed_at) values
+  ('20000000-0000-0000-0000-000000000001', 'complete', now()),
+  ('20000000-0000-0000-0000-000000000002', 'complete', now());
 insert into public.accounts(id, book_id, name, account_type, currency_code, created_at, updated_at, version, device_id)
 values
   ('40000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'Cash', 'cash', 'IDR', now(), now(), 1, 'test'),
@@ -52,13 +63,12 @@ select throws_ok(
   $$select public.create_book_invitation('20000000-0000-0000-0000-000000000001', 'friend@example.test', null, 'member')$$,
   null, null, 'non-owner cannot invite'
 );
+update public.book_memberships set role = 'owner'
+where id = '30000000-0000-0000-0000-000000000002';
 select is(
-  (with changed as (
-    update public.book_memberships set role = 'owner'
-      where id = '30000000-0000-0000-0000-000000000002'
-      returning 1
-  ) select count(*) from changed),
-  0::bigint, 'member cannot promote own membership'
+  (select role from public.book_memberships
+    where id = '30000000-0000-0000-0000-000000000002'),
+  'member', 'member cannot promote own membership'
 );
 select throws_ok(
   $$insert into public.book_invitations(
@@ -85,7 +95,7 @@ select set_config(
   true
 );
 
-reset role;
+set local role postgres;
 delete from public.book_memberships where id = '30000000-0000-0000-0000-000000000002';
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated","email":"grace@example.test"}', true);

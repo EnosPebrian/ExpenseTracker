@@ -104,4 +104,30 @@ void main() {
 
     expect(navigationBar.selectedIndex, 3);
   });
+
+  testWidgets(
+    'desktop navigation scrolls without overflowing at short height',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 760);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AppNavigationScaffold(
+            selected: 6,
+            onSelect: (_) {},
+            onQuickAdd: () {},
+            child: const SizedBox(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('side-nav-scroll-view')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      expect(find.text('All synced'), findsOneWidget);
+    },
+  );
 }

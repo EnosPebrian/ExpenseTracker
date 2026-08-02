@@ -102,8 +102,11 @@ returns trigger language plpgsql security definer
 set search_path = public, pg_temp as $$
 declare target_book_id uuid;
 begin
-  target_book_id := case when tg_table_name = 'books'
-    then coalesce(new.id, old.id) else coalesce(new.book_id, old.book_id) end;
+  if tg_table_name = 'books' then
+    target_book_id := coalesce(new.id, old.id);
+  else
+    target_book_id := coalesce(new.book_id, old.book_id);
+  end if;
   perform pg_advisory_xact_lock(hashtextextended(target_book_id::text, 0));
   if current_setting('app.initial_sync_mode', true) = 'on' then
     return coalesce(new, old);
@@ -244,7 +247,7 @@ create or replace function public.upload_initial_snapshot_batch(
 set search_path = public, pg_temp as $$
 declare session public.initial_sync_sessions;
 declare row_value jsonb;
-declare entity_id uuid;
+declare row_entity_id uuid;
 declare existing_payload jsonb;
 declare allowed_fields text[];
 declare received_count integer;
@@ -264,9 +267,9 @@ begin
   end if;
   allowed_fields := public.initial_sync_allowed_fields(p_entity_type);
   for row_value in select value from jsonb_array_elements(p_rows) loop
-    entity_id := (row_value->>'id')::uuid;
-    if entity_id is null or
-       (p_entity_type = 'books' and entity_id <> session.book_id) or
+    row_entity_id := (row_value->>'id')::uuid;
+    if row_entity_id is null or
+       (p_entity_type = 'books' and row_entity_id <> session.book_id) or
        (p_entity_type <> 'books' and
         (row_value->>'book_id')::uuid <> session.book_id) or
        coalesce((row_value->>'version')::bigint, 0) < 1 or
@@ -279,13 +282,13 @@ begin
     end if;
     select payload into existing_payload from public.initial_sync_items
     where session_id = p_session_id and entity_type = p_entity_type
-      and initial_sync_items.entity_id = entity_id;
+      and initial_sync_items.entity_id = row_entity_id;
     if existing_payload is not null and existing_payload <> row_value then
       raise exception 'Initial snapshot retry payload mismatch';
     end if;
     insert into public.initial_sync_items(
       session_id, entity_type, entity_id, payload
-    ) values (p_session_id, p_entity_type, entity_id, row_value)
+    ) values (p_session_id, p_entity_type, row_entity_id, row_value)
     on conflict(session_id, entity_type, entity_id) do nothing;
   end loop;
   select count(*) into received_count from public.initial_sync_items
@@ -323,21 +326,15 @@ begin
     where id = entity_id;
     return;
   end if;
-  columns := case p_entity_type
-    when 'household_members' then
-      'id,book_id,display_name,role,created_at,updated_at,deleted_at,version,device_id'
-    when 'categories' then
-      'id,book_id,name,category_type,created_at,updated_at,deleted_at,version,device_id'
-    when 'projects' then
-      'id,book_id,name,status,created_at,updated_at,deleted_at,version,device_id'
-    when 'accounts' then
-      'id,book_id,owner_member_id,name,account_type,currency_code,opening_balance,opening_balance_date,created_at,updated_at,deleted_at,version,device_id'
-    when 'asset_definitions' then
-      'id,book_id,display_name,asset_kind,symbol,provider_code,provider_symbol,exchange_code,currency_code,unit,lot_size,online_pricing_enabled,created_at,updated_at,deleted_at,version,device_id'
-    when 'transactions' then
-      'id,book_id,entered_by_member_id,project_id,title,category,account,transaction_date,amount,transaction_type,quantity,unit,unit_price,asset_definition_id,asset_name,asset_symbol,asset_action,fee_amount,fee_treatment,related_transaction_id,relation_type,market_reference_unit_price,market_reference_currency_code,market_reference_unit,market_reference_source,market_reference_quoted_at,created_at,updated_at,deleted_at,version,device_id'
-    else raise exception 'Unsupported initial snapshot entity'
-  end;
+  case p_entity_type
+    when 'household_members' then columns := 'id,book_id,display_name,role,created_at,updated_at,deleted_at,version,device_id';
+    when 'categories' then columns := 'id,book_id,name,category_type,created_at,updated_at,deleted_at,version,device_id';
+    when 'projects' then columns := 'id,book_id,name,status,created_at,updated_at,deleted_at,version,device_id';
+    when 'accounts' then columns := 'id,book_id,owner_member_id,name,account_type,currency_code,opening_balance,opening_balance_date,created_at,updated_at,deleted_at,version,device_id';
+    when 'asset_definitions' then columns := 'id,book_id,display_name,asset_kind,symbol,provider_code,provider_symbol,exchange_code,currency_code,unit,lot_size,online_pricing_enabled,created_at,updated_at,deleted_at,version,device_id';
+    when 'transactions' then columns := 'id,book_id,entered_by_member_id,project_id,title,category,account,transaction_date,amount,transaction_type,quantity,unit,unit_price,asset_definition_id,asset_name,asset_symbol,asset_action,fee_amount,fee_treatment,related_transaction_id,relation_type,market_reference_unit_price,market_reference_currency_code,market_reference_unit,market_reference_source,market_reference_quoted_at,created_at,updated_at,deleted_at,version,device_id';
+    else raise exception 'Unsupported initial snapshot entity: %', p_entity_type;
+  end case;
   execute format(
     'insert into public.%I (%s) select %s '
     'from jsonb_populate_record(null::public.%I, $1)',
@@ -350,7 +347,7 @@ create or replace function public.complete_initial_upload(p_session_id uuid)
 returns jsonb language plpgsql security definer
 set search_path = public, pg_temp as $$
 declare session public.initial_sync_sessions;
-declare entity_type text;
+declare current_entity_type text;
 declare expected_count integer;
 declare actual_count integer;
 declare item public.initial_sync_items;
@@ -373,18 +370,18 @@ begin
   if public.remote_financial_row_count(session.book_id) <> 0 then
     raise exception 'Remote household became occupied';
   end if;
-  foreach entity_type in array array[
+  foreach current_entity_type in array array[
     'books','household_members','categories','projects','accounts',
     'asset_definitions','transactions'
   ] loop
     expected_count := coalesce(
-      (session.manifest->'counts'->>entity_type)::integer, 0
+      (session.manifest->'counts'->>current_entity_type)::integer, 0
     );
     select count(*) into actual_count from public.initial_sync_items
     where session_id = p_session_id
-      and initial_sync_items.entity_type = entity_type;
+      and initial_sync_items.entity_type = current_entity_type;
     if expected_count <> actual_count then
-      raise exception 'Initial upload manifest count mismatch for %', entity_type;
+      raise exception 'Initial upload manifest count mismatch for %', current_entity_type;
     end if;
   end loop;
   if exists (
@@ -430,16 +427,16 @@ begin
       )
   ) then raise exception 'Initial upload referential integrity failed'; end if;
   perform set_config('app.initial_sync_mode', 'on', true);
-  foreach entity_type in array array[
+  foreach current_entity_type in array array[
     'books','household_members','categories','projects','accounts',
     'asset_definitions','transactions'
   ] loop
     for item in select * from public.initial_sync_items
       where session_id = p_session_id
-        and initial_sync_items.entity_type = entity_type
+        and initial_sync_items.entity_type = current_entity_type
       order by entity_id
     loop
-      perform public.apply_initial_snapshot_row(entity_type, item.payload);
+      perform public.apply_initial_snapshot_row(current_entity_type, item.payload);
     end loop;
   end loop;
   select coalesce(max(sequence), 0) into final_sequence
@@ -539,7 +536,7 @@ begin
     'asset_definitions','transactions'
   ) then raise exception 'Unsupported initial download entity'; end if;
   select coalesce(jsonb_agg(payload order by entity_id), '[]'::jsonb),
-    max(entity_id), count(*)
+    max(entity_id::text)::uuid, count(*)
   into rows, next_cursor, returned_count
   from (
     select entity_id, payload from public.initial_sync_items

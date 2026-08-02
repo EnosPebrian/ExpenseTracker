@@ -4,9 +4,14 @@ import '../../domain/sync_models.dart';
 import '../controllers/sync_controller.dart';
 
 class SyncStatusSection extends StatelessWidget {
-  const SyncStatusSection({super.key, required this.controller});
+  const SyncStatusSection({
+    super.key,
+    required this.controller,
+    this.onReviewConflicts,
+  });
 
   final SyncController controller;
+  final VoidCallback? onReviewConflicts;
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +50,27 @@ class SyncStatusSection extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 8),
+            Text(
+              'Pending: ${controller.pendingCount} · Last successful: ${controller.lastSuccessfulSyncAt == null ? 'Not yet' : MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(controller.lastSuccessfulSyncAt!))}',
+            ),
+            if (!controller.realtimeConnected && controller.canSync)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text(
+                  'Realtime disconnected — normal sync still available',
+                ),
+              ),
+            const SizedBox(height: 8),
+            if (controller.status == SyncStatus.conflict &&
+                onReviewConflicts != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: FilledButton.icon(
+                  onPressed: onReviewConflicts,
+                  icon: const Icon(Icons.rule),
+                  label: const Text('Review conflicts'),
+                ),
+              ),
             FilledButton.tonalIcon(
               key: const Key('sync-now-button'),
               onPressed: controller.canSync && !controller.busy

@@ -1,5 +1,30 @@
 # Pilgrim Tracker Progress
 
+## D14 closed — 2026-08-02
+
+**D14 PASS — Ready for controlled private deployment by Enos and Grace.**
+
+Owner acceptance covers private household use on Windows and Android, hosted
+Supabase synchronization, encrypted backup and restore, and CSV export. It does
+not claim public production launch, Play Store publication, enterprise use,
+web production readiness, or third-party security certification.
+
+Accepted evidence includes configured Windows release runtime, owner-signed
+APK/AAB output with a verified non-debug Enos APK signature, Android runtime
+and reopen persistence, Android-to-Windows synchronization, Windows/Android
+backup workflows, safe restore, CSV ZIP export and owner inspection, and
+invalid-extension rejection. The automated baseline is 587 passing tests and a
+clean analyzer; web, Windows debug, and Android debug compilation gates passed
+during the latest repair. No verification was rerun for this documentation-only
+closure. Further development may begin.
+
+- Closed-beta fresh-install blocker fixed: production bootstrap no longer creates
+  demo accounts, projects, categories, transactions, balances, or analytics.
+
+- BETA-04C conflict resolution, sync health, automatic triggers, and Realtime
+  wake-up are implemented locally. Remote deployment and BETA-05 owner
+  acceptance remain open.
+
 **Snapshot date:** 2026-07-21
 
 ```text
@@ -201,9 +226,7 @@ Final verification: 29 focused BETA-01 tests and 431 full-suite tests passed;
 Flutter analysis reported no issues; the web build and WebAssembly dry run
 succeeded.
 
-D14 remains open. Owner-signed Android artifacts, Android runtime/reopen proof,
-the final branded Windows build/runtime/reopen checklist, and any still-open
-release checklist gates remain separate release work.
+These D14 gates were later completed and accepted in the 2026-08-02 closure.
 
 ## BETA-02 — Household, Members, Books, and Sync-Ready Local Architecture
 
@@ -218,13 +241,33 @@ Completed on 2026-07-26:
 - SQLite version 12 migration and equivalent in-memory web behavior;
 - documented Supabase/RLS direction and durable offline-sync requirements.
 
-BETA-02 does not provide cloud identity, invitations, synchronization, or
-two-device sharing. D14 remains open until BETA-05 acceptance and the remaining
-release gates complete.
+BETA-02 did not itself provide cloud identity, invitations, synchronization, or
+two-device sharing. Later milestones and the 2026-08-02 D14 closure completed
+the approved private-deployment gates.
 
 Final verification: 20 focused BETA-02/accounting tests and 442 full-suite
 tests passed; Flutter analysis reported no issues; the web build and WebAssembly
 dry run succeeded.
+
+## Historical D14 Final owner-acceptance pass — 2026-07-30
+
+The owner Android certificate identity passed preflight. Exactly one signed APK
+build was attempted; Gradle's Java daemon exhausted native memory, so no signed
+APK/AAB was produced and Android runtime remained blocked without an attached
+target. Windows release compilation, identity metadata, and process startup
+passed, but interactive runtime/reopen and portability acceptance were not run.
+No production code changed; the 546-test, clean-analyzer, and passing web/Wasm
+BETA-06 baseline was reused. D14 remained open at that checkpoint; the later
+2026-08-02 owner closure supersedes this verdict.
+
+## BETA-06 — Household backup, safe restore, and CSV export
+
+Implemented on 2026-07-29 with encrypted household snapshots, integrity and
+accounting verification, non-merge restore modes, mandatory pre-replacement
+safety backup, local-only post-restore state, spreadsheet-safe CSV ZIP, scoped
+platform file access, and SQLite version 20 household-scoped market-price keys.
+Final gates are recorded in `CHECKPOINT_BETA06_COMPLETE.md`; owner runtime
+acceptance was completed in the 2026-08-02 D14 closure.
 
 ## BETA-04B — Controlled initial upload and secondary download
 

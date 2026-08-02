@@ -5,6 +5,18 @@ import 'package:pilgrim_tracker/features/assets/domain/entities/asset_kind.dart'
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
 
 void main() {
+  test('new conversion starts without fabricated amount or quantity', () {
+    final controller = AssetConversionController(
+      accounts: const ['Cash Enos'],
+      assets: [_goldDefinition()],
+    );
+    addTearDown(controller.dispose);
+
+    expect(controller.cashController.text, isEmpty);
+    expect(controller.quantityController.text, isEmpty);
+    expect(controller.canSave, isFalse);
+  });
+
   test('stock conversion uses the selected concrete asset definition', () {
     final controller = AssetConversionController(
       accounts: const ['Cash Enos'],
@@ -14,6 +26,7 @@ void main() {
     addTearDown(controller.dispose);
 
     controller.setDestination('Bank Central Asia (BBCA)');
+    controller.cashController.text = '50.000.000';
     controller.quantityController.text = '100';
 
     expect(controller.selectedAssetDefinition.id, 'asset-bbca');
@@ -41,6 +54,9 @@ void main() {
     );
 
     addTearDown(controller.dispose);
+
+    controller.cashController.text = '50.000.000';
+    controller.quantityController.text = '20';
 
     expect(controller.selectedAssetDefinition.displayName, 'Gold Holdings');
 
@@ -404,6 +420,7 @@ void main() {
     addTearDown(controller.dispose);
 
     controller.quantityController.text = '100';
+    controller.cashController.text = '50.000.000';
     expect(controller.canSave, isTrue);
 
     controller.quantityController.text = '150';
@@ -427,6 +444,7 @@ void main() {
     addTearDown(controller.dispose);
 
     controller.quantityController.text = '17';
+    controller.cashController.text = '50.000.000';
     expect(controller.canSave, isTrue);
     expect(controller.lotValidationMessage, isNull);
   });
@@ -454,6 +472,7 @@ void main() {
 
     controller.setSellAsset(true);
     controller.setDate(DateTime(2026, 7, 5));
+    controller.cashController.text = '50.000.000';
     controller.quantityController.text = '50';
 
     expect(controller.availableQuantity, 250);

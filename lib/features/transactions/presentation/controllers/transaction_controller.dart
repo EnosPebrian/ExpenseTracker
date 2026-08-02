@@ -32,19 +32,13 @@ class TransactionController extends ChangeNotifier {
     activeMemberId = memberId;
   }
 
-  Future<void> load({List<Transaction> seed = const []}) async {
+  Future<void> load() async {
     isLoading = true;
     error = null;
     assetValidation = null;
     notifyListeners();
     try {
-      var loaded = await get();
-      if (loaded.isEmpty && seed.isNotEmpty) {
-        for (final transaction in seed) {
-          await create(transaction);
-        }
-        loaded = await get();
-      }
+      final loaded = await get();
       transactions
         ..clear()
         ..addAll(loaded);

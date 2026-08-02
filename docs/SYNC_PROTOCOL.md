@@ -79,7 +79,14 @@ background service. The UI distinguishes local-only, unconfigured, signed-out,
 initialization-required, pending, syncing, offline/retry, conflict, and error
 states without claiming that BETA-04A uploaded existing financial history.
 
+## Conflict resolution and wake-up
+
+BETA-04C classifies and durably retains conflicts until explicit successful
+resolution. Keep shared applies no new local outbox mutation; device/manual
+choices use a new idempotent operation against the latest server version.
+Realtime is only a debounced wake-up for this cursor protocol and never applies
+its payload or advances a cursor.
+
 ## Deferred
 
-- BETA-04C: conflict review/resolution and any approved Realtime wake-up layer.
 - BETA-05: Enos/Grace two-device acceptance and recovery proof.

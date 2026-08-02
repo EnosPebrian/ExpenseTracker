@@ -21,6 +21,9 @@ class Dashboard extends StatelessWidget {
     required this.onPeriodChanged,
     this.transactionChanges,
     this.transactionsProvider,
+    this.hasAccounts = true,
+    this.onAddAccount,
+    this.onAddTransaction,
   });
 
   final List<Transaction> transactions;
@@ -31,6 +34,9 @@ class Dashboard extends StatelessWidget {
   final ValueChanged<FinancialPeriod> onPeriodChanged;
   final Listenable? transactionChanges;
   final List<Transaction> Function()? transactionsProvider;
+  final bool hasAccounts;
+  final VoidCallback? onAddAccount;
+  final VoidCallback? onAddTransaction;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +63,14 @@ class Dashboard extends StatelessWidget {
             referenceDate: referenceDate,
             onChanged: onPeriodChanged,
           ),
+          if (transactions.isEmpty && summary.activityCount == 0) ...[
+            const SizedBox(height: 14),
+            _FreshWorkspaceCard(
+              hasAccounts: hasAccounts,
+              onAddAccount: onAddAccount,
+              onAddTransaction: onAddTransaction,
+            ),
+          ],
           const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -118,6 +132,67 @@ class Dashboard extends StatelessWidget {
             right: ActivityCard(summary: summary),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FreshWorkspaceCard extends StatelessWidget {
+  const _FreshWorkspaceCard({
+    required this.hasAccounts,
+    this.onAddAccount,
+    this.onAddTransaction,
+  });
+
+  final bool hasAccounts;
+  final VoidCallback? onAddAccount;
+  final VoidCallback? onAddTransaction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('fresh-workspace-empty-state'),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              hasAccounts
+                  ? 'Record your first transaction'
+                  : 'Set up your finances',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hasAccounts
+                  ? 'Your dashboard is empty until you add real activity.'
+                  : 'Add an account and opening balance before recording activity.',
+              style: const TextStyle(color: muted, fontSize: 11),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  key: const Key('empty-add-account'),
+                  onPressed: onAddAccount,
+                  icon: const Icon(Icons.account_balance_outlined),
+                  label: Text(
+                    hasAccounts ? 'Set opening balance' : 'Add account',
+                  ),
+                ),
+                OutlinedButton.icon(
+                  key: const Key('empty-add-transaction'),
+                  onPressed: hasAccounts ? onAddTransaction : null,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Add transaction'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

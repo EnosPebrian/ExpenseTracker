@@ -159,6 +159,10 @@ class InitialSyncStoreAdapter {
         'last_processed_entity': null,
         'last_processed_cursor': null,
         if (direction == InitialSyncDirection.download) 'downloaded_count': 0,
+        if (direction == InitialSyncDirection.download)
+          'initial_sync_diagnostic_json': jsonEncode(
+            InitialSyncDiagnosticSummary.forManifest(manifest).toJson(),
+          ),
         'last_error_code': null,
         'last_error_message': null,
         'manifest_json': jsonEncode(manifest.toJson()),
@@ -178,32 +182,95 @@ class InitialSyncStoreAdapter {
     final now = DateTime.now().millisecondsSinceEpoch;
     await store.db.transaction((txn) async {
       var inserted = 0;
+      var skipped = 0;
       for (final row in batch.rows) {
         final id = row['id'] as String?;
         if (id == null ||
             (batch.entityType == 'books'
                 ? id != bookId
                 : row['book_id'] != bookId)) {
-          throw const InitialSyncException(
+          throw InitialSyncException(
             InitialSyncErrorCode.validation,
             'The downloaded snapshot contains another household.',
+            entityType: batch.entityType,
+            recordId: id,
+            phase: 'validate',
           );
         }
-        final result = await txn.insert('initial_sync_staging', {
+        final existing = await txn.query(
+          'initial_sync_staging',
+          columns: const ['payload_json'],
+          where:
+              'book_id = ? AND direction = ? AND entity_type = ? '
+              'AND entity_id = ?',
+          whereArgs: [
+            bookId,
+            InitialSyncDirection.download.name,
+            batch.entityType,
+            id,
+          ],
+          limit: 1,
+        );
+        final encoded = jsonEncode(row);
+        if (existing.isNotEmpty) {
+          if (existing.single['payload_json'] != encoded) {
+            throw InitialSyncException(
+              InitialSyncErrorCode.validation,
+              'A resumed snapshot record changed unexpectedly.',
+              entityType: batch.entityType,
+              recordId: id,
+              phase: 'stage',
+            );
+          }
+          skipped++;
+          continue;
+        }
+        await txn.insert('initial_sync_staging', {
           'book_id': bookId,
           'direction': InitialSyncDirection.download.name,
           'entity_type': batch.entityType,
           'entity_id': id,
-          'payload_json': jsonEncode(row),
+          'payload_json': encoded,
           'transferred_at': now,
-        }, conflictAlgorithm: ConflictAlgorithm.ignore);
-        if (result != 0) inserted++;
+        });
+        inserted++;
       }
+      final diagnostic = await _diagnostic(txn, bookId);
+      final cursorRows = await txn.query(
+        'sync_cursors',
+        columns: const ['last_processed_entity', 'last_processed_cursor'],
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+        limit: 1,
+      );
+      final previousCursor =
+          cursorRows.isNotEmpty &&
+              cursorRows.single['last_processed_entity'] == batch.entityType
+          ? cursorRows.single['last_processed_cursor'] as String?
+          : null;
+      final committedCursor =
+          batch.nextCursor ?? (batch.rows.isEmpty ? previousCursor : null);
+      final current = diagnostic.entities[batch.entityType]!;
+      final updated = InitialSyncDiagnosticSummary({
+        ...diagnostic.entities,
+        batch.entityType: current.copyWith(
+          fetched: current.fetched + batch.rows.length,
+          decoded: current.decoded + inserted,
+          skipped: current.skipped + skipped,
+        ),
+      });
       await txn.rawUpdate(
-        'UPDATE sync_cursors SET downloaded_count = downloaded_count + ?, '
+        'UPDATE sync_cursors SET downloaded_count = 0, '
+        'initial_sync_diagnostic_json = ?, '
         'last_processed_entity = ?, last_processed_cursor = ?, updated_at = ? '
         'WHERE book_id = ?',
-        [inserted, batch.entityType, batch.nextCursor, now, bookId],
+        [
+          jsonEncode(updated.toJson()),
+          batch.entityType,
+          committedCursor,
+          now,
+          bookId,
+        ],
       );
     });
   }
@@ -275,23 +342,62 @@ class InitialSyncStoreAdapter {
       }
       final rowsByType = await _loadStagedRows(txn, bookId);
       _validateManifest(manifest, rowsByType);
+      final diagnostic = await _diagnostic(txn, bookId);
+      var finalDiagnostic = diagnostic;
       for (final entityType in initialSyncEntityOrder) {
         final table = _table(entityType);
+        final localColumns = await _columnNames(txn, table);
         for (final source in rowsByType[entityType]!) {
           final saved = <String, Object?>{
-            ...source,
+            for (final entry in source.entries)
+              if (localColumns.contains(entry.key)) entry.key: entry.value,
             'sync_status': 'synced',
             if (entityType == 'books') 'remote_linked_at': now,
             if (entityType == 'household_members' &&
                 source['id'] == manifest.householdMemberId)
               'auth_user_id': authUserId,
           };
-          await txn.insert(
-            table,
-            saved,
-            conflictAlgorithm: ConflictAlgorithm.replace,
+          try {
+            await txn.insert(
+              table,
+              saved,
+              conflictAlgorithm: ConflictAlgorithm.replace,
+            );
+          } catch (error) {
+            throw InitialSyncException(
+              InitialSyncErrorCode.validation,
+              'The local database rejected a downloaded record.',
+              entityType: entityType,
+              recordId: source['id'] as String?,
+              phase: 'persist',
+              exceptionClass: error.runtimeType.toString(),
+              lastCommittedCursor: null,
+              committedRecords: 0,
+            );
+          }
+        }
+      }
+      for (final entityType in initialSyncEntityOrder) {
+        final localRows = await _rowsForBook(txn, entityType, bookId);
+        final expected = manifest.counts[entityType] ?? 0;
+        if (localRows.length != expected) {
+          throw InitialSyncException(
+            InitialSyncErrorCode.validation,
+            'Downloaded records could not be verified locally.',
+            entityType: entityType,
+            phase: 'verify',
+            exceptionClass: 'LocalVisibilityMismatch',
+            committedRecords: 0,
           );
         }
+        final current = finalDiagnostic.entities[entityType]!;
+        finalDiagnostic = InitialSyncDiagnosticSummary({
+          ...finalDiagnostic.entities,
+          entityType: current.copyWith(
+            persisted: expected,
+            locallyQueryable: localRows.length,
+          ),
+        });
       }
       await txn.update('local_session', {
         'active_book_id': bookId,
@@ -302,6 +408,8 @@ class InitialSyncStoreAdapter {
         {
           'last_server_sequence': manifest.snapshotSequence,
           'initialization_state': SyncInitializationState.ready.name,
+          'downloaded_count': manifest.totalCount,
+          'initial_sync_diagnostic_json': jsonEncode(finalDiagnostic.toJson()),
           'completed_at': now,
           'last_error_code': null,
           'last_error_message': null,
@@ -319,21 +427,37 @@ class InitialSyncStoreAdapter {
     store.setActiveBookId(bookId);
   }
 
+  Future<InitialSyncDiagnosticSummary> getDiagnosticSummary(String bookId) =>
+      _diagnostic(store.db, bookId);
+
   Future<void> recordFailure(
     String bookId, {
-    required String code,
-    required String message,
-  }) => store.db.update(
-    'sync_cursors',
-    {
-      'initialization_state': SyncInitializationState.failed.name,
-      'last_error_code': code,
-      'last_error_message': message,
-      'updated_at': DateTime.now().millisecondsSinceEpoch,
-    },
-    where: 'book_id = ?',
-    whereArgs: [bookId],
-  );
+    required InitialSyncException error,
+  }) async {
+    await store.db.transaction((txn) async {
+      var diagnostic = await _diagnostic(txn, bookId);
+      final entityType = error.entityType;
+      if (entityType != null && diagnostic.entities.containsKey(entityType)) {
+        final current = diagnostic.entities[entityType]!;
+        diagnostic = InitialSyncDiagnosticSummary({
+          ...diagnostic.entities,
+          entityType: current.copyWith(failed: current.failed + 1),
+        });
+      }
+      await txn.update(
+        'sync_cursors',
+        {
+          'initialization_state': SyncInitializationState.failed.name,
+          'last_error_code': error.code.name,
+          'last_error_message': error.safeMessage,
+          'initial_sync_diagnostic_json': jsonEncode(diagnostic.toJson()),
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+      );
+    });
+  }
 
   Future<void> cancelInitialization(
     String bookId,
@@ -359,6 +483,7 @@ class InitialSyncStoreAdapter {
           'last_processed_cursor': null,
           'uploaded_count': 0,
           'downloaded_count': 0,
+          'initial_sync_diagnostic_json': null,
           'last_error_code': null,
           'last_error_message': null,
           'manifest_json': null,
@@ -383,6 +508,14 @@ class InitialSyncStoreAdapter {
     orderBy: 'id ASC',
   );
 
+  static Future<Set<String>> _columnNames(
+    DatabaseExecutor db,
+    String table,
+  ) async {
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    return columns.map((column) => column['name'] as String).toSet();
+  }
+
   static Future<int> _financialRowCount(
     DatabaseExecutor db,
     String bookId,
@@ -406,17 +539,29 @@ class InitialSyncStoreAdapter {
     for (final entityType in initialSyncEntityOrder) {
       final rows = await db.query(
         'initial_sync_staging',
-        columns: ['payload_json'],
+        columns: ['entity_id', 'payload_json'],
         where: 'book_id = ? AND direction = ? AND entity_type = ?',
         whereArgs: [bookId, InitialSyncDirection.download.name, entityType],
         orderBy: 'entity_id ASC',
       );
-      result[entityType] = rows
-          .map(
-            (row) => (jsonDecode(row['payload_json'] as String) as Map)
-                .cast<String, Object?>(),
-          )
-          .toList();
+      result[entityType] = [];
+      for (final row in rows) {
+        try {
+          final decoded = jsonDecode(row['payload_json'] as String);
+          if (decoded is! Map) throw const FormatException('Not an object');
+          result[entityType]!.add(decoded.cast<String, Object?>());
+        } catch (error) {
+          throw InitialSyncException(
+            InitialSyncErrorCode.validation,
+            'A downloaded record could not be decoded.',
+            entityType: entityType,
+            recordId: row['entity_id'] as String?,
+            phase: 'decode',
+            exceptionClass: error.runtimeType.toString(),
+            committedRecords: 0,
+          );
+        }
+      }
     }
     return result;
   }
@@ -431,6 +576,9 @@ class InitialSyncStoreAdapter {
         throw InitialSyncException(
           InitialSyncErrorCode.validation,
           'Initial download is incomplete for $entityType.',
+          entityType: entityType,
+          phase: 'validate',
+          committedRecords: 0,
         );
       }
       final ids = <Object?>{};
@@ -440,9 +588,13 @@ class InitialSyncStoreAdapter {
                 ? row['id'] != manifest.bookId
                 : row['book_id'] != manifest.bookId) ||
             ((row['version'] as num?)?.toInt() ?? 0) < 1) {
-          throw const InitialSyncException(
+          throw InitialSyncException(
             InitialSyncErrorCode.validation,
             'Initial download identity or version validation failed.',
+            entityType: entityType,
+            recordId: row['id'] as String?,
+            phase: 'validate',
+            committedRecords: 0,
           );
         }
       }
@@ -460,9 +612,13 @@ class InitialSyncStoreAdapter {
     for (final account in rowsByType['accounts']!) {
       final owner = account['owner_member_id'];
       if (owner != null && !memberIds.contains(owner)) {
-        throw const InitialSyncException(
+        throw InitialSyncException(
           InitialSyncErrorCode.validation,
           'An account owner is missing from the household snapshot.',
+          entityType: 'accounts',
+          recordId: account['id'] as String?,
+          phase: 'validate',
+          committedRecords: 0,
         );
       }
     }
@@ -478,12 +634,53 @@ class InitialSyncStoreAdapter {
           (project != null && !projectIds.contains(project)) ||
           (related != null && !transactionIds.contains(related)) ||
           (asset != null && !assetIds.contains(asset) && !validLegacyAsset)) {
-        throw const InitialSyncException(
+        throw InitialSyncException(
           InitialSyncErrorCode.validation,
           'Transaction references or financial amounts are invalid.',
+          entityType: 'transactions',
+          recordId: transaction['id'] as String?,
+          phase: 'validate',
+          committedRecords: 0,
         );
       }
     }
+  }
+
+  static Future<InitialSyncDiagnosticSummary> _diagnostic(
+    DatabaseExecutor db,
+    String bookId,
+  ) async {
+    final rows = await db.query(
+      'sync_cursors',
+      columns: const ['initial_sync_diagnostic_json', 'manifest_json'],
+      where: 'book_id = ?',
+      whereArgs: [bookId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return InitialSyncDiagnosticSummary({
+        for (final entityType in initialSyncEntityOrder)
+          entityType: const InitialSyncEntityDiagnostic(),
+      });
+    }
+    final encoded = rows.single['initial_sync_diagnostic_json'] as String?;
+    if (encoded != null) {
+      return InitialSyncDiagnosticSummary.fromJson(
+        (jsonDecode(encoded) as Map).cast<String, Object?>(),
+      );
+    }
+    final manifestJson = rows.single['manifest_json'] as String?;
+    if (manifestJson != null) {
+      return InitialSyncDiagnosticSummary.forManifest(
+        InitialSyncManifest.fromJson(
+          (jsonDecode(manifestJson) as Map).cast<String, Object?>(),
+        ),
+      );
+    }
+    return InitialSyncDiagnosticSummary({
+      for (final entityType in initialSyncEntityOrder)
+        entityType: const InitialSyncEntityDiagnostic(),
+    });
   }
 
   static Future<void> _upsertCursor(

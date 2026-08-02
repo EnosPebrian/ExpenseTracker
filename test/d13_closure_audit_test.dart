@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pilgrim_tracker/app/data/default_asset_definitions.dart';
+import 'package:pilgrim_tracker/core/master_data/default_asset_definition_ids.dart';
 import 'package:pilgrim_tracker/features/assets/controllers/asset_conversion_controller.dart';
 import 'package:pilgrim_tracker/features/assets/controllers/asset_definition_controller.dart';
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_definition.dart';
@@ -41,7 +42,7 @@ void main() {
           definitions: controller.allDefinitions,
           query: const AssetDefinitionCatalogQuery(searchText: 'usd'),
         );
-        expect(search.single.id, 'asset-usd');
+        expect(search.single.id, defaultUsdAssetId);
       },
     );
 

@@ -94,9 +94,10 @@ class AssetConversionForm extends StatelessWidget {
                 labelText: controller.quantityLabel,
                 suffixText: controller.unit,
                 helperText: controller.quantityPrecisionHint,
-                errorText:
-                    controller.quantityValidationMessage ??
-                    controller.lotValidationMessage,
+                errorText: controller.quantityController.text.trim().isEmpty
+                    ? null
+                    : controller.quantityValidationMessage ??
+                          controller.lotValidationMessage,
               ),
             ),
             if (controller.selectedAssetDefinition.kind == AssetKind.stock &&

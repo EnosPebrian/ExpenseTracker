@@ -1,13 +1,16 @@
 import 'package:flutter/services.dart';
 
 class ThousandsFormatter extends TextInputFormatter {
-  const ThousandsFormatter();
+  const ThousandsFormatter({this.allowNegative = false});
+
+  final bool allowNegative;
 
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
+    final negative = allowNegative && newValue.text.trimLeft().startsWith('-');
     final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (digits.isEmpty) {
@@ -20,7 +23,7 @@ class ThousandsFormatter extends TextInputFormatter {
       return oldValue;
     }
 
-    final formatted = money(parsed);
+    final formatted = '${negative ? '-' : ''}${money(parsed)}';
 
     return TextEditingValue(
       text: formatted,

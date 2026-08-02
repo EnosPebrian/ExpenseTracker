@@ -212,6 +212,41 @@ void main() {
     expect(transport.pushCalls, 1);
   });
 
+  test(
+    'controller refreshes visible data after applying a remote pull',
+    () async {
+      var refreshCount = 0;
+      final controller = SyncController(
+        SyncCoordinator(
+          repository: _FakeSyncRepository(state: SyncInitializationState.ready),
+          transport: _FakeTransport(
+            pullBatch: const PullBatch(
+              changes: [
+                RemoteChange(
+                  sequence: 1,
+                  entityType: 'transactions',
+                  entityId: 'remote-transaction',
+                  serverVersion: 1,
+                  operationType: SyncOperationType.upsert,
+                  payload: {'id': 'remote-transaction', 'book_id': 'book'},
+                ),
+              ],
+              finalSequence: 1,
+            ),
+          ),
+        ),
+        onRemoteDataApplied: () async => refreshCount++,
+      );
+      addTearDown(controller.dispose);
+      await controller.setBook(linkedBook, runWhenReady: false);
+
+      await controller.syncNow();
+
+      expect(controller.result.pulledCount, 1);
+      expect(refreshCount, 1);
+    },
+  );
+
   testWidgets('initial upload warning disables Sync now', (tester) async {
     final controller = SyncController(
       SyncCoordinator(

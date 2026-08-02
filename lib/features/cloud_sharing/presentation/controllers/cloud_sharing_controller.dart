@@ -9,12 +9,17 @@ import '../../domain/cloud_sharing_repository.dart';
 
 enum CloudSharingStatus {
   notConfigured,
+  invalidConfiguration,
+  initializationFailed,
+  restoringSession,
   signedOut,
   otpSent,
   signedInUnlinked,
   householdLinked,
   invitationPending,
   membershipActive,
+  connectivityError,
+  sessionExpired,
   error,
 }
 
@@ -33,17 +38,36 @@ class CloudSharingController extends ChangeNotifier {
   bool busy = false;
   StreamSubscription<CloudAuthUser?>? _authSubscription;
 
+  CloudConfigurationDiagnostics get diagnostics => repository.diagnostics;
+
+  String get authSessionDiagnostic => switch (status) {
+    CloudSharingStatus.restoringSession => 'restoring',
+    CloudSharingStatus.signedOut ||
+    CloudSharingStatus.sessionExpired => 'signed out',
+    _ when user != null => 'signed in',
+    _ => 'signed out',
+  };
+
   bool isLinked(String bookId) => memberships.any(
     (membership) =>
         membership.bookId == bookId && membership.status == 'active',
   );
 
   Future<void> initialize() async {
-    if (!repository.isConfigured) {
-      status = CloudSharingStatus.notConfigured;
+    final diagnostics = repository.diagnostics;
+    if (!diagnostics.isConfigured) {
+      status = switch (diagnostics.configuration) {
+        CloudConfigurationState.invalid =>
+          CloudSharingStatus.invalidConfiguration,
+        CloudConfigurationState.failed =>
+          CloudSharingStatus.initializationFailed,
+        _ => CloudSharingStatus.notConfigured,
+      };
       notifyListeners();
       return;
     }
+    status = CloudSharingStatus.restoringSession;
+    notifyListeners();
     _authSubscription = repository.authChanges.listen((changedUser) {
       user = changedUser;
       if (changedUser == null) {
@@ -55,6 +79,13 @@ class CloudSharingController extends ChangeNotifier {
         unawaited(refreshRemoteState());
       }
     });
+    try {
+      await repository.restoreAuthSession();
+    } on CloudSharingException catch (exception) {
+      await _handleFailure(exception);
+      notifyListeners();
+      return;
+    }
     user = repository.currentUser;
     if (user == null) {
       status = CloudSharingStatus.signedOut;
@@ -164,7 +195,13 @@ class CloudSharingController extends ChangeNotifier {
       status = CloudSharingStatus.signedOut;
       return;
     }
-    memberships = await repository.listMemberships();
+    final loadedMemberships = await repository.listMemberships();
+    memberships = loadedMemberships
+        .where(
+          (membership) =>
+              membership.userId == null || membership.userId == user!.id,
+        )
+        .toList();
     invitations = await repository.listPendingInvitations();
     status = invitations.isNotEmpty
         ? CloudSharingStatus.invitationPending
@@ -180,8 +217,7 @@ class CloudSharingController extends ChangeNotifier {
     try {
       await operation();
     } on CloudSharingException catch (exception) {
-      error = exception.message;
-      status = CloudSharingStatus.error;
+      await _handleFailure(exception);
     } catch (_) {
       error =
           'Cloud sharing is temporarily unavailable. Local finance remains usable.';
@@ -190,6 +226,40 @@ class CloudSharingController extends ChangeNotifier {
       busy = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _handleFailure(CloudSharingException exception) async {
+    error = exception.message;
+    switch (exception.kind) {
+      case CloudFailureKind.connectivity:
+        status = CloudSharingStatus.connectivityError;
+        return;
+      case CloudFailureKind.sessionExpired:
+        try {
+          await repository.signOut();
+        } catch (_) {
+          // Local controller cleanup must not depend on remote sign-out.
+        }
+        user = null;
+        memberships = const [];
+        invitations = const [];
+        status = CloudSharingStatus.sessionExpired;
+        return;
+      case CloudFailureKind.rejected:
+      case CloudFailureKind.unavailable:
+        status = CloudSharingStatus.error;
+        return;
+    }
+  }
+
+  Future<void> retry() async {
+    if (user != null) {
+      await refreshRemoteState();
+      return;
+    }
+    await _authSubscription?.cancel();
+    _authSubscription = null;
+    await initialize();
   }
 
   static bool _validEmail(String value) {

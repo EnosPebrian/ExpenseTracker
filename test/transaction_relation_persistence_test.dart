@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pilgrim_tracker/core/master_data/default_asset_definition_ids.dart';
 import 'package:path/path.dart' as p;
 import 'package:pilgrim_tracker/core/database/local_store.dart';
 import 'package:pilgrim_tracker/features/transactions/data/repositories/local_transaction_repository.dart';
@@ -135,7 +136,7 @@ void main() {
     expect(restored.id, 'legacy-parent');
     expect(restored.feeAmount, 100000);
     expect(restored.feeTreatment, AssetFeeTreatment.capitalizeIntoCostBasis);
-    expect(restored.assetDefinitionId, 'asset-usd');
+    expect(restored.assetDefinitionId, defaultUsdAssetId);
     expect(restored.assetName, 'US Dollar Cash');
     expect(restored.assetSymbol, 'USD');
     expect(restored.relatedTransactionId, isNull);

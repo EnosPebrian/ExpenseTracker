@@ -1,5 +1,9 @@
 # Controlled Initial Synchronization
 
+After initialization reaches `ready`, BETA-04C enables cursor sync after
+session restore, app resume, local mutation, Realtime wake-up, manual sync, and
+successful conflict resolution. Realtime is never part of initialization.
+
 BETA-04B initializes a remotely linked household exactly once before the
 incremental BETA-04A protocol may run. SQLite remains the operational source
 of truth.
@@ -25,13 +29,17 @@ Any authenticated active member may download only after the remote
 initialization is complete. The server captures a stable, authorized snapshot
 at a server-sequence boundary and pages it deterministically by entity type and
 UUID. Flutter writes batches to durable staging; partial rows are never exposed
-as a ready household.
+as a ready household. Fetch/decode staging progress is separate from the
+authoritative imported count. Duplicate resume rows are classified as skipped,
+and an empty terminal page preserves the last committed entity cursor.
 
 Before activation, the client verifies counts, book scope, unique IDs,
 versions, financial amounts, ownership, attribution, project, relation, and
 asset references. Activation is one SQLite transaction, produces no outbox
-operations, maps the authenticated member, advances the cursor, and switches
-the active book only after success. An unrelated local book remains untouched.
+operations, maps the authenticated member, verifies per-entity local query
+counts, advances persisted progress, and switches the active book only after
+success. Failures retain a safe structural diagnostic without financial
+content. An unrelated local book remains untouched.
 A populated target with the same remote UUID is rejected; independent local
 history is never merged or deleted.
 
@@ -40,7 +48,8 @@ history is never merged or deleted.
 Initialization states are `notInitialized`, `primaryUploadRequired`,
 `secondaryDownloadRequired`, `uploading`, `downloading`, `ready`, and `failed`.
 The session, manifest, timestamps, entity/cursor progress, counts, snapshot
-boundary, and safe error are durable in SQLite v15. Idempotent batches allow
+boundary, safe error, and per-entity diagnostics are durable in SQLite v19.
+Idempotent batches allow
 resume after interruption. Cancellation clears local staging and cancels the
 server session without activating or marking the remote upload complete.
 

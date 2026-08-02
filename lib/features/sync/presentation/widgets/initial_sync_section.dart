@@ -135,7 +135,12 @@ class _InitialSyncSectionState extends State<InitialSyncSection> {
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   _ProgressLine(
-                    label: 'Downloaded',
+                    label: 'Fetched to protected staging',
+                    value: controller.fetchedCount,
+                    total: controller.secondaryRemoteManifest?.totalCount,
+                  ),
+                  _ProgressLine(
+                    label: 'Imported and verified',
                     value: controller.downloadedCount,
                     total: controller.secondaryRemoteManifest?.totalCount,
                   ),

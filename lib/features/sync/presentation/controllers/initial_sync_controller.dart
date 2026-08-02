@@ -42,7 +42,11 @@ class InitialSyncController extends ChangeNotifier {
           _resumable(secondaryCursor, InitialSyncDirection.download));
 
   int get uploadedCount => primaryCursor?.uploadedCount ?? 0;
-  int get downloadedCount => secondaryCursor?.downloadedCount ?? 0;
+  int get downloadedCount =>
+      secondaryCursor?.initializationState == SyncInitializationState.ready
+      ? secondaryCursor?.downloadedCount ?? 0
+      : 0;
+  int get fetchedCount => secondaryCursor?.initialSyncDiagnostic?.decoded ?? 0;
 
   Future<void> setContext({
     required FinancialBook? primaryBook,

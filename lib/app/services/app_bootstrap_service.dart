@@ -3,7 +3,7 @@ import '../../features/master_data/domain/entities/account.dart';
 import '../../features/master_data/domain/entities/local_profile.dart';
 import '../../features/master_data/domain/entities/financial_book.dart';
 import '../../features/master_data/domain/entities/household_member.dart';
-import '../../features/transactions/domain/entities/transaction.dart';
+import '../../features/master_data/domain/entities/financial_project.dart';
 import '../../features/transactions/presentation/controllers/transaction_controller.dart';
 
 class AppBootstrapResult {
@@ -13,6 +13,7 @@ class AppBootstrapResult {
     required this.expenseCategories,
     required this.incomeCategories,
     required this.projects,
+    required this.projectRecords,
     required this.profile,
     required this.session,
     required this.financialBook,
@@ -24,6 +25,7 @@ class AppBootstrapResult {
   final List<String> expenseCategories;
   final List<String> incomeCategories;
   final List<String> projects;
+  final List<FinancialProject> projectRecords;
   final LocalProfile? profile;
   final LocalSessionState session;
   final FinancialBook? financialBook;
@@ -39,14 +41,7 @@ class AppBootstrapService {
   final LocalStore store;
   final TransactionController transactionController;
 
-  Future<AppBootstrapResult> load({
-    required List<String> defaultAccounts,
-    required List<String> defaultExpenseCategories,
-    required List<String> defaultIncomeCategories,
-    required List<String> defaultProjects,
-    required List<Transaction> seedTransactions,
-    bool requireProfile = false,
-  }) async {
+  Future<AppBootstrapResult> load({bool requireProfile = false}) async {
     await store.initialize();
 
     final profileRecord = requireProfile
@@ -86,31 +81,6 @@ class AppBootstrapService {
             bookId: session.activeBookId,
           )).map(HouseholdMember.fromRecord).toList();
 
-    if (!requireProfile || profile != null) {
-      if (requireProfile) {
-        await store.ensureAccountSeeds(
-          defaultAccounts,
-          currencyCode: profile!.defaultCurrencyCode,
-        );
-      } else {
-        await store.ensureMasterSeeds('accounts', defaultAccounts);
-      }
-    }
-
-    await store.ensureMasterSeeds(
-      'categories',
-      defaultExpenseCategories,
-      categoryType: 'expense',
-    );
-
-    await store.ensureMasterSeeds(
-      'categories',
-      defaultIncomeCategories,
-      categoryType: 'income',
-    );
-
-    await store.ensureMasterSeeds('projects', defaultProjects);
-
     final storedAccountNames = await store.getMasterNames('accounts');
     final accountRows = requireProfile
         ? await store.getAccounts()
@@ -130,9 +100,12 @@ class AppBootstrapService {
       categoryType: 'income',
     );
 
-    final projects = await store.getMasterNames('projects');
+    final projectRecords = (await store.getProjectRecords())
+        .map(FinancialProject.fromRecord)
+        .toList();
+    final projects = projectRecords.map((project) => project.name).toList();
 
-    await transactionController.load(seed: seedTransactions);
+    await transactionController.load();
 
     final transactionError = transactionController.error;
 
@@ -146,6 +119,7 @@ class AppBootstrapService {
       expenseCategories: List<String>.unmodifiable(expenseCategories),
       incomeCategories: List<String>.unmodifiable(incomeCategories),
       projects: List<String>.unmodifiable(projects),
+      projectRecords: List<FinancialProject>.unmodifiable(projectRecords),
       profile: profile,
       session: session,
       financialBook: financialBook,

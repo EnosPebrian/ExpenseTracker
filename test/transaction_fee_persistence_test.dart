@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pilgrim_tracker/core/master_data/default_asset_definition_ids.dart';
 import 'package:path/path.dart' as p;
 import 'package:pilgrim_tracker/core/database/local_store.dart';
 import 'package:pilgrim_tracker/features/transactions/data/repositories/local_transaction_repository.dart';
@@ -142,7 +143,7 @@ void main() {
       expect(transaction['fee_treatment'], 'none');
       expect(transaction['related_transaction_id'], isNull);
       expect(transaction['relation_type'], 'none');
-      expect(transaction['asset_definition_id'], 'asset-usd');
+      expect(transaction['asset_definition_id'], defaultUsdAssetId);
       expect(transaction['asset_name'], 'US Dollar Cash');
       expect(transaction['asset_symbol'], 'USD');
       expect(transaction['asset_action'], 'buy');

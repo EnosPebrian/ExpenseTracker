@@ -96,12 +96,109 @@ class InitialSyncResult {
     required this.message,
     this.manifest,
     this.finalSequence,
+    this.diagnosticMessage,
   });
 
   final bool success;
   final String message;
   final InitialSyncManifest? manifest;
   final int? finalSequence;
+  final String? diagnosticMessage;
+}
+
+class InitialSyncEntityDiagnostic {
+  const InitialSyncEntityDiagnostic({
+    this.remote = 0,
+    this.fetched = 0,
+    this.decoded = 0,
+    this.persisted = 0,
+    this.skipped = 0,
+    this.failed = 0,
+    this.locallyQueryable = 0,
+  });
+
+  final int remote;
+  final int fetched;
+  final int decoded;
+  final int persisted;
+  final int skipped;
+  final int failed;
+  final int locallyQueryable;
+
+  InitialSyncEntityDiagnostic copyWith({
+    int? remote,
+    int? fetched,
+    int? decoded,
+    int? persisted,
+    int? skipped,
+    int? failed,
+    int? locallyQueryable,
+  }) => InitialSyncEntityDiagnostic(
+    remote: remote ?? this.remote,
+    fetched: fetched ?? this.fetched,
+    decoded: decoded ?? this.decoded,
+    persisted: persisted ?? this.persisted,
+    skipped: skipped ?? this.skipped,
+    failed: failed ?? this.failed,
+    locallyQueryable: locallyQueryable ?? this.locallyQueryable,
+  );
+
+  Map<String, Object?> toJson() => {
+    'remote': remote,
+    'fetched': fetched,
+    'decoded': decoded,
+    'persisted': persisted,
+    'skipped': skipped,
+    'failed': failed,
+    'locally_queryable': locallyQueryable,
+  };
+
+  factory InitialSyncEntityDiagnostic.fromJson(Map<String, Object?> json) =>
+      InitialSyncEntityDiagnostic(
+        remote: (json['remote'] as num?)?.toInt() ?? 0,
+        fetched: (json['fetched'] as num?)?.toInt() ?? 0,
+        decoded: (json['decoded'] as num?)?.toInt() ?? 0,
+        persisted: (json['persisted'] as num?)?.toInt() ?? 0,
+        skipped: (json['skipped'] as num?)?.toInt() ?? 0,
+        failed: (json['failed'] as num?)?.toInt() ?? 0,
+        locallyQueryable: (json['locally_queryable'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class InitialSyncDiagnosticSummary {
+  const InitialSyncDiagnosticSummary(this.entities);
+
+  final Map<String, InitialSyncEntityDiagnostic> entities;
+
+  int get fetched => _sum((value) => value.fetched);
+  int get decoded => _sum((value) => value.decoded);
+  int get persisted => _sum((value) => value.persisted);
+  int get skipped => _sum((value) => value.skipped);
+  int get failed => _sum((value) => value.failed);
+
+  int _sum(int Function(InitialSyncEntityDiagnostic) select) =>
+      entities.values.fold(0, (total, value) => total + select(value));
+
+  Map<String, Object?> toJson() => {
+    for (final entry in entities.entries) entry.key: entry.value.toJson(),
+  };
+
+  factory InitialSyncDiagnosticSummary.fromJson(Map<String, Object?> json) =>
+      InitialSyncDiagnosticSummary({
+        for (final entityType in initialSyncEntityOrder)
+          entityType: InitialSyncEntityDiagnostic.fromJson(
+            (json[entityType] as Map? ?? const {}).cast<String, Object?>(),
+          ),
+      });
+
+  factory InitialSyncDiagnosticSummary.forManifest(
+    InitialSyncManifest manifest,
+  ) => InitialSyncDiagnosticSummary({
+    for (final entityType in initialSyncEntityOrder)
+      entityType: InitialSyncEntityDiagnostic(
+        remote: manifest.counts[entityType] ?? 0,
+      ),
+  });
 }
 
 enum InitialSyncErrorCode {
@@ -117,10 +214,36 @@ enum InitialSyncErrorCode {
 }
 
 class InitialSyncException implements Exception {
-  const InitialSyncException(this.code, this.safeMessage);
+  const InitialSyncException(
+    this.code,
+    this.safeMessage, {
+    this.entityType,
+    this.recordId,
+    this.phase,
+    this.exceptionClass,
+    this.lastCommittedCursor,
+    this.committedRecords,
+  });
 
   final InitialSyncErrorCode code;
   final String safeMessage;
+  final String? entityType;
+  final String? recordId;
+  final String? phase;
+  final String? exceptionClass;
+  final String? lastCommittedCursor;
+  final int? committedRecords;
+
+  String get diagnosticMessage => [
+    'Initial sync failure',
+    if (phase != null) 'phase=$phase',
+    if (entityType != null) 'entity=$entityType',
+    if (recordId != null) 'record=$recordId',
+    if (exceptionClass != null) 'class=$exceptionClass',
+    if (lastCommittedCursor != null) 'cursor=$lastCommittedCursor',
+    if (committedRecords != null) 'persisted=$committedRecords',
+    'message=$safeMessage',
+  ].join(' ');
 
   @override
   String toString() => safeMessage;

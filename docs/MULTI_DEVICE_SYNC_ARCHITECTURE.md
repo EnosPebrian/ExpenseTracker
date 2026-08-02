@@ -1,5 +1,9 @@
 # Multi-Device Sync Architecture
 
+BETA-04C adds durable explicit conflict resolution and optional filtered
+Realtime wake-up. Cursor synchronization remains authoritative; linked
+financial conflicts cannot be partially merged.
+
 ## Current local model
 
 SQLite is the source of truth. `FinancialBook` is the household boundary;

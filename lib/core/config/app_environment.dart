@@ -22,11 +22,45 @@ class AppEnvironment {
       ? supabasePublishableKey
       : supabaseLegacyAnonKey;
 
-  static bool get hasSupabaseConfiguration {
-    final uri = Uri.tryParse(supabaseUrl.trim());
-    return uri != null &&
-        uri.scheme == 'https' &&
-        uri.host.isNotEmpty &&
-        supabaseClientKey.trim().isNotEmpty;
+  static SupabaseConfigurationDiagnostics get supabaseDiagnostics =>
+      SupabaseConfigurationDiagnostics.inspect(
+        url: supabaseUrl,
+        publishableKey: supabaseClientKey,
+      );
+
+  static bool get hasSupabaseConfiguration => supabaseDiagnostics.isValid;
+}
+
+class SupabaseConfigurationDiagnostics {
+  const SupabaseConfigurationDiagnostics({
+    required this.urlPresent,
+    required this.urlValid,
+    required this.publishableKeyPresent,
+  });
+
+  factory SupabaseConfigurationDiagnostics.inspect({
+    required String url,
+    required String publishableKey,
+  }) {
+    final trimmedUrl = url.trim();
+    final uri = Uri.tryParse(trimmedUrl);
+    return SupabaseConfigurationDiagnostics(
+      urlPresent: trimmedUrl.isNotEmpty,
+      urlValid:
+          trimmedUrl.isNotEmpty &&
+          uri != null &&
+          uri.scheme == 'https' &&
+          uri.host.isNotEmpty &&
+          uri.host.contains('.') &&
+          !uri.hasFragment &&
+          (uri.path.isEmpty || uri.path == '/'),
+      publishableKeyPresent: publishableKey.trim().isNotEmpty,
+    );
   }
+
+  final bool urlPresent;
+  final bool urlValid;
+  final bool publishableKeyPresent;
+
+  bool get isValid => urlValid && publishableKeyPresent;
 }

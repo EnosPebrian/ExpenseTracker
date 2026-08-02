@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'initial_sync_models.dart';
+
 enum SyncOperationType { upsert, delete }
 
 enum SyncOutboxStatus { pending, sending, retry, conflict, completed }
@@ -108,6 +110,7 @@ class SyncCursor {
     this.manifest,
     this.snapshotSequence = 0,
     this.snapshotOutboxRowId = 0,
+    this.initialSyncDiagnostic,
   });
 
   final String bookId;
@@ -127,6 +130,7 @@ class SyncCursor {
   final Map<String, Object?>? manifest;
   final int snapshotSequence;
   final int snapshotOutboxRowId;
+  final InitialSyncDiagnosticSummary? initialSyncDiagnostic;
 
   factory SyncCursor.fromRecord(Map<String, Object?> record) => SyncCursor(
     bookId: record['book_id'] as String,
@@ -152,6 +156,13 @@ class SyncCursor {
     snapshotSequence: (record['snapshot_sequence'] as num?)?.toInt() ?? 0,
     snapshotOutboxRowId:
         (record['snapshot_outbox_rowid'] as num?)?.toInt() ?? 0,
+    initialSyncDiagnostic: record['initial_sync_diagnostic_json'] is String
+        ? InitialSyncDiagnosticSummary.fromJson(
+            (jsonDecode(record['initial_sync_diagnostic_json'] as String)
+                    as Map)
+                .cast<String, Object?>(),
+          )
+        : null,
   );
 }
 
@@ -167,6 +178,11 @@ class SyncConflict {
     required this.localPayload,
     required this.serverPayload,
     required this.createdAt,
+    this.conflictType = SyncConflictType.versionConflict,
+    this.changedLocalFields = const [],
+    this.changedServerFields = const [],
+    this.resolutionStatus = ConflictResolutionStatus.unresolved,
+    this.resolutionOperationId,
   });
 
   final String id;
@@ -179,6 +195,80 @@ class SyncConflict {
   final Map<String, Object?>? localPayload;
   final Map<String, Object?>? serverPayload;
   final DateTime createdAt;
+  final SyncConflictType conflictType;
+  final List<String> changedLocalFields;
+  final List<String> changedServerFields;
+  final ConflictResolutionStatus resolutionStatus;
+  final String? resolutionOperationId;
+
+  factory SyncConflict.fromRecord(Map<String, Object?> record) {
+    List<String> fields(Object? value) =>
+        value is String ? (jsonDecode(value) as List).cast<String>() : const [];
+    Map<String, Object?>? payload(Object? value) => value is String
+        ? (jsonDecode(value) as Map).cast<String, Object?>()
+        : null;
+    return SyncConflict(
+      id: record['id'] as String,
+      bookId: record['book_id'] as String,
+      entityType: record['entity_type'] as String,
+      entityId: record['entity_id'] as String,
+      operationId: record['operation_id'] as String,
+      baseVersion: (record['base_version'] as num).toInt(),
+      serverVersion: (record['server_version'] as num).toInt(),
+      localPayload: payload(record['local_payload_json']),
+      serverPayload: payload(record['server_payload_json']),
+      createdAt: _date(record['created_at']),
+      conflictType: SyncConflictType.values.byName(
+        record['conflict_type'] as String? ?? 'versionConflict',
+      ),
+      changedLocalFields: fields(record['changed_local_fields_json']),
+      changedServerFields: fields(record['changed_server_fields_json']),
+      resolutionStatus: ConflictResolutionStatus.values.byName(
+        record['resolution_status'] as String? ?? 'unresolved',
+      ),
+      resolutionOperationId: record['resolution_operation_id'] as String?,
+    );
+  }
+}
+
+enum SyncConflictType {
+  versionConflict,
+  deleteVersusUpdate,
+  updateVersusDelete,
+  ownershipConflict,
+  openingBalanceConflict,
+  linkedTransactionConflict,
+  assetTradeConflict,
+  generalEntityConflict,
+}
+
+enum ConflictResolutionStatus {
+  unresolved,
+  resolving,
+  resolved,
+  resolutionFailed,
+  dismissedOnlyWhenObsolete,
+}
+
+enum ConflictResolutionType {
+  keepServer,
+  keepDevice,
+  manualMerge,
+  keepDeleted,
+  restoreDevice,
+}
+
+class ConflictResolutionResult {
+  const ConflictResolutionResult({
+    required this.status,
+    this.canonicalPayload,
+    this.serverVersion,
+    this.serverSequence,
+  });
+  final String status;
+  final Map<String, Object?>? canonicalPayload;
+  final int? serverVersion;
+  final int? serverSequence;
 }
 
 enum PushResultStatus {

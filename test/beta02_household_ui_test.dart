@@ -46,7 +46,7 @@ void main() {
       expect(find.text('My Household'), findsOneWidget);
       expect(find.text('Base currency: IDR'), findsOneWidget);
       expect(
-        find.textContaining('Multi-device sharing will be enabled'),
+        find.textContaining('Authorized members can synchronize'),
         findsOneWidget,
       );
       await tester.tap(find.byKey(const ValueKey('household-member-grace')));
@@ -54,6 +54,39 @@ void main() {
       expect(selected?.id, grace.id);
     },
   );
+
+  testWidgets('household rename closes cleanly and submits the new name', (
+    tester,
+  ) async {
+    String? renamedTo;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HouseholdSettingsPage(
+            book: FinancialBook(id: 'book', name: 'My Household'),
+            members: [enos],
+            activeMemberId: enos.id,
+            onRenameBook: (name) async => renamedTo = name,
+            onAddMember: (_) async {},
+            onRenameMember: (_, _) async {},
+            onSelectActiveMember: (_) async {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('Rename household'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('household-name-field')),
+      'Enos & Grace Beta Test',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(renamedTo, 'Enos & Grace Beta Test');
+  });
 
   testWidgets(
     'account editor selects a member owner without changing balance',

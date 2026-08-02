@@ -10,7 +10,50 @@ import 'package:pilgrim_tracker/features/transactions/domain/entities/transactio
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_definition.dart';
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_kind.dart';
 
+Future<void> _enterValidDraft(WidgetTester tester) async {
+  final tradeAmount = find.byWidgetPredicate(
+    (widget) =>
+        widget is TextField &&
+        (widget.decoration?.labelText == 'Trade amount' ||
+            widget.decoration?.labelText == 'Gross proceeds'),
+  );
+  final quantity = find.byWidgetPredicate(
+    (widget) =>
+        widget is TextField &&
+        (widget.decoration?.labelText == 'Quantity received' ||
+            widget.decoration?.labelText?.endsWith(' received') == true ||
+            widget.decoration?.labelText == 'Quantity sold' ||
+            widget.decoration?.labelText?.endsWith(' sold') == true),
+  );
+  await tester.enterText(tradeAmount, '50000000');
+  await tester.enterText(quantity, '20');
+  await tester.pump();
+}
+
 void main() {
+  testWidgets('blank conversion draft does not show premature validation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssetConversionScreen(
+          accounts: const ['Cash Enos'],
+          assets: [_goldDefinition()],
+          onSave: (_) async {},
+        ),
+      ),
+    );
+
+    expect(
+      find.text('Enter an asset quantity greater than zero.'),
+      findsNothing,
+    );
+    final saveButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Record conversion'),
+    );
+    expect(saveButton.onPressed, isNull);
+  });
+
   testWidgets('asset conversion waits for persistence before showing success', (
     tester,
   ) async {
@@ -39,6 +82,7 @@ void main() {
         ),
       ),
     );
+    await _enterValidDraft(tester);
 
     final saveButton = find.widgetWithText(FilledButton, 'Record conversion');
 
@@ -93,6 +137,7 @@ void main() {
           ),
         ),
       );
+      await _enterValidDraft(tester);
 
       final saveButton = find.widgetWithText(FilledButton, 'Record conversion');
 
@@ -156,6 +201,7 @@ void main() {
         ),
       ),
     );
+    await _enterValidDraft(tester);
 
     expect(find.text('Trade amount'), findsOneWidget);
     expect(find.text('USD received'), findsAtLeastNWidgets(1));
@@ -246,6 +292,7 @@ void main() {
         ),
       ),
     );
+    await _enterValidDraft(tester);
 
     await tester.tap(find.text('Sell asset'));
     await tester.pump();
@@ -320,6 +367,7 @@ void main() {
         ),
       ),
     );
+    await _enterValidDraft(tester);
 
     await tester.enterText(
       find.byWidgetPredicate(
@@ -361,6 +409,7 @@ void main() {
         ),
       ),
     );
+    await _enterValidDraft(tester);
 
     await tester.tap(find.text('Sell asset'));
     await tester.pump();
@@ -491,6 +540,7 @@ void main() {
         ),
       ),
     );
+    await _enterValidDraft(tester);
     await tester.enterText(
       find.byWidgetPredicate(
         (widget) =>

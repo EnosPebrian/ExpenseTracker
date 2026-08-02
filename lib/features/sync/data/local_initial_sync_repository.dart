@@ -72,11 +72,13 @@ class LocalInitialSyncRepository implements InitialSyncRepository {
     authUserId: authUserId,
   );
   @override
+  Future<InitialSyncDiagnosticSummary> getDiagnosticSummary(String bookId) =>
+      store.getDiagnosticSummary(bookId);
+  @override
   Future<void> recordFailure(
     String bookId, {
-    required String code,
-    required String message,
-  }) => store.recordFailure(bookId, code: code, message: message);
+    required InitialSyncException error,
+  }) => store.recordFailure(bookId, error: error);
   @override
   Future<void> cancelInitialization(
     String bookId,

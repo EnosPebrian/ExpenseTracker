@@ -114,6 +114,10 @@ class InitialSyncStoreAdapter {
       'last_processed_entity': null,
       'last_processed_cursor': null,
       if (direction == InitialSyncDirection.download) 'downloaded_count': 0,
+      if (direction == InitialSyncDirection.download)
+        'initial_sync_diagnostic_json': jsonEncode(
+          InitialSyncDiagnosticSummary.forManifest(manifest).toJson(),
+        ),
       'last_error_code': null,
       'last_error_message': null,
       'manifest_json': jsonEncode(manifest.toJson()),
@@ -139,15 +143,19 @@ class InitialSyncStoreAdapter {
       () => {},
     );
     var inserted = 0;
+    var skipped = 0;
     for (final row in batch.rows) {
       final id = row['id'];
       if (id == null ||
           (batch.entityType == 'books'
               ? id != bookId
               : row['book_id'] != bookId)) {
-        throw const InitialSyncException(
+        throw InitialSyncException(
           InitialSyncErrorCode.validation,
           'The downloaded snapshot contains another household.',
+          entityType: batch.entityType,
+          recordId: id?.toString(),
+          phase: 'validate',
         );
       }
       final key = '${batch.entityType}:$id';
@@ -158,15 +166,43 @@ class InitialSyncStoreAdapter {
           'payload': Map<String, Object?>.of(row),
         };
         inserted++;
+      } else {
+        final existing = staged[key]!['payload'];
+        if (jsonEncode(existing) != jsonEncode(row)) {
+          throw InitialSyncException(
+            InitialSyncErrorCode.validation,
+            'A resumed snapshot record changed unexpectedly.',
+            entityType: batch.entityType,
+            recordId: id.toString(),
+            phase: 'stage',
+          );
+        }
+        skipped++;
       }
     }
     final cursor = await store.getSyncCursor(bookId);
+    final diagnostic = _diagnosticFromCursor(cursor);
+    final current = diagnostic.entities[batch.entityType]!;
+    final updated = InitialSyncDiagnosticSummary({
+      ...diagnostic.entities,
+      batch.entityType: current.copyWith(
+        fetched: current.fetched + batch.rows.length,
+        decoded: current.decoded + inserted,
+        skipped: current.skipped + skipped,
+      ),
+    });
+    Object? previousCursor;
+    if (batch.rows.isEmpty &&
+        cursor != null &&
+        cursor['last_processed_entity'] == batch.entityType) {
+      previousCursor = cursor['last_processed_cursor'];
+    }
     await store.updateInitialSyncCursor({
       'book_id': bookId,
-      'downloaded_count':
-          ((cursor?['downloaded_count'] as num?)?.toInt() ?? 0) + inserted,
+      'downloaded_count': 0,
+      'initial_sync_diagnostic_json': jsonEncode(updated.toJson()),
       'last_processed_entity': batch.entityType,
-      'last_processed_cursor': batch.nextCursor,
+      'last_processed_cursor': batch.nextCursor ?? previousCursor,
     });
   }
 
@@ -232,6 +268,37 @@ class InitialSyncStoreAdapter {
       changes: rows,
       finalSequence: manifest.snapshotSequence,
     );
+    var diagnostic = await getDiagnosticSummary(bookId);
+    for (final entityType in initialSyncEntityOrder) {
+      final local = await store.getInitialSyncEntityRecords(entityType, bookId);
+      final expected = manifest.counts[entityType] ?? 0;
+      if (local.length != expected) {
+        throw InitialSyncException(
+          InitialSyncErrorCode.validation,
+          'Downloaded records could not be verified locally.',
+          entityType: entityType,
+          phase: 'verify',
+          exceptionClass: 'LocalVisibilityMismatch',
+          committedRecords: 0,
+        );
+      }
+      final current = diagnostic.entities[entityType]!;
+      diagnostic = InitialSyncDiagnosticSummary({
+        ...diagnostic.entities,
+        entityType: current.copyWith(
+          persisted: expected,
+          locallyQueryable: local.length,
+        ),
+      });
+    }
+    await store.updateInitialSyncCursor({
+      'book_id': bookId,
+      'downloaded_count': manifest.totalCount,
+      'initialization_state': SyncInitializationState.ready.name,
+      'last_error_code': null,
+      'last_error_message': null,
+      'initial_sync_diagnostic_json': jsonEncode(diagnostic.toJson()),
+    });
     final session = await store.getLocalSession();
     await store.saveLocalSession(
       activeProfileId: session?['active_profile_id'] as String?,
@@ -244,16 +311,32 @@ class InitialSyncStoreAdapter {
     _staging.remove(_scope(bookId, InitialSyncDirection.download));
   }
 
+  Future<InitialSyncDiagnosticSummary> getDiagnosticSummary(
+    String bookId,
+  ) async => _diagnosticFromCursor(await store.getSyncCursor(bookId));
+
   Future<void> recordFailure(
     String bookId, {
-    required String code,
-    required String message,
-  }) => store.updateInitialSyncCursor({
-    'book_id': bookId,
-    'initialization_state': SyncInitializationState.failed.name,
-    'last_error_code': code,
-    'last_error_message': message,
-  });
+    required InitialSyncException error,
+  }) async {
+    final cursor = await store.getSyncCursor(bookId);
+    var diagnostic = _diagnosticFromCursor(cursor);
+    final entityType = error.entityType;
+    if (entityType != null && diagnostic.entities.containsKey(entityType)) {
+      final current = diagnostic.entities[entityType]!;
+      diagnostic = InitialSyncDiagnosticSummary({
+        ...diagnostic.entities,
+        entityType: current.copyWith(failed: current.failed + 1),
+      });
+    }
+    await store.updateInitialSyncCursor({
+      'book_id': bookId,
+      'initialization_state': SyncInitializationState.failed.name,
+      'last_error_code': error.code.name,
+      'last_error_message': error.safeMessage,
+      'initial_sync_diagnostic_json': jsonEncode(diagnostic.toJson()),
+    });
+  }
 
   Future<void> cancelInitialization(
     String bookId,
@@ -272,11 +355,35 @@ class InitialSyncStoreAdapter {
       'last_processed_cursor': null,
       'uploaded_count': 0,
       'downloaded_count': 0,
+      'initial_sync_diagnostic_json': null,
       'last_error_code': null,
       'last_error_message': null,
       'manifest_json': null,
       'snapshot_sequence': 0,
       'snapshot_outbox_rowid': 0,
+    });
+  }
+
+  static InitialSyncDiagnosticSummary _diagnosticFromCursor(
+    Map<String, Object?>? cursor,
+  ) {
+    final encoded = cursor?['initial_sync_diagnostic_json'] as String?;
+    if (encoded != null) {
+      return InitialSyncDiagnosticSummary.fromJson(
+        (jsonDecode(encoded) as Map).cast<String, Object?>(),
+      );
+    }
+    final manifest = cursor?['manifest_json'] as String?;
+    if (manifest != null) {
+      return InitialSyncDiagnosticSummary.forManifest(
+        InitialSyncManifest.fromJson(
+          (jsonDecode(manifest) as Map).cast<String, Object?>(),
+        ),
+      );
+    }
+    return InitialSyncDiagnosticSummary({
+      for (final entityType in initialSyncEntityOrder)
+        entityType: const InitialSyncEntityDiagnostic(),
     });
   }
 }

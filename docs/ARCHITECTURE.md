@@ -1,5 +1,13 @@
 # Pilgrim Tracker Architecture
 
+Production bootstrap is load-only for user-owned finance. Reference asset
+presets remain automatic, while sample transactions are test-only; see
+`FRESH_INSTALL_DATA_POLICY.md`.
+
+BETA-04C keeps conflict coordination in sync services/controllers, persistence
+in native/web stores, and provider parsing in the transport. Realtime only
+requests the existing single-flight cursor synchronization.
+
 **Snapshot date:** 2026-07-21  
 **Verified state:** Analyzer clean; 93 tests passing  
 **Style:** Feature-first, local-first, layered, incrementally migrated
@@ -400,3 +408,18 @@ tombstones, interruption recovery, and durable conflicts. BETA-04B adds a
 stable staged snapshot boundary, owner-only empty-remote upload, authorized
 non-merge download, integrity validation, and cursor handoff. Realtime remains
 non-authoritative and is deferred to BETA-04C.
+
+## 19. Household data portability
+
+BETA-06 keeps portability feature-first. Presentation coordinates the focused
+Backup & Export workflow; its controller owns transient operation state and
+confirmation; domain services validate snapshots, calculate integrity totals,
+encode/decode the versioned format, and generate CSV; the data layer adapts the
+existing local store and scoped platform file picker. `AppShell` only composes
+these dependencies.
+
+Native snapshots use one SQLite transaction and final activation is one write
+transaction. Restore serializers are domain-oriented rather than tied to raw
+SQLite column order. Web mirrors validation with collection snapshot rollback.
+Restore bypasses public mutation/upsert paths, creates no outbox work, and does
+not carry authentication, device, or sync-protocol state across the boundary.

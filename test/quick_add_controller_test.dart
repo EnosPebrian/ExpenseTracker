@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_definition.dart';
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_kind.dart';
@@ -7,6 +8,7 @@ import 'package:pilgrim_tracker/features/transactions/domain/repositories/transa
 import 'package:pilgrim_tracker/features/transactions/domain/usecases/transaction_usecases.dart';
 import 'package:pilgrim_tracker/features/transactions/presentation/controllers/transaction_controller.dart';
 import 'package:pilgrim_tracker/features/transactions/presentation/quick_add/quick_add_controller.dart';
+import 'package:pilgrim_tracker/features/transactions/presentation/quick_add/quick_add_screen.dart';
 
 class _FakeRepository implements TransactionRepository {
   final saved = <Transaction>[];
@@ -86,6 +88,10 @@ final _quickAddConfig = QuickAddConfig(
   expenseCategories: const ['Konsumsi'],
   incomeCategories: const ['Gaji Enos'],
   projects: const ['Life', 'Tebu Nai'],
+  projectIdsByName: const {
+    'Life': '11111111-1111-4111-8111-111111111111',
+    'Tebu Nai': '22222222-2222-4222-8222-222222222222',
+  },
   assetDefinitions: [_goldDefinition()],
 );
 
@@ -117,7 +123,7 @@ void main() {
 
       final saved = repository.saved.single;
 
-      expect(saved.projectId, 'tebu-nai');
+      expect(saved.projectId, '22222222-2222-4222-8222-222222222222');
       expect(saved.title, 'Groceries');
       expect(saved.amount, 125000);
       expect(saved.type, TransactionType.expense);
@@ -158,7 +164,7 @@ void main() {
     expect(saved.quantity, 20);
     expect(saved.unit, 'gram');
     expect(saved.unitPrice, 2500000);
-    expect(saved.projectId, 'life');
+    expect(saved.projectId, '11111111-1111-4111-8111-111111111111');
   });
 
   test('Quick Add records gold to cash asset conversion', () async {
@@ -446,6 +452,46 @@ void main() {
     quickAdd.assetConversion.quantityController.text = '100';
     expect(await quickAdd.save(), isTrue);
     expect(repository.saved.single.quantity, 100);
+  });
+
+  testWidgets('empty workspace quick add shows account setup action', (
+    tester,
+  ) async {
+    final repository = _FakeRepository();
+    final transactions = _createTransactionController(repository);
+    addTearDown(transactions.dispose);
+    var addAccountRequested = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => QuickAddScreen.show(
+              context,
+              transactionController: transactions,
+              config: const QuickAddConfig(
+                accounts: [],
+                expenseCategories: [],
+                incomeCategories: [],
+                projects: [],
+                assetDefinitions: [],
+              ),
+              onAddAccount: () => addAccountRequested = true,
+            ),
+            child: const Text('Quick add'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Quick add'));
+    await tester.pumpAndSettle();
+    expect(find.text('Set up your finances'), findsOneWidget);
+    expect(find.text('Add account'), findsOneWidget);
+
+    await tester.tap(find.text('Add account'));
+    await tester.pumpAndSettle();
+    expect(addAccountRequested, isTrue);
   });
 }
 

@@ -4,18 +4,18 @@ import '../../../../core/design/app_colors.dart';
 import '../../../../core/shared/widgets/page_layout.dart';
 
 class ProjectCard extends StatelessWidget {
-  const ProjectCard(
-    this.name,
-    this.income,
-    this.expense,
-    this.progress, {
+  const ProjectCard({
     super.key,
+    required this.name,
+    required this.income,
+    required this.expenses,
+    required this.net,
   });
 
   final String name;
   final String income;
-  final String expense;
-  final double progress;
+  final String expenses;
+  final String net;
 
   @override
   Widget build(BuildContext context) {
@@ -27,23 +27,16 @@ class ProjectCard extends StatelessWidget {
           children: [
             Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
             const Text(
-              'Active project',
+              'Recorded activity',
               style: TextStyle(color: muted, fontSize: 9),
             ),
             const SizedBox(height: 25),
             Row(
               children: [
                 Expanded(child: MetricSmall('Income', income)),
-                Expanded(child: MetricSmall('Expenses', expense)),
+                Expanded(child: MetricSmall('Expenses', expenses)),
+                Expanded(child: MetricSmall('Net', net)),
               ],
-            ),
-            const SizedBox(height: 20),
-            LinearProgressIndicator(
-              value: progress,
-              minHeight: 6,
-              borderRadius: BorderRadius.circular(5),
-              color: violet,
-              backgroundColor: border,
             ),
           ],
         ),

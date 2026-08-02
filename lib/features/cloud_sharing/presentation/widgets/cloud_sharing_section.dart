@@ -17,6 +17,7 @@ class CloudSharingSection extends StatelessWidget {
     required this.activeMemberId,
     this.syncController,
     this.initialSyncController,
+    this.onReviewConflicts,
   });
 
   final CloudSharingController controller;
@@ -25,6 +26,7 @@ class CloudSharingSection extends StatelessWidget {
   final String? activeMemberId;
   final SyncController? syncController;
   final InitialSyncController? initialSyncController;
+  final VoidCallback? onReviewConflicts;
 
   HouseholdMember? get _activeMember {
     for (final member in members) {
@@ -75,6 +77,10 @@ class CloudSharingSection extends StatelessWidget {
         final user = controller.user;
         final linked =
             controller.isLinked(book.id) || book.remoteLinkedAt != null;
+        final configurationUnavailable =
+            controller.status == CloudSharingStatus.notConfigured ||
+            controller.status == CloudSharingStatus.invalidConfiguration ||
+            controller.status == CloudSharingStatus.initializationFailed;
         HouseholdMember? mappedMember;
         if (user != null) {
           for (final member in members) {
@@ -103,6 +109,24 @@ class CloudSharingSection extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(_statusText(controller.status, linked)),
+                const SizedBox(height: 6),
+                Text(
+                  _guidanceText(controller.status, linked),
+                  key: const Key('cloud-sharing-guidance'),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Configuration: '
+                  '${controller.diagnostics.isConfigured ? 'configured' : 'unavailable'} · '
+                  'URL valid: ${controller.diagnostics.urlValid ? 'yes' : 'no'} · '
+                  'publishable key present: '
+                  '${controller.diagnostics.publishableKeyPresent ? 'yes' : 'no'} · '
+                  'Auth initialization: '
+                  '${controller.diagnostics.authInitialization.name} · '
+                  'session: ${controller.authSessionDiagnostic}',
+                  key: const Key('cloud-safe-diagnostics'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
                 if (user != null) ...[
                   const SizedBox(height: 6),
                   Text('Signed in as ${user.email}'),
@@ -120,8 +144,23 @@ class CloudSharingSection extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 12),
-                if (controller.status == CloudSharingStatus.notConfigured)
-                  const Text('Cloud sharing is not configured')
+                if (configurationUnavailable)
+                  Text(
+                    _configurationMessage(controller.status, linked),
+                    key: const Key('cloud-configuration-message'),
+                  )
+                else if (controller.status ==
+                    CloudSharingStatus.restoringSession)
+                  const LinearProgressIndicator(
+                    key: Key('cloud-session-restoring'),
+                  )
+                else if (controller.status ==
+                    CloudSharingStatus.connectivityError)
+                  OutlinedButton(
+                    key: const Key('cloud-retry'),
+                    onPressed: controller.busy ? null : controller.retry,
+                    child: const Text('Try again'),
+                  )
                 else if (user == null &&
                     controller.status != CloudSharingStatus.otpSent)
                   FilledButton(
@@ -144,7 +183,9 @@ class CloudSharingSection extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      if (!linked)
+                      if (!linked &&
+                          controller.memberships.isEmpty &&
+                          controller.invitations.isEmpty)
                         FilledButton(
                           key: const Key('cloud-link-household'),
                           onPressed: controller.busy || _activeMember == null
@@ -195,7 +236,10 @@ class CloudSharingSection extends StatelessWidget {
                 ],
                 const SizedBox(height: 12),
                 if (syncController != null) ...[
-                  SyncStatusSection(controller: syncController!),
+                  SyncStatusSection(
+                    controller: syncController!,
+                    onReviewConflicts: onReviewConflicts,
+                  ),
                   const SizedBox(height: 12),
                 ],
                 if (initialSyncController != null) ...[
@@ -204,8 +248,8 @@ class CloudSharingSection extends StatelessWidget {
                 ],
                 const Text(
                   'Incremental financial synchronization starts only after a '
-                  'validated initial upload or download. Conflict review and '
-                  'Realtime wake-up remain unavailable.',
+                  'validated initial upload or download. Realtime is an optional '
+                  'wake-up signal; cursor synchronization remains authoritative.',
                   style: TextStyle(fontSize: 12),
                 ),
               ],
@@ -217,17 +261,61 @@ class CloudSharingSection extends StatelessWidget {
   }
 
   static String _statusText(CloudSharingStatus status, bool linked) {
-    if (linked) return 'Household linked';
+    if (linked && status == CloudSharingStatus.signedOut) {
+      return 'Household linked · device signed out';
+    }
     return switch (status) {
       CloudSharingStatus.notConfigured => 'Not configured',
-      CloudSharingStatus.signedOut => 'Signed out',
+      CloudSharingStatus.invalidConfiguration => 'Invalid configuration',
+      CloudSharingStatus.initializationFailed => 'Cloud initialization failed',
+      CloudSharingStatus.restoringSession => 'Restoring cloud session',
+      CloudSharingStatus.signedOut => 'Sign in required',
       CloudSharingStatus.otpSent => 'Verification code sent',
       CloudSharingStatus.signedInUnlinked => 'Signed in · household not linked',
       CloudSharingStatus.householdLinked => 'Household linked',
       CloudSharingStatus.invitationPending => 'Invitation pending',
       CloudSharingStatus.membershipActive => 'Membership active',
+      CloudSharingStatus.connectivityError => 'Supabase Auth unavailable',
+      CloudSharingStatus.sessionExpired => 'Session expired',
       CloudSharingStatus.error => 'Error or offline',
     };
+  }
+
+  static String _guidanceText(CloudSharingStatus status, bool linked) {
+    return switch (status) {
+      CloudSharingStatus.notConfigured ||
+      CloudSharingStatus.invalidConfiguration ||
+      CloudSharingStatus.initializationFailed =>
+        linked
+            ? 'The saved household link is unchanged; local data remains available.'
+            : 'Local data remains available on this device.',
+      CloudSharingStatus.restoringSession =>
+        'Checking for a saved sign-in on this device.',
+      CloudSharingStatus.signedOut =>
+        linked
+            ? 'This household is linked to cloud sharing, but this device is '
+                  'currently signed out.'
+            : 'Sign in to synchronize this household across your devices.',
+      CloudSharingStatus.sessionExpired =>
+        'Your cloud session expired. Sign in again. Your local data is safe.',
+      CloudSharingStatus.connectivityError =>
+        'Local data remains available while Supabase Auth is unreachable.',
+      _ => 'Cloud configuration and the current device session are active.',
+    };
+  }
+
+  static String _configurationMessage(CloudSharingStatus status, bool linked) {
+    if (status == CloudSharingStatus.initializationFailed) {
+      return 'Cloud sharing is configured, but Auth initialization failed. '
+          'Local data remains available.';
+    }
+    if (status == CloudSharingStatus.invalidConfiguration) {
+      return 'This app build contains invalid cloud-sharing configuration.';
+    }
+    return linked
+        ? 'This household has a saved cloud link, but this app build was '
+              'created without cloud configuration.'
+        : 'This app build does not include cloud-sharing configuration.';
   }
 }
 

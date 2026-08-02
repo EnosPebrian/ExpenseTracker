@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'initial_sync_models.dart';
 import 'initial_sync_repository.dart';
 import 'initial_sync_transport.dart';
@@ -167,16 +169,25 @@ class InitialSyncCoordinator {
       );
     } on InitialSyncException catch (error) {
       await _recordFailureIfStarted(bookId, error);
-      return InitialSyncResult(success: false, message: error.safeMessage);
-    } catch (_) {
-      const error = InitialSyncException(
+      await _logDiagnostic(bookId, error);
+      return InitialSyncResult(
+        success: false,
+        message: error.safeMessage,
+        diagnosticMessage: error.diagnosticMessage,
+      );
+    } catch (caught) {
+      final error = InitialSyncException(
         InitialSyncErrorCode.unavailable,
         'Initial upload stopped safely and can be resumed.',
+        phase: 'upload',
+        exceptionClass: caught.runtimeType.toString(),
       );
       await _recordFailureIfStarted(bookId, error);
-      return const InitialSyncResult(
+      await _logDiagnostic(bookId, error);
+      return InitialSyncResult(
         success: false,
         message: 'Initial upload stopped safely and can be resumed.',
+        diagnosticMessage: error.diagnosticMessage,
       );
     }
   }
@@ -186,6 +197,8 @@ class InitialSyncCoordinator {
     required String? authUserId,
     Future<void> Function()? onProgress,
   }) async {
+    String? activeEntity;
+    String? lastCommittedCursor;
     try {
       _requireCloud();
       if (await repository.targetHasFinancialData(bookId)) {
@@ -231,6 +244,7 @@ class InitialSyncCoordinator {
       }
       final resumeEntity = cursor?.lastProcessedEntity;
       for (final entityType in initialSyncEntityOrder) {
+        activeEntity = entityType;
         if (resumeEntity != null &&
             initialSyncEntityOrder.indexOf(entityType) <
                 initialSyncEntityOrder.indexOf(resumeEntity)) {
@@ -240,15 +254,30 @@ class InitialSyncCoordinator {
             ? cursor?.lastProcessedCursor
             : null;
         while (true) {
-          final batch = await transport.downloadBatch(
-            sessionId: sessionId,
-            entityType: entityType,
-            afterEntityId: after,
-            limit: 100,
-          );
+          InitialSyncBatch batch;
+          try {
+            batch = await transport.downloadBatch(
+              sessionId: sessionId,
+              entityType: entityType,
+              afterEntityId: after,
+              limit: 100,
+            );
+          } on InitialSyncException catch (error) {
+            throw InitialSyncException(
+              error.code,
+              error.safeMessage,
+              entityType: error.entityType ?? entityType,
+              recordId: error.recordId,
+              phase: error.phase ?? 'fetch/decode',
+              exceptionClass: error.exceptionClass,
+              lastCommittedCursor: after,
+              committedRecords: cursor?.downloadedCount ?? 0,
+            );
+          }
           await repository.stageDownloadBatch(bookId, batch);
           await onProgress?.call();
           after = batch.nextCursor;
+          lastCommittedCursor = after;
           if (batch.complete) break;
         }
       }
@@ -257,6 +286,7 @@ class InitialSyncCoordinator {
         manifest: manifest,
         authUserId: authUserId,
       );
+      await _logSuccessDiagnostic(bookId);
       return InitialSyncResult(
         success: true,
         message: 'Shared household downloaded and activated.',
@@ -264,17 +294,32 @@ class InitialSyncCoordinator {
         finalSequence: manifest.snapshotSequence,
       );
     } on InitialSyncException catch (error) {
-      await _recordFailureIfStarted(bookId, error);
-      return InitialSyncResult(success: false, message: error.safeMessage);
-    } catch (_) {
-      const error = InitialSyncException(
-        InitialSyncErrorCode.unavailable,
-        'Initial download stopped safely and can be resumed.',
+      final detailed = await _withCommittedState(bookId, error);
+      await _recordFailureIfStarted(bookId, detailed);
+      await _logDiagnostic(bookId, detailed);
+      return InitialSyncResult(
+        success: false,
+        message: detailed.safeMessage,
+        diagnosticMessage: detailed.diagnosticMessage,
+      );
+    } catch (caught) {
+      final error = await _withCommittedState(
+        bookId,
+        InitialSyncException(
+          InitialSyncErrorCode.unavailable,
+          'Initial download stopped safely and can be resumed.',
+          entityType: activeEntity,
+          phase: 'download',
+          exceptionClass: caught.runtimeType.toString(),
+          lastCommittedCursor: lastCommittedCursor,
+        ),
       );
       await _recordFailureIfStarted(bookId, error);
-      return const InitialSyncResult(
+      await _logDiagnostic(bookId, error);
+      return InitialSyncResult(
         success: false,
         message: 'Initial download stopped safely and can be resumed.',
+        diagnosticMessage: error.diagnosticMessage,
       );
     }
   }
@@ -302,12 +347,38 @@ class InitialSyncCoordinator {
     if (cursor?.initializationState == SyncInitializationState.uploading ||
         cursor?.initializationState == SyncInitializationState.downloading ||
         cursor?.initializationState == SyncInitializationState.failed) {
-      await repository.recordFailure(
-        bookId,
-        code: error.code.name,
-        message: error.safeMessage,
-      );
+      await repository.recordFailure(bookId, error: error);
     }
+  }
+
+  Future<InitialSyncException> _withCommittedState(
+    String bookId,
+    InitialSyncException error,
+  ) async {
+    final cursor = await repository.getCursor(bookId);
+    return InitialSyncException(
+      error.code,
+      error.safeMessage,
+      entityType: error.entityType,
+      recordId: error.recordId,
+      phase: error.phase,
+      exceptionClass: error.exceptionClass,
+      lastCommittedCursor:
+          error.lastCommittedCursor ?? cursor?.lastProcessedCursor,
+      committedRecords: error.committedRecords ?? cursor?.downloadedCount ?? 0,
+    );
+  }
+
+  Future<void> _logDiagnostic(String bookId, InitialSyncException error) async {
+    if (!kDebugMode) return;
+    final summary = await repository.getDiagnosticSummary(bookId);
+    debugPrint('${error.diagnosticMessage} counts=${summary.toJson()}');
+  }
+
+  Future<void> _logSuccessDiagnostic(String bookId) async {
+    if (!kDebugMode) return;
+    final summary = await repository.getDiagnosticSummary(bookId);
+    debugPrint('Initial sync complete counts=${summary.toJson()}');
   }
 
   static bool _canResume(SyncCursor? cursor, InitialSyncDirection direction) =>

@@ -1,5 +1,12 @@
 # Supabase Setup for Cloud Sharing
 
+Apply migrations through `202607270001_beta04c_conflict_resolution.sql`, run
+`supabase db reset` and `supabase test db`, and enable Realtime for
+`public.app_changes`. Flutter uses only the public URL/publishable key.
+
+Local verification on 2026-07-27 applied the complete migration chain and
+passed all 60 pgTAP assertions. Production deployment is still an owner action.
+
 BETA-03 uses Supabase for email OTP identity, household authorization,
 memberships, and invitations. BETA-04A adds secured incremental push/pull and
 BETA-04B adds controlled initial upload/download. SQLite remains the

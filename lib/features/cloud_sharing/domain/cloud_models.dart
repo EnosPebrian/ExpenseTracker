@@ -1,5 +1,27 @@
 enum CloudMembershipRole { owner, member }
 
+enum CloudConfigurationState { configured, unconfigured, invalid, failed }
+
+enum CloudAuthInitializationState { initialized, failed }
+
+enum CloudFailureKind { connectivity, sessionExpired, rejected, unavailable }
+
+class CloudConfigurationDiagnostics {
+  const CloudConfigurationDiagnostics({
+    required this.configuration,
+    required this.urlValid,
+    required this.publishableKeyPresent,
+    required this.authInitialization,
+  });
+
+  final CloudConfigurationState configuration;
+  final bool urlValid;
+  final bool publishableKeyPresent;
+  final CloudAuthInitializationState authInitialization;
+
+  bool get isConfigured => configuration == CloudConfigurationState.configured;
+}
+
 class CloudAuthUser {
   const CloudAuthUser({required this.id, required this.email});
   final String id;
@@ -13,11 +35,13 @@ class CloudBookMembership {
     required this.role,
     required this.status,
     this.householdMemberId,
+    this.userId,
   });
 
   final String id;
   final String bookId;
   final String? householdMemberId;
+  final String? userId;
   final CloudMembershipRole role;
   final String status;
 
@@ -26,6 +50,7 @@ class CloudBookMembership {
         id: json['id'] as String,
         bookId: json['book_id'] as String,
         householdMemberId: json['household_member_id'] as String?,
+        userId: json['user_id'] as String?,
         role: json['role'] == 'owner'
             ? CloudMembershipRole.owner
             : CloudMembershipRole.member,
@@ -92,8 +117,12 @@ class CloudLinkResult {
 }
 
 class CloudSharingException implements Exception {
-  const CloudSharingException(this.message);
+  const CloudSharingException(
+    this.message, {
+    this.kind = CloudFailureKind.unavailable,
+  });
   final String message;
+  final CloudFailureKind kind;
 
   @override
   String toString() => message;

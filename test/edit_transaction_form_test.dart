@@ -105,6 +105,10 @@ void main() {
               expenseCategories: ['Konsumsi', 'Transportasi'],
               incomeCategories: ['Gaji Enos'],
               projects: ['Life', 'Tebu Nai'],
+              projectIdsByName: {
+                'Life': '11111111-1111-4111-8111-111111111111',
+                'Tebu Nai': '22222222-2222-4222-8222-222222222222',
+              },
             ),
             onSubmit: (value) async => submitted = value,
           ),
@@ -124,7 +128,7 @@ void main() {
 
     expect(submitted, isNotNull);
     expect(submitted!.id, transaction.id);
-    expect(submitted!.projectId, 'tebu-nai');
+    expect(submitted!.projectId, '22222222-2222-4222-8222-222222222222');
   });
   testWidgets('Edit Transaction remains open and displays persistence error', (
     tester,

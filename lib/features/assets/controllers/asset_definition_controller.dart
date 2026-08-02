@@ -109,7 +109,10 @@ class AssetDefinitionController extends ChangeNotifier {
     );
   }
 
-  Future<void> initialize({Iterable<AssetDefinition> seeds = const []}) async {
+  Future<void> initialize({
+    Iterable<AssetDefinition> seeds = const [],
+    bool preserveExistingDefinitionsOnSeedConflict = false,
+  }) async {
     if (isLoading) {
       return;
     }
@@ -127,8 +130,12 @@ class AssetDefinitionController extends ChangeNotifier {
           .toList(growable: false);
 
       if (seedValues.isNotEmpty) {
-        await _validateSeeds(seedValues);
-        await _repository.ensureSeeds(seedValues);
+        final validSeeds = await _validateSeeds(
+          seedValues,
+          preserveExistingDefinitionsOnConflict:
+              preserveExistingDefinitionsOnSeedConflict,
+        );
+        await _repository.ensureSeeds(validSeeds);
       }
 
       await _retireObsoleteSeedIfEligible();
@@ -451,9 +458,17 @@ class AssetDefinitionController extends ChangeNotifier {
     return protectedField == null ? null : editResult?.errorFor(protectedField);
   }
 
-  Future<void> _validateSeeds(List<AssetDefinition> seeds) async {
+  Future<List<AssetDefinition>> _validateSeeds(
+    List<AssetDefinition> seeds, {
+    required bool preserveExistingDefinitionsOnConflict,
+  }) async {
     final known = await _repository.getAll(includeDeleted: true);
+    final validSeeds = <AssetDefinition>[];
     for (final seed in seeds) {
+      final structuralErrors = seed.validate();
+      if (structuralErrors.isNotEmpty) {
+        throw ArgumentError.value(seed, 'seed', structuralErrors.join(' '));
+      }
       final existing = known
           .where((definition) => definition.id == seed.id)
           .firstOrNull;
@@ -463,14 +478,15 @@ class AssetDefinitionController extends ChangeNotifier {
         editingDefinitionId: existing?.id,
       );
       if (!result.isValid) {
+        if (preserveExistingDefinitionsOnConflict) {
+          continue;
+        }
         integrityResult = result;
         throw AssetDefinitionIntegrityException(result);
       }
-      final structuralErrors = seed.validate();
-      if (structuralErrors.isNotEmpty) {
-        throw ArgumentError.value(seed, 'seed', structuralErrors.join(' '));
-      }
+      validSeeds.add(seed);
       if (existing == null) known.add(seed);
     }
+    return validSeeds;
   }
 }

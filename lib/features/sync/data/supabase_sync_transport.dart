@@ -3,10 +3,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/sync_models.dart';
 import '../domain/sync_transport.dart';
 
-class SupabaseSyncTransport implements SyncTransport {
+class SupabaseSyncTransport
+    implements SyncTransport, ConflictResolutionTransport, SyncWakeupTransport {
   SupabaseSyncTransport(this._client);
 
   final SupabaseClient _client;
+  RealtimeChannel? _syncChannel;
 
   @override
   bool get isConfigured => true;
@@ -132,6 +134,70 @@ class SupabaseSyncTransport implements SyncTransport {
     }
   }
 
+  @override
+  Future<ConflictResolutionResult> resolveConflict({
+    required SyncConflict conflict,
+    required String resolutionOperationId,
+    required ConflictResolutionType resolutionType,
+    Map<String, Object?>? resolvedPayload,
+  }) async {
+    final response = _map(
+      await _guard(
+        () => _client.rpc(
+          'resolve_sync_conflict',
+          params: {
+            'p_book_id': conflict.bookId,
+            'p_entity_type': conflict.entityType,
+            'p_entity_id': conflict.entityId,
+            'p_expected_server_version': conflict.serverVersion,
+            'p_resolution_operation_id': resolutionOperationId,
+            'p_resolution_type': resolutionType.name,
+            'p_resolved_payload': resolvedPayload == null
+                ? null
+                : toRemotePayload(conflict.entityType, resolvedPayload),
+          },
+        ),
+      ),
+    );
+    final payload = response['canonical_snapshot'];
+    return ConflictResolutionResult(
+      status: response['status'] as String,
+      canonicalPayload: payload is Map
+          ? toLocalPayload(conflict.entityType, payload.cast<String, Object?>())
+          : null,
+      serverVersion: (response['server_version'] as num?)?.toInt(),
+      serverSequence: (response['server_sequence'] as num?)?.toInt(),
+    );
+  }
+
+  @override
+  Future<void> subscribeToBookChanges(
+    String bookId,
+    void Function() onWakeup,
+  ) async {
+    await unsubscribeFromBookChanges();
+    _syncChannel = _client.channel('sync-wakeup-$bookId')
+      ..onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'app_changes',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'book_id',
+          value: bookId,
+        ),
+        callback: (_) => onWakeup(),
+      )
+      ..subscribe();
+  }
+
+  @override
+  Future<void> unsubscribeFromBookChanges() async {
+    final channel = _syncChannel;
+    _syncChannel = null;
+    if (channel != null) await _client.removeChannel(channel);
+  }
+
   static Map<String, Object?> toRemotePayload(
     String entityType,
     Map<String, Object?> payload,
@@ -157,8 +223,10 @@ class SupabaseSyncTransport implements SyncTransport {
     String entityType,
     Map<String, Object?> payload,
   ) {
+    final allowed = _remoteFields[entityType] ?? const <String>{};
     final result = <String, Object?>{};
     for (final entry in payload.entries) {
+      if (!allowed.contains(entry.key)) continue;
       final value = entry.value;
       result[entry.key] =
           _timestampFields.contains(entry.key) && value is String

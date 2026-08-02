@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../domain/entities/account.dart';
+import '../../domain/entities/financial_project.dart';
 
 typedef MasterDataPersist =
     Future<void> Function({
@@ -11,18 +12,25 @@ typedef MasterDataPersist =
     });
 
 typedef AccountPersist = Future<void> Function(Account account);
+typedef ProjectRecordsLoader = Future<List<FinancialProject>> Function();
 
 class MasterDataController extends ChangeNotifier {
-  MasterDataController({required this.persist, this.persistAccount});
+  MasterDataController({
+    required this.persist,
+    this.persistAccount,
+    this.loadProjectRecords,
+  });
 
   final MasterDataPersist persist;
   final AccountPersist? persistAccount;
+  final ProjectRecordsLoader? loadProjectRecords;
 
   final _accounts = <String>[];
   final _accountRecords = <Account>[];
   final _expenseCategories = <String>[];
   final _incomeCategories = <String>[];
   final _projects = <String>[];
+  final _projectIdsByName = <String, String>{};
 
   List<String> get accounts => List<String>.unmodifiable(_accounts);
   List<Account> get accountRecords =>
@@ -35,6 +43,8 @@ class MasterDataController extends ChangeNotifier {
       List<String>.unmodifiable(_incomeCategories);
 
   List<String> get projects => List<String>.unmodifiable(_projects);
+  Map<String, String> get projectIdsByName =>
+      Map<String, String>.unmodifiable(_projectIdsByName);
 
   void replaceAll({
     required Iterable<String> accounts,
@@ -42,6 +52,7 @@ class MasterDataController extends ChangeNotifier {
     required Iterable<String> expenseCategories,
     required Iterable<String> incomeCategories,
     required Iterable<String> projects,
+    Iterable<FinancialProject>? projectRecords,
   }) {
     _accounts
       ..clear()
@@ -62,6 +73,7 @@ class MasterDataController extends ChangeNotifier {
     _projects
       ..clear()
       ..addAll(projects);
+    _replaceProjectRecords(projectRecords ?? const []);
 
     notifyListeners();
   }
@@ -122,6 +134,16 @@ class MasterDataController extends ChangeNotifier {
       categoryType: categoryType,
     );
 
+    if (entity == 'projects' && loadProjectRecords != null) {
+      final records = await loadProjectRecords!();
+      _projects
+        ..clear()
+        ..addAll(records.map((record) => record.name));
+      _replaceProjectRecords(records);
+      notifyListeners();
+      return;
+    }
+
     if (previousName == null) {
       target.add(normalizedName);
     } else if (currentIndex >= 0) {
@@ -131,6 +153,12 @@ class MasterDataController extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  void _replaceProjectRecords(Iterable<FinancialProject> records) {
+    _projectIdsByName
+      ..clear()
+      ..addEntries(records.map((record) => MapEntry(record.name, record.id)));
   }
 
   Future<void> saveAccount(Account account) async {

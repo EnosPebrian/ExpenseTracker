@@ -27,3 +27,15 @@ abstract interface class SyncRepository {
   Future<int> unresolvedConflictCount(String bookId);
   Future<void> applyRemoteBatch(String bookId, PullBatch batch);
 }
+
+abstract interface class SyncConflictRepository {
+  Future<List<SyncConflict>> conflicts(String bookId);
+  Future<bool> beginResolution(String conflictId, String operationId);
+  Future<void> failResolution(String conflictId);
+  Future<void> completeResolution(
+    String conflictId, {
+    required String resolution,
+    required Map<String, Object?> canonicalPayload,
+    required int serverSequence,
+  });
+}

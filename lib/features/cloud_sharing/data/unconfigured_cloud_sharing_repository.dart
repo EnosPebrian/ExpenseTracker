@@ -4,18 +4,37 @@ import '../domain/cloud_models.dart';
 import '../domain/cloud_sharing_repository.dart';
 
 class UnconfiguredCloudSharingRepository implements CloudSharingRepository {
-  const UnconfiguredCloudSharingRepository({this.configurationError});
+  const UnconfiguredCloudSharingRepository({
+    this.configurationState = CloudConfigurationState.unconfigured,
+    this.urlValid = false,
+    this.publishableKeyPresent = false,
+    this.configurationError,
+  });
 
+  final CloudConfigurationState configurationState;
+  final bool urlValid;
+  final bool publishableKeyPresent;
   final String? configurationError;
 
   @override
-  bool get isConfigured => configurationError != null;
+  CloudConfigurationDiagnostics get diagnostics =>
+      CloudConfigurationDiagnostics(
+        configuration: configurationState,
+        urlValid: urlValid,
+        publishableKeyPresent: publishableKeyPresent,
+        authInitialization: configurationState == CloudConfigurationState.failed
+            ? CloudAuthInitializationState.failed
+            : CloudAuthInitializationState.initialized,
+      );
 
   @override
   CloudAuthUser? get currentUser => null;
 
   @override
   Stream<CloudAuthUser?> get authChanges => const Stream.empty();
+
+  @override
+  Future<void> restoreAuthSession() async {}
 
   Never _unavailable() => throw CloudSharingException(
     configurationError ?? 'Cloud sharing is not configured.',

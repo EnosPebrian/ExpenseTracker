@@ -10,6 +10,11 @@ import '../../../features/assets/presentation/screens/assets_dashboard_screen.da
 import '../../../features/assets/controllers/asset_price_controller.dart';
 import '../../../features/assets/data/repositories/alpha_vantage_asset_price_repository.dart';
 import '../../../features/assets/domain/services/asset_portfolio_calculator.dart';
+import '../../../features/backup/data/local_household_backup_store.dart';
+import '../../../features/backup/data/portable_file_service.dart';
+import '../../../features/backup/domain/household_backup_service.dart';
+import '../../../features/backup/presentation/controllers/backup_export_controller.dart';
+import '../../../features/backup/presentation/screens/backup_export_screen.dart';
 import '../../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../../features/cloud_sharing/domain/cloud_models.dart';
 import '../../../features/cloud_sharing/domain/cloud_sharing_repository.dart';
@@ -20,6 +25,7 @@ import '../../../features/master_data/presentation/screens/local_profile_setup_p
 import '../../../features/master_data/domain/entities/local_profile.dart';
 import '../../../features/master_data/domain/entities/financial_book.dart';
 import '../../../features/master_data/domain/entities/household_member.dart';
+import '../../../features/master_data/domain/entities/financial_project.dart';
 import '../../../features/master_data/presentation/screens/household_settings_page.dart';
 import '../../../features/master_data/presentation/screens/categories_page.dart';
 import '../../../features/master_data/presentation/screens/projects_page.dart';
@@ -33,7 +39,10 @@ import '../../../features/sync/domain/initial_sync_transport.dart';
 import '../../../features/sync/domain/sync_coordinator.dart';
 import '../../../features/sync/domain/sync_models.dart';
 import '../../../features/sync/domain/sync_transport.dart';
+import '../../../features/sync/domain/conflict_resolution_service.dart';
 import '../../../features/sync/presentation/controllers/sync_controller.dart';
+import '../../../features/sync/presentation/controllers/sync_conflict_controller.dart';
+import '../../../features/sync/presentation/screens/conflict_review_screen.dart';
 import '../../../features/sync/presentation/controllers/initial_sync_controller.dart';
 import '../../../features/tithe/presentation/screens/tithe_page.dart';
 import '../../../features/tithe/domain/tithe_policy.dart';
@@ -51,8 +60,6 @@ import '../../../features/analytics/domain/financial_period.dart';
 import '../../../features/assets/controllers/asset_definition_controller.dart';
 import '../../../features/assets/data/repositories/local_asset_definition_repository.dart';
 import '../../services/app_bootstrap_service.dart';
-import '../../data/default_master_data.dart';
-import '../../data/default_transactions.dart';
 import '../../data/default_asset_definitions.dart';
 import '../widgets/app_navigation_scaffold.dart';
 import '../widgets/app_bootstrap_error_view.dart';
@@ -86,6 +93,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   late final LocalStore store = LocalStore();
 
+  late final BackupExportController backupExportController =
+      BackupExportController(
+        backupService: HouseholdBackupService(LocalHouseholdBackupStore(store)),
+        fileService: const PortableFileService(),
+        onRestored: _refreshAfterRestore,
+      );
+
   late final CloudSharingController cloudSharingController =
       CloudSharingController(
         repository: widget.cloudSharingRepository,
@@ -102,7 +116,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       repository: syncRepository,
       transport: widget.syncTransport,
     ),
+    onRemoteDataApplied: _refreshSyncedData,
   );
+  late final SyncConflictController? syncConflictController =
+      widget.syncTransport is ConflictResolutionTransport
+      ? SyncConflictController(
+          service: ConflictResolutionService(
+            repository: syncRepository,
+            transport: widget.syncTransport as ConflictResolutionTransport,
+          ),
+          afterResolution: syncController.syncNow,
+        )
+      : null;
   late final InitialSyncController initialSyncController =
       InitialSyncController(
         coordinator: InitialSyncCoordinator(
@@ -144,6 +169,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   );
   late final masterDataController = MasterDataController(
     persistAccount: (account) => store.upsertAccount(account.toRecord()),
+    loadProjectRecords: () async => (await store.getProjectRecords())
+        .map(FinancialProject.fromRecord)
+        .toList(),
     persist:
         ({
           required String entity,
@@ -216,17 +244,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   Future<void> _loadLocalData() async {
     try {
-      final result = await bootstrapService.load(
-        defaultAccounts: defaultAccountNames,
-        defaultExpenseCategories: defaultExpenseCategories,
-        defaultIncomeCategories: defaultIncomeCategories,
-        defaultProjects: defaultProjectNames,
-        seedTransactions: buildDefaultTransactions(),
-        requireProfile: true,
-      );
+      final result = await bootstrapService.load(requireProfile: true);
 
       await assetDefinitionController.initialize(
         seeds: buildDefaultAssetDefinitions(),
+        preserveExistingDefinitionsOnSeedConflict: true,
       );
 
       final assetDefinitionError = assetDefinitionController.error;
@@ -236,6 +258,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       }
 
       await assetPriceController.load();
+      if (result.financialBook != null) {
+        await backupExportController.load(result.financialBook!.id);
+      }
 
       if (!mounted) {
         return;
@@ -248,6 +273,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           expenseCategories: result.expenseCategories,
           incomeCategories: result.incomeCategories,
           projects: result.projects,
+          projectRecords: result.projectRecords,
         );
         localProfile = result.profile;
         financialBook = result.financialBook;
@@ -258,6 +284,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         loading = false;
       });
       await syncController.setBook(result.financialBook);
+      await syncConflictController?.setBook(result.financialBook?.id);
       await _configureInitialSyncContext();
     } catch (exception) {
       if (!mounted) {
@@ -278,6 +305,37 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     });
 
     await _loadLocalData();
+  }
+
+  Future<void> _refreshSyncedData({bool reloadBackup = true}) async {
+    final result = await bootstrapService.load(requireProfile: true);
+    await assetDefinitionController.reload();
+    final assetDefinitionError = assetDefinitionController.error;
+    if (assetDefinitionError != null) {
+      throw StateError(assetDefinitionError);
+    }
+    if (reloadBackup && result.financialBook != null) {
+      await backupExportController.load(result.financialBook!.id);
+    }
+    if (!mounted) return;
+    setState(() {
+      masterDataController.replaceAll(
+        accounts: result.accounts,
+        accountRecords: result.accountRecords,
+        expenseCategories: result.expenseCategories,
+        incomeCategories: result.incomeCategories,
+        projects: result.projects,
+        projectRecords: result.projectRecords,
+      );
+      localProfile = result.profile;
+      financialBook = result.financialBook;
+      householdMembers = result.householdMembers;
+      activeMemberId = result.session.activeMemberId;
+    });
+  }
+
+  Future<void> _refreshAfterRestore() {
+    return _refreshSyncedData(reloadBackup: false);
   }
 
   Future<void> _completeLocalProfile(LocalProfile profile) async {
@@ -448,6 +506,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       expenseCategories: expenses,
       incomeCategories: incomes,
       projects: masterDataController.projects,
+      projectIdsByName: masterDataController.projectIdsByName,
       assetDefinitions: assetDefinitionController.definitions,
       assetMarketPrices: assetPriceController.prices,
       defaultProject: 'Life',
@@ -463,6 +522,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       expenseCategories: masterDataController.expenseCategories,
       incomeCategories: masterDataController.incomeCategories,
       projects: masterDataController.projects,
+      projectIdsByName: masterDataController.projectIdsByName,
       assetDefinitions: assetDefinitionController.definitions,
       assetMarketPrices: assetPriceController.prices,
     );
@@ -473,6 +533,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       context,
       transactionController: transactionController,
       config: quickAddConfig,
+      onAddAccount: () => setState(() => selected = 3),
+      onAddCategory: () => setState(() => selected = 4),
     );
   }
 
@@ -492,7 +554,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     assetPriceController.dispose();
     cloudSharingController.dispose();
     syncController.dispose();
+    syncConflictController?.dispose();
     initialSyncController.dispose();
+    backupExportController.dispose();
     assetPriceRepository?.close();
     store.close();
 
@@ -532,6 +596,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final pages = [
       Dashboard(
         transactions: transactions,
+        hasAccounts: masterDataController.accountRecords.isNotEmpty,
         summary: dashboardSummary,
         referenceDate: referenceDate,
         period: dashboardPeriod,
@@ -547,6 +612,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onOpen: (transaction) {
           _openTransactionDetail(context, transaction);
         },
+        onAddAccount: () => setState(() => selected = 3),
+        onAddTransaction: () => openQuickAdd(context),
       ),
       AssetsDashboardScreen(
         portfolio: assetPortfolio,
@@ -590,6 +657,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       ),
       ProjectsPage(
         projects: masterDataController.projects,
+        projectIdsByName: masterDataController.projectIdsByName,
+        transactions: transactions,
+        currencyCode: localProfile?.defaultCurrencyCode ?? 'IDR',
         onSave: masterDataController.save,
       ),
       TithePage(summary: currentMonthSummary),
@@ -610,10 +680,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             activeMemberId: activeMemberId,
             syncController: syncController,
             initialSyncController: initialSyncController,
+            onReviewConflicts: syncConflictController == null
+                ? null
+                : () => ConflictReviewScreen.show(
+                    context,
+                    syncConflictController!,
+                  ),
           ),
         )
       else
         const SizedBox.shrink(),
+      BackupExportScreen(controller: backupExportController),
     ];
 
     if (loading || transactionController.isLoading) {

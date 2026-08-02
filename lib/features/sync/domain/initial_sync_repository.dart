@@ -30,10 +30,10 @@ abstract interface class InitialSyncRepository {
     required InitialSyncManifest manifest,
     required String? authUserId,
   });
+  Future<InitialSyncDiagnosticSummary> getDiagnosticSummary(String bookId);
   Future<void> recordFailure(
     String bookId, {
-    required String code,
-    required String message,
+    required InitialSyncException error,
   });
   Future<void> cancelInitialization(
     String bookId,

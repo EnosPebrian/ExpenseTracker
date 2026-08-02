@@ -6,11 +6,13 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:uuid/uuid.dart';
 
 import 'household_schema_native.dart';
+import 'backup_schema_native.dart';
+import 'native_database_path.dart';
 import 'sync_schema_native.dart';
 
 class LocalStore {
   LocalStore({this.databasePath});
-  static const schemaVersion = 15;
+  static const schemaVersion = 20;
   static bool _ffiInitialized = false;
 
   final String? databasePath;
@@ -28,8 +30,7 @@ class LocalStore {
       databaseFactory = databaseFactoryFfi;
       _ffiInitialized = true;
     }
-    final resolvedDatabasePath =
-        databasePath ?? p.join(await getDatabasesPath(), 'pilgrim_tracker.db');
+    final resolvedDatabasePath = databasePath ?? await _defaultDatabasePath();
 
     _database = await openDatabase(
       resolvedDatabasePath,
@@ -132,8 +133,8 @@ asset_symbol TEXT,
         await SyncSchemaNative.create(db);
         await db.execute('''
           CREATE TABLE IF NOT EXISTS asset_market_prices (
-            asset_key TEXT PRIMARY KEY,
-            book_id TEXT,
+            asset_key TEXT NOT NULL,
+            book_id TEXT NOT NULL,
             symbol TEXT,
             price_minor INTEGER NOT NULL,
             minor_unit_scale INTEGER NOT NULL DEFAULT 1,
@@ -143,7 +144,8 @@ asset_symbol TEXT,
             source TEXT NOT NULL,
             is_delayed INTEGER NOT NULL DEFAULT 0,
             is_manual INTEGER NOT NULL DEFAULT 0,
-            updated_at INTEGER NOT NULL
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (book_id, asset_key)
           )
           ''');
         await db.execute('''
@@ -394,8 +396,30 @@ asset_symbol TEXT,
         if (oldVersion < 15) {
           await SyncSchemaNative.upgradeToV15(db);
         }
+        if (oldVersion < 16) {
+          await SyncSchemaNative.upgradeToV16(db);
+        }
+        if (oldVersion < 17) {
+          await SyncSchemaNative.upgradeToV17(db);
+        }
+        if (oldVersion < 18) {
+          await SyncSchemaNative.upgradeToV18(db);
+        }
+        if (oldVersion < 19) {
+          await SyncSchemaNative.upgradeToV19(db);
+        }
+        if (oldVersion < 20) {
+          await BackupSchemaNative.upgradeToV20(db);
+        }
       },
     );
+  }
+
+  Future<String> _defaultDatabasePath() async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return NativeDatabasePath.resolve();
+    }
+    return p.join(await getDatabasesPath(), 'pilgrim_tracker.db');
   }
 
   static Future<void> _createProfileTables(DatabaseExecutor db) async {
@@ -608,11 +632,11 @@ asset_symbol TEXT,
   }
 
   Future<void> upsertAssetMarketPrice(Map<String, Object?> record) {
-    return db.insert(
-      'asset_market_prices',
-      _withActiveBook(record),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final scoped = _withActiveBook(record);
+    return db.insert('asset_market_prices', {
+      ...scoped,
+      'book_id': scoped['book_id'] ?? 'legacy-default-book',
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<Map<String, Object?>>> getAssetDefinitions({
@@ -704,6 +728,28 @@ asset_symbol TEXT,
         );
         if (existing.isNotEmpty &&
             existing.first['book_id'] != prepared['book_id']) {
+          final activeBookId = prepared['book_id'];
+          final equivalentInActiveBook = activeBookId == null
+              ? const <Map<String, Object?>>[]
+              : await txn.query(
+                  'asset_definitions',
+                  where: 'book_id = ?',
+                  whereArgs: [activeBookId],
+                );
+          if (equivalentInActiveBook.any(
+            (candidate) => _sameAssetDefinitionSeed(candidate, prepared),
+          )) {
+            continue;
+          }
+          if (existing.first['book_id'] == null && activeBookId != null) {
+            await txn.update(
+              'asset_definitions',
+              {'book_id': activeBookId},
+              where: 'id = ? AND book_id IS NULL',
+              whereArgs: [prepared['id']],
+            );
+            continue;
+          }
           prepared['id'] = const Uuid().v4();
         }
         await txn.insert(
@@ -713,6 +759,173 @@ asset_symbol TEXT,
         );
       }
     });
+  }
+
+  Future<Map<String, List<Map<String, Object?>>>> createHouseholdBackupSnapshot(
+    String bookId,
+  ) {
+    return db.transaction((txn) async {
+      Future<List<Map<String, Object?>>> scoped(
+        String table, {
+        String orderBy = 'id',
+        String extraWhere = '',
+      }) {
+        final where = extraWhere.isEmpty
+            ? 'book_id = ?'
+            : 'book_id = ? AND $extraWhere';
+        return txn.query(
+          table,
+          where: where,
+          whereArgs: [bookId],
+          orderBy: orderBy,
+        );
+      }
+
+      final household = await txn.query(
+        'books',
+        where: 'id = ?',
+        whereArgs: [bookId],
+        limit: 1,
+      );
+      if (household.isEmpty) {
+        throw StateError('The selected household no longer exists.');
+      }
+      return {
+        'household': household,
+        'members': await scoped('household_members'),
+        'accounts': await scoped('accounts'),
+        'categories': await scoped('categories'),
+        'projects': await scoped('projects'),
+        'transactions': await scoped(
+          'transactions',
+          orderBy: 'transaction_date, created_at, id',
+        ),
+        'asset_definitions': await scoped('asset_definitions'),
+        'manual_market_prices': await scoped(
+          'asset_market_prices',
+          orderBy: 'asset_key',
+          extraWhere: 'is_manual = 1',
+        ),
+      };
+    });
+  }
+
+  Future<void> activateHouseholdBackupSnapshot(
+    Map<String, List<Map<String, Object?>>> snapshot, {
+    String? replaceBookId,
+    bool idempotent = false,
+  }) async {
+    final households = snapshot['household'] ?? const [];
+    if (households.length != 1) {
+      throw StateError('A restore must contain exactly one household.');
+    }
+    final restoredBookId = households.single['id'] as String;
+    final members = snapshot['members'] ?? const [];
+    final activeMember = members.cast<Map<String, Object?>>().firstWhere(
+      (member) => member['deleted_at'] == null && member['role'] == 'owner',
+      orElse: () => members.cast<Map<String, Object?>>().firstWhere(
+        (member) => member['deleted_at'] == null,
+        orElse: () => throw StateError(
+          'The restored household needs at least one active member.',
+        ),
+      ),
+    );
+
+    await db.transaction((txn) async {
+      if (replaceBookId != null) {
+        if (replaceBookId != restoredBookId) {
+          throw StateError('Replacement requires a matching household ID.');
+        }
+        for (final table in const [
+          'transactions',
+          'asset_market_prices',
+          'asset_definitions',
+          'projects',
+          'categories',
+          'accounts',
+          'household_members',
+        ]) {
+          await txn.delete(
+            table,
+            where: 'book_id = ?',
+            whereArgs: [replaceBookId],
+          );
+        }
+        for (final table in const [
+          'sync_outbox',
+          'sync_conflicts',
+          'sync_cursors',
+          'initial_sync_staging',
+        ]) {
+          await txn.delete(
+            table,
+            where: 'book_id = ?',
+            whereArgs: [replaceBookId],
+          );
+        }
+        await txn.delete('books', where: 'id = ?', whereArgs: [replaceBookId]);
+      }
+
+      Future<void> insertAll(String table, String key) async {
+        for (final record in snapshot[key] ?? const []) {
+          if (idempotent) {
+            final existing = key == 'manual_market_prices'
+                ? await txn.query(
+                    table,
+                    where: 'book_id = ? AND asset_key = ?',
+                    whereArgs: [record['book_id'], record['asset_key']],
+                    limit: 1,
+                  )
+                : await txn.query(
+                    table,
+                    where: 'id = ?',
+                    whereArgs: [record['id']],
+                    limit: 1,
+                  );
+            if (existing.isNotEmpty) {
+              if (!_backupRecordsEqual(existing.single, record)) {
+                throw StateError(
+                  'Restore conflict for $key record ${record['id'] ?? record['asset_key']}.',
+                );
+              }
+              continue;
+            }
+          }
+          await txn.insert(
+            table,
+            record,
+            conflictAlgorithm: ConflictAlgorithm.abort,
+          );
+        }
+      }
+
+      await insertAll('books', 'household');
+      await insertAll('household_members', 'members');
+      await insertAll('accounts', 'accounts');
+      await insertAll('categories', 'categories');
+      await insertAll('projects', 'projects');
+      await insertAll('asset_definitions', 'asset_definitions');
+      await insertAll('asset_market_prices', 'manual_market_prices');
+      await insertAll('transactions', 'transactions');
+
+      final session = await txn.query(
+        'local_session',
+        where: 'id = 1',
+        limit: 1,
+      );
+      await txn.insert('local_session', {
+        'id': 1,
+        'active_profile_id': session.isEmpty
+            ? null
+            : session.first['active_profile_id'],
+        'active_book_id': restoredBookId,
+        'active_member_id': activeMember['id'],
+        'onboarding_completed': session.isEmpty
+            ? 1
+            : session.first['onboarding_completed'],
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+    setActiveBookId(restoredBookId);
   }
 
   Future<void> close() async => _database?.close();
@@ -1008,6 +1221,27 @@ asset_symbol TEXT,
       'book_id': _activeBookId,
   };
 
+  bool _sameAssetDefinitionSeed(
+    Map<String, Object?> existing,
+    Map<String, Object?> seed,
+  ) {
+    for (final field in const [
+      'display_name',
+      'asset_kind',
+      'symbol',
+      'provider_code',
+      'provider_symbol',
+      'exchange_code',
+      'currency_code',
+      'unit',
+      'lot_size',
+      'online_pricing_enabled',
+    ]) {
+      if (existing[field] != seed[field]) return false;
+    }
+    return existing['deleted_at'] == null;
+  }
+
   Future<void> _enqueueSyncOperation(
     DatabaseExecutor executor,
     String entityType,
@@ -1222,6 +1456,89 @@ asset_symbol TEXT,
     return (rows.single['total'] as num).toInt();
   }
 
+  Future<List<Map<String, Object?>>> getSyncConflicts(String bookId) =>
+      db.query(
+        'sync_conflicts',
+        where: 'book_id = ? AND resolution_status != ?',
+        whereArgs: [bookId, 'resolved'],
+        orderBy: 'created_at ASC',
+      );
+
+  Future<bool> beginSyncConflictResolution(
+    String id,
+    String operationId,
+  ) async {
+    final changed = await db.update(
+      'sync_conflicts',
+      {
+        'resolution_status': 'resolving',
+        'resolution_operation_id': operationId,
+      },
+      where: 'id = ? AND resolution_status IN (?, ?)',
+      whereArgs: [id, 'unresolved', 'resolutionFailed'],
+    );
+    return changed == 1;
+  }
+
+  Future<void> failSyncConflictResolution(String id) => db.update(
+    'sync_conflicts',
+    {'resolution_status': 'resolutionFailed'},
+    where: 'id = ? AND resolution_status = ?',
+    whereArgs: [id, 'resolving'],
+  );
+
+  Future<void> completeSyncConflictResolution(
+    String id, {
+    required String resolution,
+    required Map<String, Object?> canonicalPayload,
+    required int serverSequence,
+  }) async {
+    await db.transaction((txn) async {
+      final conflicts = await txn.query(
+        'sync_conflicts',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (conflicts.isEmpty ||
+          conflicts.first['resolution_status'] != 'resolving') {
+        throw StateError('Conflict is no longer resolving.');
+      }
+      final conflict = conflicts.first;
+      final table = _syncTable(conflict['entity_type'] as String);
+      await txn.insert(table, {
+        ...canonicalPayload,
+        'sync_status': 'synced',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.update(
+        'sync_outbox',
+        {
+          'status': 'completed',
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'operation_id = ?',
+        whereArgs: [conflict['operation_id']],
+      );
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await txn.update(
+        'sync_conflicts',
+        {
+          'resolution_status': 'resolved',
+          'resolution': resolution,
+          'resolved_at': now,
+        },
+        where: 'id = ? AND resolution_status = ?',
+        whereArgs: [id, 'resolving'],
+      );
+      await txn.rawInsert(
+        '''INSERT INTO sync_cursors(book_id,last_server_sequence,initialization_state,updated_at)
+        VALUES (?,?,'ready',?) ON CONFLICT(book_id) DO UPDATE SET
+        last_server_sequence = MAX(last_server_sequence, excluded.last_server_sequence), updated_at = excluded.updated_at''',
+        [conflict['book_id'], serverSequence, now],
+      );
+    });
+  }
+
   Future<void> applyRemoteSyncBatch(
     String bookId, {
     required List<Map<String, Object?>> changes,
@@ -1321,6 +1638,21 @@ asset_symbol TEXT,
       orderBy: 'name COLLATE NOCASE',
     );
     return rows.map((row) => row['name'] as String).toList();
+  }
+
+  Future<List<Map<String, Object?>>> getProjectRecords() async {
+    final whereArgs = <Object?>[];
+    if (_activeBookId case final activeBookId?) whereArgs.add(activeBookId);
+    return db.query(
+      'projects',
+      columns: const ['id', 'name'],
+      where: [
+        if (_activeBookId != null) 'book_id = ?',
+        'deleted_at IS NULL',
+      ].join(' AND '),
+      whereArgs: whereArgs,
+      orderBy: 'name COLLATE NOCASE',
+    );
   }
 
   Future<void> saveMasterName(
@@ -1467,4 +1799,22 @@ asset_symbol TEXT,
       }
     });
   }
+}
+
+bool _backupRecordsEqual(
+  Map<String, Object?> stored,
+  Map<String, Object?> incoming,
+) {
+  for (final entry in incoming.entries) {
+    final left = stored[entry.key];
+    final right = entry.value;
+    if (left is num && right is bool) {
+      if (left != (right ? 1 : 0)) return false;
+    } else if (left is bool && right is num) {
+      if ((left ? 1 : 0) != right) return false;
+    } else if (left != right) {
+      return false;
+    }
+  }
+  return true;
 }

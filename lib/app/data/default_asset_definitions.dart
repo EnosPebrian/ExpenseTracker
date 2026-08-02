@@ -1,5 +1,6 @@
 import '../../features/assets/domain/entities/asset_definition.dart';
 import '../../features/assets/domain/entities/asset_kind.dart';
+import '../../core/master_data/default_asset_definition_ids.dart';
 
 List<AssetDefinition> buildDefaultAssetDefinitions({
   DateTime? timestamp,
@@ -9,7 +10,7 @@ List<AssetDefinition> buildDefaultAssetDefinitions({
 
   return [
     AssetDefinition(
-      id: 'asset-gold-holdings',
+      id: defaultGoldHoldingsAssetId,
       displayName: 'Gold Holdings',
       kind: AssetKind.gold,
       symbol: null,
@@ -28,7 +29,7 @@ List<AssetDefinition> buildDefaultAssetDefinitions({
       syncStatus: 'local_only',
     ),
     AssetDefinition(
-      id: 'asset-bitcoin-wallet',
+      id: defaultBitcoinWalletAssetId,
       displayName: 'Bitcoin Wallet',
       kind: AssetKind.crypto,
       symbol: 'BTC',
@@ -47,7 +48,7 @@ List<AssetDefinition> buildDefaultAssetDefinitions({
       syncStatus: 'local_only',
     ),
     AssetDefinition(
-      id: 'asset-inventory',
+      id: defaultInventoryAssetId,
       displayName: 'Inventory',
       kind: AssetKind.inventory,
       symbol: null,
@@ -66,14 +67,14 @@ List<AssetDefinition> buildDefaultAssetDefinitions({
       syncStatus: 'local_only',
     ),
     _buildDefaultForeignCurrency(
-      id: 'asset-usd',
+      id: defaultUsdAssetId,
       displayName: 'US Dollar Cash',
       symbol: 'USD',
       timestamp: now,
       deviceId: deviceId,
     ),
     _buildDefaultForeignCurrency(
-      id: 'asset-sgd',
+      id: defaultSgdAssetId,
       displayName: 'Singapore Dollar Cash',
       symbol: 'SGD',
       timestamp: now,

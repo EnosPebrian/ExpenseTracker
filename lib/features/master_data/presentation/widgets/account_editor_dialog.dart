@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import '../../../../core/shared/formatters/thousands_formatter.dart';
 import '../../../transactions/domain/entities/transaction.dart';
 import '../../domain/entities/account.dart';
 import '../../domain/entities/household_member.dart';
@@ -66,7 +66,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
       text: account?.currencyCode ?? widget.defaultCurrencyCode,
     );
     _balanceController = TextEditingController(
-      text: account?.openingBalance.toString() ?? '0',
+      text: account == null ? '' : money(account.openingBalance),
     );
     _type = account?.accountType ?? AccountType.bank;
     _ownerMemberId = account?.ownerMemberId;
@@ -233,7 +233,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                     signed: true,
                   ),
                   inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[-0-9.,]')),
+                    const ThousandsFormatter(allowNegative: true),
                   ],
                   decoration: const InputDecoration(
                     labelText: 'Starting balance',

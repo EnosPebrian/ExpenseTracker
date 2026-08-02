@@ -3,6 +3,7 @@
 // both facades to the matching native types.
 // ignore_for_file: argument_type_not_assignable
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import 'package:pilgrim_tracker/features/master_data/domain/entities/household_m
 import 'package:pilgrim_tracker/features/sync/data/initial_sync_store_native.dart';
 import 'package:pilgrim_tracker/features/sync/data/local_initial_sync_repository.dart';
 import 'package:pilgrim_tracker/features/sync/data/local_sync_repository.dart';
+import 'package:pilgrim_tracker/features/sync/data/supabase_sync_transport.dart';
 import 'package:pilgrim_tracker/features/sync/domain/initial_sync_coordinator.dart';
 import 'package:pilgrim_tracker/features/sync/domain/initial_sync_models.dart';
 import 'package:pilgrim_tracker/features/sync/domain/initial_sync_repository.dart';
@@ -60,7 +62,7 @@ void main() {
       final reopened = LocalStore(databasePath: fixture.path);
       await reopened.initialize();
       addTearDown(reopened.close);
-      expect(await reopened.db.getVersion(), 15);
+      expect(await reopened.db.getVersion(), LocalStore.schemaVersion);
       final cursor = (await reopened.db.query('sync_cursors')).single;
       expect(cursor['last_server_sequence'], 42);
       expect(cursor['uploaded_count'], 0);
@@ -362,6 +364,464 @@ void main() {
       );
     },
   );
+
+  test(
+    'empty device imports a valid 22-record snapshot and exposes every entity',
+    () async {
+      final fixture = await _localFixture('download-22');
+      addTearDown(fixture.dispose);
+      final adapter = InitialSyncStoreAdapter(fixture.store);
+      final manifest = _twentyTwoManifest('remote-22');
+      await fixture.store.setSyncInitializationState(
+        manifest.bookId,
+        SyncInitializationState.secondaryDownloadRequired.name,
+      );
+      await adapter.startInitialization(
+        bookId: manifest.bookId,
+        direction: InitialSyncDirection.download,
+        sessionId: 'download-22-session',
+        manifest: manifest,
+      );
+      final rows = _twentyTwoRows(manifest.bookId);
+      for (final entityType in initialSyncEntityOrder) {
+        final typed = rows
+            .where((row) => row['entity_type'] == entityType)
+            .map((row) => row['payload'] as Map<String, Object?>)
+            .toList();
+        await adapter.stageDownloadBatch(
+          manifest.bookId,
+          InitialSyncBatch(
+            entityType: entityType,
+            rows: typed,
+            nextCursor: typed.isEmpty ? null : typed.last['id'] as String,
+            complete: true,
+          ),
+        );
+      }
+
+      var cursor = (await fixture.store.getSyncCursor(manifest.bookId))!;
+      expect(cursor['downloaded_count'], 0);
+      expect((await adapter.getDiagnosticSummary(manifest.bookId)).decoded, 22);
+
+      await adapter.activateDownload(
+        bookId: manifest.bookId,
+        manifest: manifest,
+        authUserId: 'auth-user',
+      );
+
+      cursor = (await fixture.store.getSyncCursor(manifest.bookId))!;
+      expect(cursor['downloaded_count'], 22);
+      expect(cursor['initialization_state'], 'ready');
+      expect(cursor['last_error_message'], isNull);
+      expect(await fixture.store.getHouseholdMembers(), hasLength(2));
+      expect(await fixture.store.getAccounts(), hasLength(3));
+      expect(await fixture.store.getMasterNames('categories'), hasLength(4));
+      expect(await fixture.store.getProjectRecords(), hasLength(2));
+      expect(await fixture.store.getAssetDefinitions(), hasLength(2));
+      expect(await fixture.store.getTransactions(), hasLength(8));
+      final diagnostic = await adapter.getDiagnosticSummary(manifest.bookId);
+      expect(diagnostic.persisted, 22);
+      expect(
+        diagnostic.entities.values.fold<int>(
+          0,
+          (total, value) => total + value.locallyQueryable,
+        ),
+        22,
+      );
+    },
+  );
+
+  test(
+    'resume keeps the last committed cursor and never double-counts staging',
+    () async {
+      final fixture = await _localFixture('idempotent-download');
+      addTearDown(fixture.dispose);
+      const bookId = 'remote-idempotent';
+      final manifest = _twentyTwoManifest(bookId);
+      final adapter = InitialSyncStoreAdapter(fixture.store);
+      await fixture.store.setSyncInitializationState(
+        bookId,
+        SyncInitializationState.secondaryDownloadRequired.name,
+      );
+      await adapter.startInitialization(
+        bookId: bookId,
+        direction: InitialSyncDirection.download,
+        sessionId: 'resume-session',
+        manifest: manifest,
+      );
+      final transactions = _twentyTwoRows(bookId)
+          .where((row) => row['entity_type'] == 'transactions')
+          .map((row) => row['payload'] as Map<String, Object?>)
+          .toList();
+      final lastId = transactions.last['id'] as String;
+      await adapter.stageDownloadBatch(
+        bookId,
+        InitialSyncBatch(
+          entityType: 'transactions',
+          rows: transactions,
+          nextCursor: lastId,
+          complete: true,
+        ),
+      );
+      await adapter.stageDownloadBatch(
+        bookId,
+        const InitialSyncBatch(
+          entityType: 'transactions',
+          rows: [],
+          nextCursor: null,
+          complete: true,
+        ),
+      );
+      await adapter.stageDownloadBatch(
+        bookId,
+        InitialSyncBatch(
+          entityType: 'transactions',
+          rows: transactions,
+          nextCursor: lastId,
+          complete: true,
+        ),
+      );
+
+      final cursor = (await fixture.store.getSyncCursor(bookId))!;
+      expect(cursor['last_processed_cursor'], lastId);
+      expect(cursor['downloaded_count'], 0);
+      final diagnostic = await adapter.getDiagnosticSummary(bookId);
+      expect(diagnostic.entities['transactions']!.decoded, 8);
+      expect(diagnostic.entities['transactions']!.skipped, 8);
+      expect(diagnostic.decoded, lessThanOrEqualTo(manifest.totalCount));
+    },
+  );
+
+  test(
+    'v18 to v19 migration preserves cursor rows and adds diagnostics',
+    () async {
+      final fixture = await _Fixture.create('migration-v19');
+      addTearDown(fixture.dispose);
+      final store = LocalStore(databasePath: fixture.path);
+      await store.initialize();
+      await store.db.insert('sync_cursors', {
+        'book_id': 'existing-book',
+        'last_server_sequence': 41,
+        'initialization_state': 'failed',
+        'initialization_direction': 'download',
+        'downloaded_count': 7,
+        'last_error_message': 'Existing safe error',
+        'updated_at': 1,
+      });
+      await store.db.execute(
+        'ALTER TABLE sync_cursors DROP COLUMN initial_sync_diagnostic_json',
+      );
+      await store.db.setVersion(18);
+      await store.close();
+
+      final reopened = LocalStore(databasePath: fixture.path);
+      await reopened.initialize();
+      addTearDown(reopened.close);
+      final cursor = (await reopened.db.query(
+        'sync_cursors',
+        where: 'book_id = ?',
+        whereArgs: ['existing-book'],
+      )).single;
+      expect(cursor['last_server_sequence'], 41);
+      expect(cursor['downloaded_count'], 0);
+      expect(cursor['last_error_message'], 'Existing safe error');
+      expect(cursor['initial_sync_diagnostic_json'], isNull);
+      expect(await reopened.db.getVersion(), 20);
+    },
+  );
+
+  test(
+    'app restart resumes durable staging from its committed cursor',
+    () async {
+      final fixture = await _Fixture.create('restart-download');
+      addTearDown(fixture.dispose);
+      const bookId = 'remote-restart';
+      final manifest = _twentyTwoManifest(bookId);
+      final firstStore = LocalStore(databasePath: fixture.path);
+      await firstStore.initialize();
+      await firstStore.setSyncInitializationState(
+        bookId,
+        SyncInitializationState.secondaryDownloadRequired.name,
+      );
+      final firstAdapter = InitialSyncStoreAdapter(firstStore);
+      await firstAdapter.startInitialization(
+        bookId: bookId,
+        direction: InitialSyncDirection.download,
+        sessionId: 'restart-session',
+        manifest: manifest,
+      );
+      final rows = _twentyTwoRows(bookId);
+      for (final entityType in initialSyncEntityOrder.take(3)) {
+        final typed = rows
+            .where((row) => row['entity_type'] == entityType)
+            .map((row) => row['payload'] as Map<String, Object?>)
+            .toList();
+        await firstAdapter.stageDownloadBatch(
+          bookId,
+          InitialSyncBatch(
+            entityType: entityType,
+            rows: typed,
+            nextCursor: typed.last['id'] as String,
+            complete: true,
+          ),
+        );
+      }
+      await firstStore.close();
+
+      final reopened = LocalStore(databasePath: fixture.path);
+      await reopened.initialize();
+      addTearDown(reopened.close);
+      final resumedAdapter = InitialSyncStoreAdapter(reopened);
+      expect((await resumedAdapter.getDiagnosticSummary(bookId)).decoded, 7);
+      for (final entityType in initialSyncEntityOrder.skip(3)) {
+        final typed = rows
+            .where((row) => row['entity_type'] == entityType)
+            .map((row) => row['payload'] as Map<String, Object?>)
+            .toList();
+        await resumedAdapter.stageDownloadBatch(
+          bookId,
+          InitialSyncBatch(
+            entityType: entityType,
+            rows: typed,
+            nextCursor: typed.last['id'] as String,
+            complete: true,
+          ),
+        );
+      }
+      await resumedAdapter.activateDownload(
+        bookId: bookId,
+        manifest: manifest,
+        authUserId: 'auth-user',
+      );
+      expect((await reopened.getTransactions()), hasLength(8));
+      expect(
+        (await reopened.getSyncCursor(bookId))!['initialization_state'],
+        'ready',
+      );
+    },
+  );
+
+  test('failed batch does not advance checkpoint and reports record', () async {
+    final fixture = await _localFixture('failed-batch');
+    addTearDown(fixture.dispose);
+    const bookId = 'remote-failed-batch';
+    final adapter = InitialSyncStoreAdapter(fixture.store);
+    final manifest = _twentyTwoManifest(bookId);
+    await fixture.store.setSyncInitializationState(
+      bookId,
+      SyncInitializationState.secondaryDownloadRequired.name,
+    );
+    await adapter.startInitialization(
+      bookId: bookId,
+      direction: InitialSyncDirection.download,
+      sessionId: 'failed-batch-session',
+      manifest: manifest,
+    );
+
+    await expectLater(
+      adapter.stageDownloadBatch(
+        bookId,
+        InitialSyncBatch(
+          entityType: 'accounts',
+          rows: [
+            _accountRecord(bookId),
+            {..._accountRecord('another-book'), 'id': 'wrong-account'},
+          ],
+          nextCursor: 'wrong-account',
+          complete: true,
+        ),
+      ),
+      throwsA(
+        isA<InitialSyncException>()
+            .having((error) => error.entityType, 'entity', 'accounts')
+            .having((error) => error.recordId, 'record', 'wrong-account')
+            .having((error) => error.phase, 'phase', 'validate'),
+      ),
+    );
+    final cursor = (await fixture.store.getSyncCursor(bookId))!;
+    expect(cursor['last_processed_cursor'], isNull);
+    expect(cursor['downloaded_count'], 0);
+    expect(
+      await fixture.store.db.query(
+        'initial_sync_staging',
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+      ),
+      isEmpty,
+    );
+  });
+
+  test(
+    'late record rejection rolls back activation with precise diagnostic',
+    () async {
+      final fixture = await _localFixture('late-rejection');
+      addTearDown(fixture.dispose);
+      const bookId = 'remote-late-rejection';
+      final manifest = _twentyTwoManifest(bookId);
+      final adapter = InitialSyncStoreAdapter(fixture.store);
+      await fixture.store.setSyncInitializationState(
+        bookId,
+        SyncInitializationState.secondaryDownloadRequired.name,
+      );
+      await adapter.startInitialization(
+        bookId: bookId,
+        direction: InitialSyncDirection.download,
+        sessionId: 'late-rejection-session',
+        manifest: manifest,
+      );
+      final rows = _twentyTwoRows(bookId);
+      final lastTransaction = rows.last['payload'] as Map<String, Object?>;
+      lastTransaction['title'] = null;
+      for (final entityType in initialSyncEntityOrder) {
+        final typed = rows
+            .where((row) => row['entity_type'] == entityType)
+            .map((row) => row['payload'] as Map<String, Object?>)
+            .toList();
+        await adapter.stageDownloadBatch(
+          bookId,
+          InitialSyncBatch(
+            entityType: entityType,
+            rows: typed,
+            nextCursor: typed.last['id'] as String,
+            complete: true,
+          ),
+        );
+      }
+
+      await expectLater(
+        adapter.activateDownload(
+          bookId: bookId,
+          manifest: manifest,
+          authUserId: 'auth-user',
+        ),
+        throwsA(
+          isA<InitialSyncException>()
+              .having((error) => error.entityType, 'entity', 'transactions')
+              .having((error) => error.recordId, 'record', 'transaction-8')
+              .having((error) => error.phase, 'phase', 'persist')
+              .having((error) => error.committedRecords, 'persisted', 0),
+        ),
+      );
+      expect(
+        (await fixture.store.getFinancialBooks()).where(
+          (book) => book['id'] == bookId,
+        ),
+        isEmpty,
+      );
+      expect(
+        (await fixture.store.getSyncCursor(bookId))!['downloaded_count'],
+        0,
+      );
+    },
+  );
+
+  test('cloud payload mapper excludes provider-only fields', () {
+    final mapped = SupabaseSyncTransport.toLocalPayload('accounts', {
+      ..._accountRecord('book'),
+      'server_sequence': 99,
+      'private_note': 'must not enter SQLite',
+    });
+    expect(mapped, isNot(contains('server_sequence')));
+    expect(mapped, isNot(contains('private_note')));
+    expect(mapped['sync_status'], 'synced');
+
+    final book = SupabaseSyncTransport.toLocalPayload('books', {
+      'id': 'book',
+      'name': 'Shared household',
+      'base_currency_code': 'IDR',
+      'created_by_user_id': 'cloud-user',
+      'created_at': '2026-07-29T00:00:00.000Z',
+      'updated_at': '2026-07-29T00:00:00.000Z',
+      'deleted_at': null,
+      'version': 1,
+      'device_id': 'primary-device',
+      'server_sequence': 22,
+      'remote_updated_at': '2026-07-29T00:00:00.000Z',
+    });
+    expect(book, isNot(contains('created_by_user_id')));
+    expect(book, isNot(contains('server_sequence')));
+    expect(book, isNot(contains('remote_updated_at')));
+  });
+
+  test('activation strips provider columns from a staged cloud row', () async {
+    final fixture = await _localFixture('provider-columns');
+    addTearDown(fixture.dispose);
+    final adapter = InitialSyncStoreAdapter(fixture.store);
+    final manifest = _downloadManifest('remote-provider-columns');
+    await fixture.store.setSyncInitializationState(
+      manifest.bookId,
+      SyncInitializationState.secondaryDownloadRequired.name,
+    );
+    await adapter.startInitialization(
+      bookId: manifest.bookId,
+      direction: InitialSyncDirection.download,
+      sessionId: 'provider-columns-session',
+      manifest: manifest,
+    );
+    final rows = _downloadRows(manifest.bookId);
+    for (final entityType in initialSyncEntityOrder) {
+      final typed = rows.where((row) => row['entity_type'] == entityType).map((
+        row,
+      ) {
+        final payload = Map<String, Object?>.from(
+          row['payload'] as Map<String, Object?>,
+        );
+        payload['created_by_user_id'] = 'cloud-provider-user';
+        payload['server_sequence'] = 22;
+        payload['remote_updated_at'] = '2026-07-29T00:00:00.000Z';
+        return payload;
+      }).toList();
+      await adapter.stageDownloadBatch(
+        manifest.bookId,
+        InitialSyncBatch(
+          entityType: entityType,
+          rows: typed,
+          nextCursor: typed.isEmpty ? null : typed.last['id'] as String,
+          complete: true,
+        ),
+      );
+    }
+
+    await adapter.activateDownload(
+      bookId: manifest.bookId,
+      manifest: manifest,
+      authUserId: 'auth-user',
+    );
+
+    final book = (await fixture.store.db.query(
+      'books',
+      where: 'id = ?',
+      whereArgs: [manifest.bookId],
+    )).single;
+    expect(book['name'], manifest.bookName);
+    expect(book, isNot(contains('created_by_user_id')));
+    expect(
+      (await fixture.store.getSyncCursor(
+        manifest.bookId,
+      ))!['initialization_state'],
+      SyncInitializationState.ready.name,
+    );
+  });
+
+  test('repeated download taps share one active coordinator job', () async {
+    final fixture = await _localFixture('concurrent-download');
+    addTearDown(fixture.dispose);
+    const bookId = 'remote-concurrent';
+    final repository = _repository(fixture.store);
+    await repository.prepareSecondary(bookId);
+    final transport = _BlockingInitialTransport();
+    final coordinator = InitialSyncCoordinator(
+      repository: repository,
+      transport: transport,
+    );
+
+    final first = coordinator.download(bookId: bookId, authUserId: 'auth');
+    final second = coordinator.download(bookId: bookId, authUserId: 'auth');
+    transport.release.complete();
+    final results = await Future.wait([first, second]);
+    expect(results.every((result) => result.success), isTrue);
+    expect(transport.beginDownloadCalls, 1);
+  });
 
   test('download integrity failure leaves active book unchanged', () async {
     final fixture = await _localFixture('integrity');
@@ -691,6 +1151,121 @@ List<Map<String, Object?>> _downloadRows(String bookId) {
   ];
 }
 
+InitialSyncManifest _twentyTwoManifest(String bookId) => InitialSyncManifest(
+  bookId: bookId,
+  bookName: 'Synthetic 22 household',
+  baseCurrencyCode: 'IDR',
+  counts: const {
+    'books': 1,
+    'household_members': 2,
+    'categories': 4,
+    'projects': 2,
+    'accounts': 3,
+    'asset_definitions': 2,
+    'transactions': 8,
+  },
+  snapshotSequence: 2200,
+  memberRole: 'member',
+  householdMemberId: 'member-2',
+  remoteInitializationComplete: true,
+  remoteRecordCount: 21,
+);
+
+List<Map<String, Object?>> _twentyTwoRows(String bookId) {
+  final now = DateTime(2026, 7, 29).millisecondsSinceEpoch;
+  Map<String, Object?> canonical(String id) => {
+    'id': id,
+    'book_id': bookId,
+    'created_at': now,
+    'updated_at': now,
+    'version': 1,
+    'device_id': 'synthetic-device',
+    'sync_status': 'synced',
+  };
+
+  final rows = <Map<String, Object?>>[
+    {
+      'entity_type': 'books',
+      'payload': _bookRecord(bookId, 'Synthetic 22 household'),
+    },
+    for (final member in const [
+      ('member-1', 'Owner', 'owner'),
+      ('member-2', 'Member', 'member'),
+    ])
+      {
+        'entity_type': 'household_members',
+        'payload': {
+          ...canonical(member.$1),
+          'display_name': member.$2,
+          'role': member.$3,
+        },
+      },
+    for (var index = 1; index <= 4; index++)
+      {
+        'entity_type': 'categories',
+        'payload': {
+          ...canonical('category-$index'),
+          'name': 'Category $index',
+          'category_type': index == 4 ? 'income' : 'expense',
+        },
+      },
+    for (var index = 1; index <= 2; index++)
+      {
+        'entity_type': 'projects',
+        'payload': {
+          ...canonical('project-$index'),
+          'name': 'Project $index',
+          'status': 'active',
+        },
+      },
+    for (var index = 1; index <= 3; index++)
+      {
+        'entity_type': 'accounts',
+        'payload': {
+          ...canonical('account-$index'),
+          'owner_member_id': index == 3 ? 'member-2' : 'member-1',
+          'name': 'Account $index',
+          'account_type': index == 3 ? 'cash' : 'bank',
+          'currency_code': 'IDR',
+          'opening_balance': index * 100000,
+          'opening_balance_date': now,
+        },
+      },
+    for (var index = 1; index <= 2; index++)
+      {
+        'entity_type': 'asset_definitions',
+        'payload': {
+          ...canonical('asset-$index'),
+          'display_name': 'Asset $index',
+          'asset_kind': index == 1 ? 'gold' : 'crypto',
+          'symbol': index == 1 ? 'XAU' : 'BTC',
+          'currency_code': 'IDR',
+          'unit': index == 1 ? 'gram' : 'btc',
+          'lot_size': 1,
+          'online_pricing_enabled': 0,
+        },
+      },
+  ];
+  for (var index = 1; index <= 8; index++) {
+    rows.add({
+      'entity_type': 'transactions',
+      'payload': Transaction(
+        id: 'transaction-$index',
+        bookId: bookId,
+        enteredByMemberId: index.isEven ? 'member-2' : 'member-1',
+        projectId: index <= 4 ? 'project-1' : 'project-2',
+        title: 'Transaction $index',
+        category: index == 8 ? 'Category 4' : 'Category 1',
+        account: 'Account 1',
+        date: DateTime(2026, 7, index),
+        amount: index * 10000,
+        type: index == 8 ? TransactionType.income : TransactionType.expense,
+      ).toRecord(),
+    });
+  }
+  return rows;
+}
+
 Map<String, Object?> _bookRecord(String id, String name) {
   final now = DateTime(2026, 7, 26).millisecondsSinceEpoch;
   return {
@@ -835,6 +1410,62 @@ class _FakeInitialTransport implements InitialSyncTransport {
     );
   }
 
+  @override
+  Future<void> cancel(String sessionId) async {}
+}
+
+class _BlockingInitialTransport implements InitialSyncTransport {
+  final release = Completer<void>();
+  int beginDownloadCalls = 0;
+
+  @override
+  bool get isConfigured => true;
+  @override
+  bool get isAuthenticated => true;
+  @override
+  Future<InitialSyncManifest> inspect(String bookId) async =>
+      _twentyTwoManifest(bookId);
+  @override
+  Future<InitialSyncSession> beginDownload(String bookId) async {
+    beginDownloadCalls++;
+    await release.future;
+    return InitialSyncSession(
+      id: 'blocking-session',
+      manifest: _twentyTwoManifest(bookId),
+      direction: InitialSyncDirection.download,
+    );
+  }
+
+  @override
+  Future<InitialSyncBatch> downloadBatch({
+    required String sessionId,
+    required String entityType,
+    String? afterEntityId,
+    int limit = 100,
+  }) async {
+    final rows = _twentyTwoRows('remote-concurrent')
+        .where((row) => row['entity_type'] == entityType)
+        .map((row) => row['payload'] as Map<String, Object?>)
+        .toList();
+    return InitialSyncBatch(
+      entityType: entityType,
+      rows: afterEntityId == null ? rows : const [],
+      nextCursor: rows.isEmpty ? null : rows.last['id'] as String,
+      complete: true,
+    );
+  }
+
+  @override
+  Future<InitialSyncSession> beginUpload(InitialSyncManifest manifest) =>
+      throw UnimplementedError();
+  @override
+  Future<int> uploadBatch({
+    required String sessionId,
+    required String entityType,
+    required List<Map<String, Object?>> rows,
+  }) => throw UnimplementedError();
+  @override
+  Future<int> completeUpload(String sessionId) => throw UnimplementedError();
   @override
   Future<void> cancel(String sessionId) async {}
 }

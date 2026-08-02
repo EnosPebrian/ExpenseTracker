@@ -3,9 +3,11 @@ import '../../master_data/domain/entities/household_member.dart';
 import 'cloud_models.dart';
 
 abstract interface class CloudSharingRepository {
-  bool get isConfigured;
+  CloudConfigurationDiagnostics get diagnostics;
   CloudAuthUser? get currentUser;
   Stream<CloudAuthUser?> get authChanges;
+
+  Future<void> restoreAuthSession();
 
   Future<void> requestEmailOtp(String email);
   Future<CloudAuthUser> verifyEmailOtp({

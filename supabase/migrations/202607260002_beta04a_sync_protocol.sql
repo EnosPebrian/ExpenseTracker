@@ -127,21 +127,28 @@ begin
     return public.sync_entity_snapshot(p_entity_type, entity_id);
   end if;
 
-  columns := case p_entity_type
-    when 'household_members' then
-      'id,book_id,display_name,role,created_at,updated_at,deleted_at,version,device_id'
-    when 'accounts' then
-      'id,book_id,owner_member_id,name,account_type,currency_code,opening_balance,opening_balance_date,created_at,updated_at,deleted_at,version,device_id'
-    when 'categories' then
-      'id,book_id,name,category_type,created_at,updated_at,deleted_at,version,device_id'
-    when 'projects' then
-      'id,book_id,name,status,created_at,updated_at,deleted_at,version,device_id'
-    when 'asset_definitions' then
-      'id,book_id,display_name,asset_kind,symbol,provider_code,provider_symbol,exchange_code,currency_code,unit,lot_size,online_pricing_enabled,created_at,updated_at,deleted_at,version,device_id'
-    when 'transactions' then
-      'id,book_id,entered_by_member_id,project_id,title,category,account,transaction_date,amount,transaction_type,quantity,unit,unit_price,asset_definition_id,asset_name,asset_symbol,asset_action,fee_amount,fee_treatment,related_transaction_id,relation_type,market_reference_unit_price,market_reference_currency_code,market_reference_unit,market_reference_source,market_reference_quoted_at,created_at,updated_at,deleted_at,version,device_id'
-    else raise exception 'Unsupported sync entity'
-  end;
+ case p_entity_type
+  when 'household_members' then
+    columns := 'id,book_id,display_name,role,created_at,updated_at,deleted_at,version,device_id';
+
+  when 'accounts' then
+    columns := 'id,book_id,owner_member_id,name,account_type,currency_code,opening_balance,opening_balance_date,created_at,updated_at,deleted_at,version,device_id';
+
+  when 'categories' then
+    columns := 'id,book_id,name,category_type,created_at,updated_at,deleted_at,version,device_id';
+
+  when 'projects' then
+    columns := 'id,book_id,name,status,created_at,updated_at,deleted_at,version,device_id';
+
+  when 'asset_definitions' then
+    columns := 'id,book_id,display_name,asset_kind,symbol,provider_code,provider_symbol,exchange_code,currency_code,unit,lot_size,online_pricing_enabled,created_at,updated_at,deleted_at,version,device_id';
+
+  when 'transactions' then
+    columns := 'id,book_id,entered_by_member_id,project_id,title,category,account,transaction_date,amount,transaction_type,quantity,unit,unit_price,asset_definition_id,asset_name,asset_symbol,asset_action,fee_amount,fee_treatment,related_transaction_id,relation_type,market_reference_unit_price,market_reference_currency_code,market_reference_unit,market_reference_source,market_reference_quoted_at,created_at,updated_at,deleted_at,version,device_id';
+
+  else
+    raise exception 'Unsupported sync entity: %', p_entity_type;
+end case;
 
   if existing is null then
     execute format(
@@ -165,7 +172,7 @@ create or replace function public.push_book_changes(
 set search_path = public, pg_temp as $$
 declare
   operation jsonb;
-  operation_id uuid;
+  current_operation_id uuid;
   entity_type text;
   op_entity_id uuid;
   operation_type text;
@@ -187,7 +194,7 @@ begin
 
   for operation in select value from jsonb_array_elements(p_operations) loop
     begin
-      operation_id := (operation->>'operationId')::uuid;
+      current_operation_id := (operation->>'operationId')::uuid;
       entity_type := operation->>'entityType';
       op_entity_id := (operation->>'entityId')::uuid;
       operation_type := operation->>'operationType';
@@ -202,7 +209,7 @@ begin
       end if;
 
       select * into processed from public.processed_sync_operations
-        where processed_sync_operations.operation_id = operation_id;
+        where processed_sync_operations.operation_id = current_operation_id;
       if processed.operation_id is not null then
         if processed.book_id <> p_book_id or
            processed.entity_type <> entity_type or
@@ -210,7 +217,7 @@ begin
           raise exception 'Operation identity mismatch';
         end if;
         results := results || jsonb_build_array(jsonb_build_object(
-          'operation_id', operation_id,
+          'operation_id', current_operation_id,
           'entity_type', processed.entity_type,
           'status', case when processed.result_status = 'applied'
             then 'already_applied' else processed.result_status end,
@@ -282,11 +289,11 @@ begin
           operation_id, book_id, entity_type, entity_id, result_status,
           server_version
         ) values (
-          operation_id, p_book_id, entity_type, op_entity_id, 'version_conflict',
+          current_operation_id, p_book_id, entity_type, op_entity_id, 'version_conflict',
           coalesce((current_snapshot->>'version')::bigint, 0)
         );
         results := results || jsonb_build_array(jsonb_build_object(
-          'operation_id', operation_id,
+          'operation_id', current_operation_id,
           'entity_type', entity_type,
           'status', 'version_conflict',
           'server_version', coalesce((current_snapshot->>'version')::bigint, 0),
@@ -306,11 +313,11 @@ begin
         operation_id, book_id, entity_type, entity_id, result_status,
         server_version, server_sequence
       ) values (
-        operation_id, p_book_id, entity_type, op_entity_id, 'applied',
+        current_operation_id, p_book_id, entity_type, op_entity_id, 'applied',
         (applied_snapshot->>'version')::bigint, sequence_value
       );
       results := results || jsonb_build_array(jsonb_build_object(
-        'operation_id', operation_id,
+        'operation_id', current_operation_id,
         'entity_type', entity_type,
         'status', 'applied',
         'server_version', (applied_snapshot->>'version')::bigint,

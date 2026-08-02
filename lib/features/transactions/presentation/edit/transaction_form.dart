@@ -15,6 +15,7 @@ class TransactionFormOptions {
     required this.expenseCategories,
     required this.incomeCategories,
     required this.projects,
+    this.projectIdsByName = const {},
     this.assetDefinitions = const [],
     this.assetMarketPrices = const [],
   });
@@ -23,6 +24,7 @@ class TransactionFormOptions {
   final List<String> expenseCategories;
   final List<String> incomeCategories;
   final List<String> projects;
+  final Map<String, String> projectIdsByName;
   final List<AssetDefinition> assetDefinitions;
   final List<AssetMarketPrice> assetMarketPrices;
 
@@ -135,7 +137,8 @@ class _TransactionFormState extends State<TransactionForm> {
   String _projectName(String? projectId) {
     if (projectId == null) return 'No project';
     return widget.options.projects.firstWhere(
-      (name) => _projectId(name) == projectId,
+      (name) =>
+          _projectId(name) == projectId || _legacyProjectId(name) == projectId,
       orElse: () => projectId,
     );
   }
@@ -359,7 +362,10 @@ class _TransactionFormState extends State<TransactionForm> {
     ...values,
   ];
 
-  static String _projectId(String value) =>
+  String _projectId(String value) =>
+      widget.options.projectIdsByName[value] ?? _legacyProjectId(value);
+
+  static String _legacyProjectId(String value) =>
       value.toLowerCase().trim().replaceAll(RegExp(r'\s+'), '-');
 
   AssetDefinition? _selectedAssetDefinition(AssetAction? action) {

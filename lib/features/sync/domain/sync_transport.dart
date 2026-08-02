@@ -30,6 +30,20 @@ abstract interface class SyncTransport {
   });
 }
 
+abstract interface class ConflictResolutionTransport {
+  Future<ConflictResolutionResult> resolveConflict({
+    required SyncConflict conflict,
+    required String resolutionOperationId,
+    required ConflictResolutionType resolutionType,
+    Map<String, Object?>? resolvedPayload,
+  });
+}
+
+abstract interface class SyncWakeupTransport {
+  Future<void> subscribeToBookChanges(String bookId, void Function() onWakeup);
+  Future<void> unsubscribeFromBookChanges();
+}
+
 class UnavailableSyncTransport implements SyncTransport {
   const UnavailableSyncTransport({this.configured = false});
 

@@ -1,8 +1,39 @@
 # Pilgrim Tracker Database and Persistence Schema
 
+Fresh schema creation inserts no user financial rows.
+
+Current SQLite schema version: **20**. Version 20 changes
+`asset_market_prices` identity from global `asset_key` to the household-scoped
+composite primary key `(book_id, asset_key)`. Existing rows and values are
+preserved. This permits restored households to retain identical asset keys
+without colliding; no calculation or transaction field changes.
+
+Version 19 adds nullable
+`sync_cursors.initial_sync_diagnostic_json` structural per-entity counters for
+initial download. The counters contain no financial values or credentials, and
+the migration preserves every existing cursor and financial row.
+It also resets only non-ready download progress that older clients incorrectly
+counted while rows were still staged; no user-owned records are changed.
+
+Version 18 conservatively replaces a
+legacy name-derived `transactions.project_id` with the matching project UUID
+only when it identifies exactly one active project in the same book. Matching
+durable sync payloads receive the same repair; ambiguous and unmatched values
+remain untouched.
+
+Version 17 replaces only the five stable
+built-in asset-definition IDs with deterministic UUIDs required by the hosted
+sync schema. It preserves transaction references and rewrites matching durable
+outbox, conflict, and in-progress initial-sync payloads. It does not identify or
+delete records by display name.
+
+Version 16 additively extends
+`sync_conflicts` with classification, changed fields, resolution lifecycle, and
+resolution operation identity. Supabase adds `resolve_sync_conflict`.
+
 **Snapshot date:** 2026-07-26
 
-**Native database version:** 14
+**Native database version:** 20
 
 **Native engine:** SQLite through `sqflite_common_ffi`
 
@@ -81,7 +112,8 @@ soft deletion, and sync/version metadata.
 
 ### `asset_market_prices`
 
-Stores the latest validated or manual price by asset key and `book_id`, including symbol,
+Stores the latest validated or manual price under composite primary key
+`(book_id, asset_key)`, including symbol,
 integer price and scale, currency, unit, quote time, source, delay/manual flags,
 and update time. This is a latest-value cache, not price history.
 

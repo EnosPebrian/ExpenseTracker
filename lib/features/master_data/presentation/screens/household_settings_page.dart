@@ -32,17 +32,19 @@ class HouseholdSettingsPage extends StatelessWidget {
     required String title,
     String initialValue = '',
   }) async {
-    final controller = TextEditingController(text: initialValue);
+    var value = initialValue;
     final result = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(title),
-        content: TextField(
+        content: TextFormField(
           key: const Key('household-name-field'),
-          controller: controller,
+          initialValue: initialValue,
           autofocus: true,
           decoration: const InputDecoration(labelText: 'Name'),
-          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+          onChanged: (updated) => value = updated,
+          onFieldSubmitted: (value) =>
+              Navigator.pop(dialogContext, value.trim()),
         ),
         actions: [
           TextButton(
@@ -50,14 +52,12 @@ class HouseholdSettingsPage extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, controller.text.trim()),
+            onPressed: () => Navigator.pop(dialogContext, value.trim()),
             child: const Text('Save'),
           ),
         ],
       ),
     );
-    controller.dispose();
     return result?.trim().isEmpty == true ? null : result;
   }
 
@@ -148,9 +148,10 @@ class HouseholdSettingsPage extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'Household members identify who owns accounts and who entered '
-                'transactions. Multi-device sharing will be enabled in a '
-                'later synchronization milestone.',
+                'Household members identify account ownership and transaction '
+                'attribution. Authorized members can synchronize this '
+                'household across devices when cloud sharing is configured '
+                'and signed in.',
               ),
             ),
           ),

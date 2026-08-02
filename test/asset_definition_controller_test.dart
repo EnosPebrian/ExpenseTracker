@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pilgrim_tracker/app/data/default_asset_definitions.dart';
+import 'package:pilgrim_tracker/core/master_data/default_asset_definition_ids.dart';
 import 'package:pilgrim_tracker/features/assets/controllers/asset_definition_controller.dart';
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_definition.dart';
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_kind.dart';
@@ -51,7 +52,7 @@ void main() {
       final usd = currenciesBySymbol['USD']!;
       final sgd = currenciesBySymbol['SGD']!;
 
-      expect(usd.id, 'asset-usd');
+      expect(usd.id, defaultUsdAssetId);
       expect(usd.displayName, 'US Dollar Cash');
       expect(usd.normalizedProviderCode, 'ALPHA_VANTAGE');
       expect(usd.providerSymbol, 'USD/IDR');
@@ -63,7 +64,7 @@ void main() {
       expect(usd.quoteSymbol, 'USD/IDR');
       expect(usd.validate(), isEmpty);
 
-      expect(sgd.id, 'asset-sgd');
+      expect(sgd.id, defaultSgdAssetId);
       expect(sgd.displayName, 'Singapore Dollar Cash');
       expect(sgd.normalizedProviderCode, 'ALPHA_VANTAGE');
       expect(sgd.providerSymbol, 'SGD/IDR');
@@ -327,6 +328,25 @@ void main() {
 
         expect(repository.getAll(), completion(hasLength(1)));
         expect(controller.error, contains('already exists'));
+      },
+    );
+
+    test(
+      'reference bootstrap can preserve an existing conflicting definition',
+      () async {
+        final repository = _FakeAssetDefinitionRepository();
+        final existing = _bbcaDefinition().copyWith(id: 'user-bbca');
+        await repository.upsert(existing);
+        final controller = AssetDefinitionController(repository: repository);
+
+        await controller.initialize(
+          seeds: [_bbcaDefinition()],
+          preserveExistingDefinitionsOnSeedConflict: true,
+        );
+
+        expect(controller.error, isNull);
+        expect(controller.integrityResult, isNull);
+        expect(await repository.getAll(), [existing]);
       },
     );
 

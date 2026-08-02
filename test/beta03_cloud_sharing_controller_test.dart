@@ -24,6 +24,60 @@ void main() {
     expect(repository.calls, isEmpty);
   });
 
+  test('configured build without session is signed out, not failed', () async {
+    final controller = CloudSharingController(
+      repository: _FakeCloudRepository(),
+    );
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    expect(controller.status, CloudSharingStatus.signedOut);
+    expect(controller.error, isNull);
+  });
+
+  test('session restoration exposes a neutral loading state', () async {
+    final gate = Completer<void>();
+    final repository = _FakeCloudRepository()..restoreGate = gate;
+    final controller = CloudSharingController(repository: repository);
+    addTearDown(controller.dispose);
+    final initializing = controller.initialize();
+    expect(controller.status, CloudSharingStatus.restoringSession);
+    expect(controller.error, isNull);
+    gate.complete();
+    await initializing;
+    expect(controller.status, CloudSharingStatus.signedOut);
+  });
+
+  test(
+    'expired restored session is cleared without touching local state',
+    () async {
+      final repository = _FakeCloudRepository()
+        ..restoreFailure = const CloudSharingException(
+          'Your cloud session expired. Sign in again. Your local data is safe.',
+          kind: CloudFailureKind.sessionExpired,
+        );
+      final controller = CloudSharingController(repository: repository);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      expect(controller.status, CloudSharingStatus.sessionExpired);
+      expect(repository.signedOut, isTrue);
+      expect(controller.user, isNull);
+    },
+  );
+
+  test('real restoration connectivity failure is retryable', () async {
+    final repository = _FakeCloudRepository()
+      ..restoreFailure = const CloudSharingException(
+        'Pilgrim Tracker could not reach Supabase Auth. '
+        'Check your internet connection and try again.',
+        kind: CloudFailureKind.connectivity,
+      );
+    final controller = CloudSharingController(repository: repository);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    expect(controller.status, CloudSharingStatus.connectivityError);
+    expect(controller.error, contains('internet connection'));
+  });
+
   test('requests email OTP without exposing configuration', () async {
     final repository = _FakeCloudRepository();
     final controller = CloudSharingController(repository: repository);
@@ -55,6 +109,40 @@ void main() {
     await controller.initialize();
     expect(controller.user?.id, 'restored');
     expect(controller.status, CloudSharingStatus.signedInUnlinked);
+  });
+
+  test('keeps only the signed-in user membership from a shared book', () async {
+    final repository =
+        _FakeCloudRepository(
+            initialUser: const CloudAuthUser(
+              id: 'auth-enos',
+              email: 'enos@example.test',
+            ),
+          )
+          ..memberships = const [
+            CloudBookMembership(
+              id: 'enos-membership',
+              bookId: 'shared-book',
+              userId: 'auth-enos',
+              role: CloudMembershipRole.owner,
+              status: 'active',
+            ),
+            CloudBookMembership(
+              id: 'grace-membership',
+              bookId: 'shared-book',
+              userId: 'auth-grace',
+              role: CloudMembershipRole.member,
+              status: 'active',
+            ),
+          ];
+    final controller = CloudSharingController(repository: repository);
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+
+    expect(controller.memberships, hasLength(1));
+    expect(controller.memberships.single.userId, 'auth-enos');
+    expect(controller.memberships.single.role, CloudMembershipRole.owner);
   });
 
   test('sign out clears only remote controller state', () async {
@@ -226,14 +314,32 @@ class _FakeCloudRepository implements CloudSharingRepository {
   bool signedOut = false;
   bool conflictingBook = false;
   bool offline = false;
+  Completer<void>? restoreGate;
+  CloudSharingException? restoreFailure;
   int linkCalls = 0;
 
   @override
-  bool get isConfigured => configured;
+  CloudConfigurationDiagnostics get diagnostics =>
+      CloudConfigurationDiagnostics(
+        configuration: configured
+            ? CloudConfigurationState.configured
+            : CloudConfigurationState.unconfigured,
+        urlValid: configured,
+        publishableKeyPresent: configured,
+        authInitialization: CloudAuthInitializationState.initialized,
+      );
   @override
   CloudAuthUser? get currentUser => _user;
   @override
   Stream<CloudAuthUser?> get authChanges => changes.stream;
+
+  @override
+  Future<void> restoreAuthSession() async {
+    final gate = restoreGate;
+    if (gate != null) await gate.future;
+    final failure = restoreFailure;
+    if (failure != null) throw failure;
+  }
 
   void _check() {
     if (offline) {

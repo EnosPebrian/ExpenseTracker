@@ -1,5 +1,13 @@
 begin;
 create extension if not exists pgtap;
+set local role postgres;
+select set_config(
+  'search_path',
+  format('public,%I', namespace.nspname),
+  true
+) from pg_extension extension
+join pg_namespace namespace on namespace.oid = extension.extnamespace
+where extension.extname = 'pgtap';
 select plan(16);
 
 insert into auth.users(id, aud, role, email, email_confirmed_at, created_at, updated_at)
@@ -17,6 +25,9 @@ values
   ('82000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000001', 'owner', 'active'),
   ('82000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000002', 'member', 'active'),
   ('82000000-0000-0000-0000-000000000002', '81000000-0000-0000-0000-000000000003', 'owner', 'active');
+insert into public.book_sync_initializations(book_id, status, completed_at) values
+  ('82000000-0000-0000-0000-000000000001', 'complete', now()),
+  ('82000000-0000-0000-0000-000000000002', 'complete', now());
 insert into public.processed_sync_operations(
   operation_id, book_id, entity_type, entity_id, result_status
 ) values (
@@ -62,7 +73,7 @@ select is(
         'device_id', 'device-a'
       )
     ))
-  )->0->>'status',
+  ))->0->>'status',
   'validation_error', 'cross-book payload is rejected'
 );
 
@@ -84,7 +95,7 @@ select is(
         'device_id', 'device-a'
       )
     ))
-  )->0->>'status',
+  ))->0->>'status',
   'applied', 'valid insert is applied'
 );
 
@@ -98,7 +109,7 @@ select is(
       'operationType', 'upsert', 'baseVersion', 0, 'deviceId', 'device-a',
       'payload', '{}'::jsonb
     ))
-  )->0->>'status',
+  ))->0->>'status',
   'already_applied', 'duplicate operation returns already applied'
 );
 select is(
@@ -123,7 +134,7 @@ select is(
       'payload', (select to_jsonb(t) || jsonb_build_object('amount', 150)
         from public.transactions t where id = '84000000-0000-0000-0000-000000000002')
     ))
-  )->0->>'status',
+  ))->0->>'status',
   'applied', 'valid update is applied'
 );
 select is(
@@ -137,7 +148,7 @@ select is(
       'payload', (select to_jsonb(t) from public.transactions t
         where id = '84000000-0000-0000-0000-000000000002')
     ))
-  )->0->>'status',
+  ))->0->>'status',
   'version_conflict', 'stale base version preserves a conflict'
 );
 select is(
@@ -151,7 +162,7 @@ select is(
       'payload', (select to_jsonb(t) from public.transactions t
         where id = '84000000-0000-0000-0000-000000000002')
     ))
-  )->0->>'status',
+  ))->0->>'status',
   'applied', 'valid deletion is applied as tombstone'
 );
 select isnt(

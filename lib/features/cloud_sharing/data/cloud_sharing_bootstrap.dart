@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/config/app_environment.dart';
+import '../domain/cloud_models.dart';
 import '../domain/cloud_sharing_repository.dart';
 import '../../sync/data/supabase_sync_transport.dart';
 import '../../sync/data/supabase_initial_sync_transport.dart';
@@ -17,9 +18,16 @@ class CloudSharingBootstrap {
   }
 
   static Future<CloudServices> createServices() async {
-    if (!AppEnvironment.hasSupabaseConfiguration) {
-      return const CloudServices(
-        sharingRepository: UnconfiguredCloudSharingRepository(),
+    final diagnostics = AppEnvironment.supabaseDiagnostics;
+    if (!diagnostics.isValid) {
+      return CloudServices(
+        sharingRepository: UnconfiguredCloudSharingRepository(
+          configurationState: diagnostics.urlPresent && !diagnostics.urlValid
+              ? CloudConfigurationState.invalid
+              : CloudConfigurationState.unconfigured,
+          urlValid: diagnostics.urlValid,
+          publishableKeyPresent: diagnostics.publishableKeyPresent,
+        ),
         syncTransport: UnavailableSyncTransport(),
         initialSyncTransport: UnavailableInitialSyncTransport(),
       );
@@ -36,8 +44,11 @@ class CloudSharingBootstrap {
         initialSyncTransport: SupabaseInitialSyncTransport(client),
       );
     } catch (_) {
-      return const CloudServices(
+      return CloudServices(
         sharingRepository: UnconfiguredCloudSharingRepository(
+          configurationState: CloudConfigurationState.failed,
+          urlValid: diagnostics.urlValid,
+          publishableKeyPresent: diagnostics.publishableKeyPresent,
           configurationError:
               'Cloud sharing is temporarily unavailable. Local finance remains usable.',
         ),

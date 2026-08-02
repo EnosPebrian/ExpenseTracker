@@ -113,13 +113,9 @@ class AssetConversionController extends ChangeNotifier {
   late final List<String> _buyAssetOptions;
   late final List<String> _sellAssetOptions;
 
-  final TextEditingController cashController = TextEditingController(
-    text: '50.000.000',
-  );
+  final TextEditingController cashController = TextEditingController();
 
-  final TextEditingController quantityController = TextEditingController(
-    text: '20',
-  );
+  final TextEditingController quantityController = TextEditingController();
 
   final TextEditingController feeController = TextEditingController();
 

@@ -1,5 +1,13 @@
 begin;
 create extension if not exists pgtap;
+set local role postgres;
+select set_config(
+  'search_path',
+  format('public,%I', namespace.nspname),
+  true
+) from pg_extension extension
+join pg_namespace namespace on namespace.oid = extension.extnamespace
+where extension.extname = 'pgtap';
 select plan(17);
 
 insert into auth.users(id, aud, role, email, email_confirmed_at, created_at, updated_at)
@@ -23,11 +31,11 @@ values
 
 select set_config('app.initial_sync_mode', 'on', true);
 insert into public.categories(
-  id, book_id, name, category_type, device_id
+  id, book_id, name, category_type, created_at, updated_at, version, device_id
 ) values (
   '93000000-0000-0000-0000-000000000001',
   '92000000-0000-0000-0000-000000000002',
-  'Existing', 'expense', 'server'
+  'Existing', 'expense', now(), now(), 1, 'server'
 );
 select set_config('app.initial_sync_mode', 'off', true);
 
@@ -117,11 +125,13 @@ select is(
   )->>'received_count')::integer,
   1, 'identical batch retry is idempotent'
 );
+set local role postgres;
 select is(
   (select count(*) from public.initial_sync_items
     where session_id = current_setting('app.beta04b_session')::uuid),
   1::bigint, 'batch retry does not duplicate staged rows'
 );
+set local role authenticated;
 
 select is(
   public.complete_initial_upload(
@@ -129,11 +139,13 @@ select is(
   )->>'status',
   'complete', 'complete validates and finalizes the snapshot'
 );
+set local role postgres;
 select is(
   (select status from public.book_sync_initializations
     where book_id = '92000000-0000-0000-0000-000000000001'),
   'complete', 'remote initialization is marked complete'
 );
+set local role authenticated;
 select set_config(
   'app.beta04b_change_count',
   (select count(*)::text from public.app_changes

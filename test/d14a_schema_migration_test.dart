@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:pilgrim_tracker/core/database/local_store.dart';
+import 'package:pilgrim_tracker/core/master_data/default_asset_definition_ids.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 const _currentTransactionColumns = <String>{
@@ -193,7 +194,7 @@ void main() {
           );
           expect(
             asset['asset_definition_id'],
-            historicalVersion >= 7 ? 'asset-usd' : isNull,
+            historicalVersion >= 7 ? defaultUsdAssetId : isNull,
           );
           expect(asset['fee_amount'], historicalVersion >= 8 ? 100000 : 0);
           expect(
@@ -217,7 +218,7 @@ void main() {
 
         if (historicalVersion >= 6) {
           final definition = (await database.query('asset_definitions')).single;
-          expect(definition['id'], 'asset-usd');
+          expect(definition['id'], defaultUsdAssetId);
           expect(definition['provider_symbol'], 'USD/IDR');
           expect(definition['version'], 3);
           expect(definition['sync_status'], 'synced');

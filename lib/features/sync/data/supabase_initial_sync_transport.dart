@@ -103,18 +103,29 @@ class SupabaseInitialSyncTransport implements InitialSyncTransport {
     final rawRows = body['rows'] is List ? body['rows'] as List : const [];
     return InitialSyncBatch(
       entityType: entityType,
-      rows: rawRows
-          .whereType<Map>()
-          .map(
-            (row) => SupabaseSyncTransport.toLocalPayload(
-              entityType,
-              row.cast<String, Object?>(),
-            ),
-          )
-          .toList(),
+      rows: [for (final row in rawRows) _decodeRow(entityType, row)],
       nextCursor: body['next_cursor'] as String?,
       complete: body['complete'] == true,
     );
+  }
+
+  static Map<String, Object?> _decodeRow(String entityType, Object? value) {
+    String? recordId;
+    try {
+      if (value is! Map) throw const FormatException('Not an object');
+      final row = value.cast<String, Object?>();
+      recordId = row['id']?.toString();
+      return SupabaseSyncTransport.toLocalPayload(entityType, row);
+    } catch (error) {
+      throw InitialSyncException(
+        InitialSyncErrorCode.validation,
+        'A cloud snapshot record could not be decoded.',
+        entityType: entityType,
+        recordId: recordId,
+        phase: 'decode',
+        exceptionClass: error.runtimeType.toString(),
+      );
+    }
   }
 
   @override

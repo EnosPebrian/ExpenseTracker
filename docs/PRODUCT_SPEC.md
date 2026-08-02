@@ -1,5 +1,9 @@
 # Pilgrim Tracker Product Specification
 
+Shared households receive conflict review with Keep shared, Keep this device,
+and safe field-level merge. Deletion and high-risk financial conflicts always
+require explicit confirmation.
+
 **Snapshot date:** 2026-07-21  
 **Product:** Pilgrim Tracker  
 **Primary platforms:** Android and Windows  
@@ -379,3 +383,16 @@ BETA-04A provides the durable incremental protocol. BETA-04B provides a
 confirmed, empty-remote initial upload and stable non-merge secondary download
 before incremental sync may run. Conflict UX and real two-device proof remain
 BETA-04C/BETA-05.
+
+## 13. Backup, restore, and CSV behavior
+
+Users can create a password-encrypted `.ptbackup` for the active household,
+restore it as an independent local household, or perform a strongly confirmed
+matching-household recovery after saving a safety backup. Restore is non-merge,
+validated before activation, and local-only until cloud relinking. Pilgrim
+Tracker cannot recover forgotten backup passwords.
+
+CSV export is a separate filtered, human-readable ZIP with exact integer money,
+stable columns, ISO dates, and formula-injection protection. It is not a full
+application backup. Normal connected device changes use sign-in and cloud
+download; encrypted backup is for offline, emergency, or historical recovery.

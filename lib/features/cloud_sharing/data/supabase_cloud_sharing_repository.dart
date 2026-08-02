@@ -11,7 +11,13 @@ class SupabaseCloudSharingRepository implements CloudSharingRepository {
   final SupabaseClient _client;
 
   @override
-  bool get isConfigured => true;
+  CloudConfigurationDiagnostics get diagnostics =>
+      const CloudConfigurationDiagnostics(
+        configuration: CloudConfigurationState.configured,
+        urlValid: true,
+        publishableKeyPresent: true,
+        authInitialization: CloudAuthInitializationState.initialized,
+      );
 
   @override
   CloudAuthUser? get currentUser => _mapUser(_client.auth.currentUser);
@@ -20,6 +26,12 @@ class SupabaseCloudSharingRepository implements CloudSharingRepository {
   Stream<CloudAuthUser?> get authChanges => _client.auth.onAuthStateChange.map(
     (event) => _mapUser(event.session?.user),
   );
+
+  @override
+  Future<void> restoreAuthSession() async {
+    // Supabase.initialize restores persisted auth before this repository exists.
+    // Reading currentUser is intentionally local and does not ping Auth.
+  }
 
   @override
   Future<void> requestEmailOtp(String email) async {
@@ -58,14 +70,20 @@ class SupabaseCloudSharingRepository implements CloudSharingRepository {
 
   @override
   Future<List<CloudBookMembership>> listMemberships() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return const [];
     final rows = await _guard(
       () => _client
           .from('book_memberships')
-          .select('id,book_id,household_member_id,role,status')
-          .eq('status', 'active'),
+          .select('id,book_id,user_id,household_member_id,role,status')
+          .eq('status', 'active')
+          .eq('user_id', userId),
       'Could not load cloud memberships.',
     );
-    return _maps(rows).map(CloudBookMembership.fromJson).toList();
+    return _maps(rows)
+        .map(CloudBookMembership.fromJson)
+        .where((membership) => membership.userId == userId)
+        .toList();
   }
 
   @override
@@ -178,8 +196,62 @@ class SupabaseCloudSharingRepository implements CloudSharingRepository {
       return await operation();
     } on CloudSharingException {
       rethrow;
+    } on AuthException catch (exception) {
+      throw CloudSharingException(
+        authFailureMessage(exception, fallback: safeMessage),
+        kind: authFailureKind(exception),
+      );
     } catch (_) {
       throw CloudSharingException(safeMessage);
     }
+  }
+
+  static String authFailureMessage(
+    AuthException exception, {
+    required String fallback,
+  }) {
+    final code = exception.code?.trim();
+    final status = exception.statusCode?.trim();
+    if (code == 'over_email_send_rate_limit' ||
+        code == 'over_request_rate_limit' ||
+        status == '429') {
+      return 'Too many verification emails were requested. '
+          'Wait a few minutes, then try again.';
+    }
+    if (code == 'email_provider_disabled' || code == 'otp_disabled') {
+      return 'Email verification is disabled in Supabase Auth.';
+    }
+    if (code == 'request_timeout' || exception is AuthRetryableFetchException) {
+      return 'Pilgrim Tracker could not reach Supabase Auth. '
+          'Check your internet connection and try again.';
+    }
+
+    if (status == '401' ||
+        code == 'refresh_token_not_found' ||
+        code == 'refresh_token_already_used' ||
+        code == 'bad_jwt') {
+      return 'Your cloud session expired. Sign in again. Your local data is safe.';
+    }
+
+    final diagnostic = [
+      if (code != null && code.isNotEmpty) code,
+      if (status != null && status.isNotEmpty) 'HTTP $status',
+    ].join(', ');
+    return [fallback, if (diagnostic.isNotEmpty) '[$diagnostic]'].join(' ');
+  }
+
+  static CloudFailureKind authFailureKind(AuthException exception) {
+    final code = exception.code?.trim();
+    final status = exception.statusCode?.trim();
+    if (code == 'request_timeout' || exception is AuthRetryableFetchException) {
+      return CloudFailureKind.connectivity;
+    }
+    if (status == '401' ||
+        code == 'refresh_token_not_found' ||
+        code == 'refresh_token_already_used' ||
+        code == 'bad_jwt') {
+      return CloudFailureKind.sessionExpired;
+    }
+    return CloudFailureKind.rejected;
   }
 }

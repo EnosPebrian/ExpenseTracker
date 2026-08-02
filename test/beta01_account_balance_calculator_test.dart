@@ -139,6 +139,30 @@ void main() {
     );
   });
 
+  test(
+    'asset conversion route applies cash effect to its financial account',
+    () {
+      final account = Account(name: 'BETA TEST Enos Bank');
+      final purchase = Transaction(
+        title: 'Gold acquisition',
+        category: 'Asset Conversion',
+        account: 'BETA TEST Enos Bank -> Gold Holdings',
+        date: DateTime(2026, 7, 28),
+        amount: 1000000,
+        type: TransactionType.assetConversion,
+        assetAction: AssetAction.buy,
+      );
+
+      expect(
+        AccountBalanceCalculator.calculate(
+          account: account,
+          transactions: [purchase],
+        ),
+        -1000000,
+      );
+    },
+  );
+
   test('separate linked fee is counted once through its expense record', () {
     final account = Account(name: 'Cash');
     final transactions = [

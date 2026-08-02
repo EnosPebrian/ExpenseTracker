@@ -5,7 +5,7 @@ import 'package:uuid/uuid.dart';
 class LocalStore {
   LocalStore({String? databasePath});
 
-  static const schemaVersion = 15;
+  static const schemaVersion = 20;
   static final List<Map<String, Object?>> _records = [];
   static final List<Map<String, Object?>> _assetMarketPrices = [];
   static final List<Map<String, Object?>> _assetDefinitions = [];
@@ -123,11 +123,18 @@ class LocalStore {
   }
 
   Future<void> upsertAssetMarketPrice(Map<String, Object?> record) async {
+    final scoped = _withActiveBook(record);
+    final prepared = {
+      ...scoped,
+      'book_id': scoped['book_id'] ?? 'legacy-default-book',
+    };
     _assetMarketPrices.removeWhere(
-      (item) => item['asset_key'] == record['asset_key'],
+      (item) =>
+          item['asset_key'] == prepared['asset_key'] &&
+          item['book_id'] == prepared['book_id'],
     );
 
-    _assetMarketPrices.add(_withActiveBook(record));
+    _assetMarketPrices.add(prepared);
   }
 
   Future<List<Map<String, Object?>>> getAssetDefinitions({
@@ -213,11 +220,246 @@ class LocalStore {
       );
 
       if (!exists) {
-        if (_assetDefinitions.any((item) => item['id'] == prepared['id'])) {
+        final matchingId = _assetDefinitions
+            .where((item) => item['id'] == prepared['id'])
+            .firstOrNull;
+        if (matchingId != null &&
+            matchingId['book_id'] != prepared['book_id']) {
+          final equivalentInActiveBook = _assetDefinitions.any(
+            (item) =>
+                item['book_id'] == prepared['book_id'] &&
+                _sameAssetDefinitionSeed(item, prepared),
+          );
+          if (equivalentInActiveBook) continue;
+          if (matchingId['book_id'] == null && prepared['book_id'] != null) {
+            matchingId['book_id'] = prepared['book_id'];
+            continue;
+          }
           prepared['id'] = 'web-asset-${DateTime.now().microsecondsSinceEpoch}';
         }
         _assetDefinitions.add(prepared);
       }
+    }
+  }
+
+  Future<Map<String, List<Map<String, Object?>>>> createHouseholdBackupSnapshot(
+    String bookId,
+  ) async {
+    List<Map<String, Object?>> records(
+      Iterable<Map<String, Object?>> source, {
+      bool Function(Map<String, Object?> record)? where,
+    }) {
+      final result = source
+          .where(
+            (record) =>
+                record['book_id'] == bookId && (where?.call(record) ?? true),
+          )
+          .map(Map<String, Object?>.of)
+          .toList();
+      result.sort((left, right) {
+        final leftId = (left['id'] ?? left['asset_key'] ?? '').toString();
+        final rightId = (right['id'] ?? right['asset_key'] ?? '').toString();
+        return leftId.compareTo(rightId);
+      });
+      return result;
+    }
+
+    final household = _books
+        .where((book) => book['id'] == bookId)
+        .map(Map<String, Object?>.of)
+        .toList();
+    if (household.isEmpty) {
+      throw StateError('The selected household no longer exists.');
+    }
+    return {
+      'household': household,
+      'members': records(_householdMembers),
+      'accounts': records(_accounts),
+      'categories': records(
+        _masterRecords,
+        where: (record) => record['_entity_type'] == 'categories',
+      ),
+      'projects': records(
+        _masterRecords,
+        where: (record) => record['_entity_type'] == 'projects',
+      ),
+      'transactions': records(_records),
+      'asset_definitions': records(_assetDefinitions),
+      'manual_market_prices': records(
+        _assetMarketPrices,
+        where: (record) =>
+            record['is_manual'] == 1 || record['is_manual'] == true,
+      ),
+    };
+  }
+
+  Future<void> activateHouseholdBackupSnapshot(
+    Map<String, List<Map<String, Object?>>> snapshot, {
+    String? replaceBookId,
+    bool idempotent = false,
+  }) async {
+    final households = snapshot['household'] ?? const [];
+    if (households.length != 1) {
+      throw StateError('A restore must contain exactly one household.');
+    }
+    final restoredBookId = households.single['id'] as String;
+    if (replaceBookId != null && replaceBookId != restoredBookId) {
+      throw StateError('Replacement requires a matching household ID.');
+    }
+    final members = snapshot['members'] ?? const [];
+    final activeMember = members.cast<Map<String, Object?>>().firstWhere(
+      (member) => member['deleted_at'] == null && member['role'] == 'owner',
+      orElse: () => members.cast<Map<String, Object?>>().firstWhere(
+        (member) => member['deleted_at'] == null,
+        orElse: () => throw StateError(
+          'The restored household needs at least one active member.',
+        ),
+      ),
+    );
+
+    final snapshots = <List<Map<String, Object?>>, List<Map<String, Object?>>>{
+      _records: _records.map(Map<String, Object?>.of).toList(),
+      _assetMarketPrices: _assetMarketPrices
+          .map(Map<String, Object?>.of)
+          .toList(),
+      _assetDefinitions: _assetDefinitions
+          .map(Map<String, Object?>.of)
+          .toList(),
+      _accounts: _accounts.map(Map<String, Object?>.of).toList(),
+      _books: _books.map(Map<String, Object?>.of).toList(),
+      _householdMembers: _householdMembers
+          .map(Map<String, Object?>.of)
+          .toList(),
+      _masterRecords: _masterRecords.map(Map<String, Object?>.of).toList(),
+      _syncOutbox: _syncOutbox.map(Map<String, Object?>.of).toList(),
+      _syncCursors: _syncCursors.map(Map<String, Object?>.of).toList(),
+      _syncConflicts: _syncConflicts.map(Map<String, Object?>.of).toList(),
+    };
+    final sessionSnapshot = _localSession == null
+        ? null
+        : Map<String, Object?>.of(_localSession!);
+    final activeBookSnapshot = _activeBookId;
+    final masterSnapshot = {
+      for (final entry in _master.entries)
+        entry.key: List<String>.of(entry.value),
+    };
+    try {
+      if (replaceBookId != null) {
+        for (final collection in [
+          _records,
+          _assetMarketPrices,
+          _assetDefinitions,
+          _accounts,
+          _householdMembers,
+          _masterRecords,
+        ]) {
+          collection.removeWhere(
+            (record) => record['book_id'] == replaceBookId,
+          );
+        }
+        _books.removeWhere((book) => book['id'] == replaceBookId);
+        _syncOutbox.removeWhere((record) => record['book_id'] == replaceBookId);
+        _syncCursors.removeWhere(
+          (record) => record['book_id'] == replaceBookId,
+        );
+        _syncConflicts.removeWhere(
+          (record) => record['book_id'] == replaceBookId,
+        );
+      }
+
+      void addAll(List<Map<String, Object?>> target, String key) {
+        for (final record in snapshot[key] ?? const []) {
+          final id = record['id'];
+          final index = id == null
+              ? -1
+              : target.indexWhere((item) => item['id'] == id);
+          if (index >= 0) {
+            if (idempotent && _backupRecordsEqual(target[index], record)) {
+              continue;
+            }
+            throw StateError('A restored record ID already exists locally.');
+          }
+          target.add(Map<String, Object?>.of(record));
+        }
+      }
+
+      void addMaster(String key) {
+        final type = key == 'categories' ? 'categories' : 'projects';
+        for (final record in snapshot[key] ?? const []) {
+          final index = _masterRecords.indexWhere(
+            (item) => item['id'] == record['id'],
+          );
+          if (index >= 0) {
+            if (idempotent &&
+                _backupRecordsEqual(_masterRecords[index], record)) {
+              continue;
+            }
+            throw StateError(
+              'A restored $key record ID already exists locally.',
+            );
+          }
+          _masterRecords.add({...record, '_entity_type': type});
+        }
+      }
+
+      addAll(_books, 'household');
+      addAll(_householdMembers, 'members');
+      addAll(_accounts, 'accounts');
+      addMaster('categories');
+      addMaster('projects');
+      addAll(_assetDefinitions, 'asset_definitions');
+      for (final record in snapshot['manual_market_prices'] ?? const []) {
+        final index = _assetMarketPrices.indexWhere(
+          (item) =>
+              item['book_id'] == record['book_id'] &&
+              item['asset_key'] == record['asset_key'],
+        );
+        if (index >= 0) {
+          if (idempotent &&
+              _backupRecordsEqual(_assetMarketPrices[index], record)) {
+            continue;
+          }
+          throw StateError(
+            'A restored market-price key already exists locally.',
+          );
+        }
+        _assetMarketPrices.add(Map<String, Object?>.of(record));
+      }
+      addAll(_records, 'transactions');
+
+      _activeBookId = restoredBookId;
+      _localSession = {
+        'id': 1,
+        'active_profile_id': sessionSnapshot?['active_profile_id'],
+        'active_book_id': restoredBookId,
+        'active_member_id': activeMember['id'],
+        'onboarding_completed': sessionSnapshot?['onboarding_completed'] ?? 1,
+      };
+      _master.removeWhere((key, _) => key.startsWith('$restoredBookId:'));
+      for (final record in _masterRecords.where(
+        (record) =>
+            record['book_id'] == restoredBookId && record['deleted_at'] == null,
+      )) {
+        final entity = record['_entity_type'] as String;
+        final categoryType = entity == 'categories'
+            ? record['category_type'] as String?
+            : null;
+        _master
+            .putIfAbsent(_key(entity, categoryType), () => [])
+            .add(record['name'] as String);
+      }
+    } catch (_) {
+      for (final entry in snapshots.entries) {
+        entry.key
+          ..clear()
+          ..addAll(entry.value);
+      }
+      _localSession = sessionSnapshot;
+      _activeBookId = activeBookSnapshot;
+      _master
+        ..clear()
+        ..addAll(masterSnapshot);
+      rethrow;
     }
   }
 
@@ -347,6 +589,25 @@ class LocalStore {
           .toList();
     }
     return List.of(_master[_key(entity, categoryType)] ?? const []);
+  }
+
+  Future<List<Map<String, Object?>>> getProjectRecords() async {
+    final records =
+        _masterRecords
+            .where(
+              (record) =>
+                  record['_entity_type'] == 'projects' &&
+                  record['book_id'] == _activeBookId &&
+                  record['deleted_at'] == null,
+            )
+            .map(Map<String, Object?>.of)
+            .toList()
+          ..sort(
+            (left, right) => (left['name'] as String).toLowerCase().compareTo(
+              (right['name'] as String).toLowerCase(),
+            ),
+          );
+    return List.unmodifiable(records);
   }
 
   Future<void> ensureMasterSeeds(
@@ -865,6 +1126,86 @@ class LocalStore {
           )
           .length;
 
+  Future<List<Map<String, Object?>>> getSyncConflicts(String bookId) async =>
+      _syncConflicts
+          .where(
+            (item) =>
+                item['book_id'] == bookId &&
+                item['resolution_status'] != 'resolved' &&
+                item['resolved_at'] == null,
+          )
+          .map(Map<String, Object?>.of)
+          .toList()
+        ..sort(
+          (a, b) => (a['created_at'] as num).compareTo(b['created_at'] as num),
+        );
+
+  Future<bool> beginSyncConflictResolution(
+    String id,
+    String operationId,
+  ) async {
+    final index = _syncConflicts.indexWhere(
+      (item) =>
+          item['id'] == id &&
+          (item['resolution_status'] == null ||
+              item['resolution_status'] == 'unresolved' ||
+              item['resolution_status'] == 'resolutionFailed'),
+    );
+    if (index < 0) return false;
+    _syncConflicts[index] = {
+      ..._syncConflicts[index],
+      'resolution_status': 'resolving',
+      'resolution_operation_id': operationId,
+    };
+    return true;
+  }
+
+  Future<void> failSyncConflictResolution(String id) async {
+    final index = _syncConflicts.indexWhere(
+      (item) => item['id'] == id && item['resolution_status'] == 'resolving',
+    );
+    if (index >= 0) {
+      _syncConflicts[index] = {
+        ..._syncConflicts[index],
+        'resolution_status': 'resolutionFailed',
+      };
+    }
+  }
+
+  Future<void> completeSyncConflictResolution(
+    String id, {
+    required String resolution,
+    required Map<String, Object?> canonicalPayload,
+    required int serverSequence,
+  }) async {
+    final index = _syncConflicts.indexWhere(
+      (item) => item['id'] == id && item['resolution_status'] == 'resolving',
+    );
+    if (index < 0) throw StateError('Conflict is no longer resolving.');
+    final conflict = _syncConflicts[index];
+    final collection = _syncCollection(conflict['entity_type'] as String);
+    collection.removeWhere((item) => item['id'] == conflict['entity_id']);
+    collection.add({...canonicalPayload, 'sync_status': 'synced'});
+    _updateOutbox([
+      conflict['operation_id'] as String,
+    ], (item) => {...item, 'status': 'completed'});
+    _syncConflicts[index] = {
+      ...conflict,
+      'resolution_status': 'resolved',
+      'resolution': resolution,
+      'resolved_at': DateTime.now().millisecondsSinceEpoch,
+    };
+    final cursor = _syncCursors.indexWhere(
+      (item) => item['book_id'] == conflict['book_id'],
+    );
+    if (cursor >= 0) {
+      _syncCursors[cursor] = {
+        ..._syncCursors[cursor],
+        'last_server_sequence': serverSequence,
+      };
+    }
+  }
+
   Future<void> applyRemoteSyncBatch(
     String bookId, {
     required List<Map<String, Object?>> changes,
@@ -1002,4 +1343,44 @@ class LocalStore {
     if (record['book_id'] == null && _activeBookId != null)
       'book_id': _activeBookId,
   };
+
+  bool _sameAssetDefinitionSeed(
+    Map<String, Object?> existing,
+    Map<String, Object?> seed,
+  ) {
+    for (final field in const [
+      'display_name',
+      'asset_kind',
+      'symbol',
+      'provider_code',
+      'provider_symbol',
+      'exchange_code',
+      'currency_code',
+      'unit',
+      'lot_size',
+      'online_pricing_enabled',
+    ]) {
+      if (existing[field] != seed[field]) return false;
+    }
+    return existing['deleted_at'] == null;
+  }
+}
+
+bool _backupRecordsEqual(
+  Map<String, Object?> stored,
+  Map<String, Object?> incoming,
+) {
+  for (final entry in incoming.entries) {
+    if (entry.key == '_entity_type') continue;
+    final left = stored[entry.key];
+    final right = entry.value;
+    if (left is num && right is bool) {
+      if (left != (right ? 1 : 0)) return false;
+    } else if (left is bool && right is num) {
+      if ((left ? 1 : 0) != right) return false;
+    } else if (left != right) {
+      return false;
+    }
+  }
+  return true;
 }

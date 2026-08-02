@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pilgrim_tracker/core/master_data/default_asset_definition_ids.dart';
 import 'package:path/path.dart' as p;
 import 'package:pilgrim_tracker/app/data/default_asset_definitions.dart';
 import 'package:pilgrim_tracker/app/services/app_bootstrap_service.dart';
@@ -206,6 +207,17 @@ void main() {
       addTearDown(fixture.dispose);
       final seed = _expense(id: 'seed-expense', amount: 10000, title: 'Seed');
 
+      await fixture.store.ensureAccountSeeds(const ['Cash', 'Bank']);
+      await fixture.store.ensureMasterSeeds('categories', const [
+        'Food',
+        'Asset Fees',
+      ], categoryType: 'expense');
+      await fixture.store.ensureMasterSeeds('categories', const [
+        'Salary',
+      ], categoryType: 'income');
+      await fixture.store.ensureMasterSeeds('projects', const ['Life']);
+      await LocalTransactionRepository(fixture.store).save(seed);
+
       Future<void> bootstrap() async {
         final transactionController = TransactionProviders.controller(
           fixture.store,
@@ -214,13 +226,7 @@ void main() {
           store: fixture.store,
           transactionController: transactionController,
         );
-        await service.load(
-          defaultAccounts: const ['Cash', 'Bank'],
-          defaultExpenseCategories: const ['Food', 'Asset Fees'],
-          defaultIncomeCategories: const ['Salary'],
-          defaultProjects: const ['Life'],
-          seedTransactions: [seed],
-        );
+        await service.load();
         final transactionRepository = LocalTransactionRepository(fixture.store);
         final controller = AssetDefinitionController(
           repository: LocalAssetDefinitionRepository(fixture.store),
@@ -239,7 +245,7 @@ void main() {
         includeDeleted: true,
       );
       final usd = initialDefinitions.singleWhere(
-        (item) => item.id == 'asset-usd',
+        (item) => item.id == defaultUsdAssetId,
       );
       await definitionRepository.upsert(
         usd.copyWith(
@@ -252,7 +258,7 @@ void main() {
         ),
       );
       await definitionRepository.softDelete(
-        'asset-inventory',
+        defaultInventoryAssetId,
         deletedAt: DateTime.utc(2026, 7, 25),
       );
       await definitionRepository.upsert(_userAsset);
@@ -284,11 +290,11 @@ void main() {
       final ids = definitions.map((item) => item.id).toList();
       expect(ids.toSet(), hasLength(ids.length));
       for (final id in const [
-        'asset-gold-holdings',
-        'asset-bitcoin-wallet',
-        'asset-inventory',
-        'asset-usd',
-        'asset-sgd',
+        defaultGoldHoldingsAssetId,
+        defaultBitcoinWalletAssetId,
+        defaultInventoryAssetId,
+        defaultUsdAssetId,
+        defaultSgdAssetId,
         'asset-user-bond',
       ]) {
         expect(ids.where((value) => value == id), hasLength(1));
@@ -300,14 +306,14 @@ void main() {
         ),
       );
       final restoredUsd = definitions.singleWhere(
-        (item) => item.id == 'asset-usd',
+        (item) => item.id == defaultUsdAssetId,
       );
       expect(restoredUsd.displayName, 'Personal USD');
       expect(restoredUsd.providerCode, isNull);
       expect(restoredUsd.onlinePricingEnabled, isFalse);
       expect(
         definitions
-            .singleWhere((item) => item.id == 'asset-inventory')
+            .singleWhere((item) => item.id == defaultInventoryAssetId)
             .isDeleted,
         isTrue,
       );

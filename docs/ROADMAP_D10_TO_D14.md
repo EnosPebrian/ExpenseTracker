@@ -67,6 +67,14 @@ edits, catalog behavior, and legacy retirement. SQLite remains version 10.
 
 ## D14 — Regression, cleanup, documentation, and release hardening
 
+**D14 status (2026-08-02): PASS — Ready for controlled private deployment by
+Enos and Grace.**
+
+The approved scope is private household use on Windows and Android with hosted
+Supabase synchronization, encrypted backup and restore, and CSV export. It does
+not claim public production launch, Play Store publication, enterprise use,
+web production readiness, or third-party security certification.
+
 - D14A persistence, migration, reopen, and integrated regression hardening:
   Complete.
 - D14B platform runtime and release-candidate audit: Complete, with release
@@ -105,9 +113,15 @@ remain pending.
 - **BETA-04B — Complete locally:** controlled owner/empty-remote primary
   upload, stable staged secondary download, resume/cancel, integrity checks,
   and cursor handoff. Remote pgTAP execution awaits an available CLI/runtime.
-- **BETA-04C:** conflict resolution UX and remaining synchronization polish.
+- **BETA-04C:** conflict resolution, sync health, and Realtime wake-up are
+  implemented locally; remote deployment verification remains.
 - **BETA-05:** two-device acceptance testing with Enos and Grace.
+- **BETA-06:** encrypted household backup, safe non-merge restore, CSV export,
+  and recovery documentation implemented; owner acceptance remains required.
 
-**D14 status: Conditionally open.** Do not mark D14 complete until BETA-05,
-owner Android signing, final native builds, and Android/Windows runtime database
-smoke gates in `CLOSED_BETA_CHECKLIST.md` pass.
+**Historical D14 Final status (2026-07-30): FAIL / open.** Owner-certificate preflight and
+the Windows release build/startup pass, but the sole signed Android APK attempt
+ended in a JVM native-memory crash. Signed APK/AAB artifacts, Android runtime,
+interactive Windows portability/reopen, and the remaining owner acceptance
+matrix were unresolved at that checkpoint. Subsequent owner evidence closed
+those gates; the 2026-08-02 PASS above is authoritative.

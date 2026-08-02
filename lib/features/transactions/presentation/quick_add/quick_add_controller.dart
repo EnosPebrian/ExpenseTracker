@@ -12,6 +12,7 @@ class QuickAddConfig {
     required this.expenseCategories,
     required this.incomeCategories,
     required this.projects,
+    this.projectIdsByName = const {},
     required this.assetDefinitions,
     this.assetMarketPrices = const [],
     this.defaultProject = 'Life',
@@ -28,6 +29,7 @@ class QuickAddConfig {
   final List<String> expenseCategories;
   final List<String> incomeCategories;
   final List<String> projects;
+  final Map<String, String> projectIdsByName;
 
   /// Concrete measurable or tradable assets used by Asset Conversion.
   final List<AssetDefinition> assetDefinitions;
@@ -367,7 +369,8 @@ class QuickAddController extends ChangeNotifier {
     super.dispose();
   }
 
-  static String _projectId(String value) {
-    return value.toLowerCase().trim().replaceAll(RegExp(r'\s+'), '-');
+  String _projectId(String value) {
+    return config.projectIdsByName[value] ??
+        value.toLowerCase().trim().replaceAll(RegExp(r'\s+'), '-');
   }
 }

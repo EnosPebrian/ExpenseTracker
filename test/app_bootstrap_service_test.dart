@@ -5,6 +5,7 @@ import 'package:pilgrim_tracker/features/transactions/domain/entities/transactio
 import 'package:pilgrim_tracker/features/transactions/domain/repositories/transaction_repository.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/usecases/transaction_usecases.dart';
 import 'package:pilgrim_tracker/features/transactions/presentation/controllers/transaction_controller.dart';
+import 'package:pilgrim_tracker/features/master_data/domain/entities/financial_project.dart';
 
 class _FakeStore extends LocalStore {
   bool initialized = false;
@@ -39,6 +40,15 @@ class _FakeStore extends LocalStore {
     String? categoryType,
   }) async {
     return List<String>.of(masterData[_key(entity, categoryType)] ?? const []);
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> getProjectRecords() async {
+    return [
+      for (final (index, name)
+          in (masterData['projects:'] ?? const <String>[]).indexed)
+        FinancialProject(id: 'project-$index', name: name).toRecord(),
+    ];
   }
 }
 
@@ -95,7 +105,7 @@ TransactionController _createController(_FakeTransactionRepository repository) {
 
 void main() {
   test(
-    'bootstrap initializes storage, loads master data, and seeds transactions',
+    'bootstrap initializes storage and never seeds financial data',
     () async {
       final store = _FakeStore();
 
@@ -114,43 +124,19 @@ void main() {
         transactionController: transactionController,
       );
 
-      final seedTransaction = Transaction(
-        title: 'Initial income',
-        category: 'Salary',
-        account: 'Cash',
-        date: DateTime(2026, 7, 19),
-        amount: 1000000,
-        type: TransactionType.income,
-      );
-
-      final result = await service.load(
-        defaultAccounts: const ['Default Account'],
-        defaultExpenseCategories: const ['Default Expense'],
-        defaultIncomeCategories: const ['Default Income'],
-        defaultProjects: const ['Default Project'],
-        seedTransactions: [seedTransaction],
-      );
+      final result = await service.load();
 
       expect(store.initialized, isTrue);
 
-      expect(
-        store.ensuredSeeds,
-        containsAll([
-          'accounts:',
-          'categories:expense',
-          'categories:income',
-          'projects:',
-        ]),
-      );
+      expect(store.ensuredSeeds, isEmpty);
 
       expect(result.accounts, ['Stored Account']);
       expect(result.expenseCategories, ['Stored Expense']);
       expect(result.incomeCategories, ['Stored Income']);
       expect(result.projects, ['Stored Project']);
 
-      expect(transactionController.transactions, hasLength(1));
-      expect(transactionController.transactions.single.title, 'Initial income');
-      expect(repository.saved, hasLength(1));
+      expect(transactionController.transactions, isEmpty);
+      expect(repository.saved, isEmpty);
     },
   );
   test('bootstrap surfaces transaction loading failures', () async {
@@ -167,13 +153,7 @@ void main() {
     );
 
     expect(
-      () => service.load(
-        defaultAccounts: const ['Cash'],
-        defaultExpenseCategories: const ['Food'],
-        defaultIncomeCategories: const ['Salary'],
-        defaultProjects: const ['Life'],
-        seedTransactions: const [],
-      ),
+      service.load,
       throwsA(
         isA<StateError>().having(
           (error) => error.toString(),

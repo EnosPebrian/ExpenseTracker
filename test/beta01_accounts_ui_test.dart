@@ -80,6 +80,39 @@ void main() {
     expect(saved?.openingBalanceDate, isNotNull);
   });
 
+  testWidgets('starting balance starts empty and groups digits while typing', (
+    tester,
+  ) async {
+    Account? saved;
+    await tester.pumpWidget(
+      _accountsPage(
+        accounts: const [],
+        onSave: (account) async => saved = account,
+      ),
+    );
+    await tester.tap(find.byKey(const Key('create-account-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('account-name-field')),
+      'Grouped Cash',
+    );
+    await tester.tap(find.byKey(const Key('opening-balance-toggle')));
+    await tester.pump();
+
+    final balanceField = find.byKey(const Key('opening-balance-field'));
+    expect(tester.widget<TextField>(balanceField).controller?.text, isEmpty);
+
+    await tester.enterText(balanceField, '1000000');
+    expect(
+      tester.widget<TextField>(balanceField).controller?.text,
+      '1.000.000',
+    );
+
+    await tester.tap(find.byKey(const Key('save-account-button')));
+    await tester.pumpAndSettle();
+    expect(saved?.openingBalance, 1000000);
+  });
+
   testWidgets('edit can remove opening balance', (tester) async {
     Account? saved;
     final account = Account(

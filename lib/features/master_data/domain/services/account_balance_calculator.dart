@@ -79,8 +79,19 @@ class AccountBalanceCalculator {
   }
 
   static bool _belongsTo(Account account, Transaction transaction) {
-    return transaction.account.trim().toLowerCase() ==
-        account.name.trim().toLowerCase();
+    final recordedAccount = transaction.account.trim();
+    var cashAccount = recordedAccount;
+    if (transaction.type == TransactionType.assetConversion) {
+      final route = recordedAccount.split('->');
+      if (route.length == 2) {
+        cashAccount = switch (transaction.assetAction) {
+          AssetAction.buy => route.first.trim(),
+          AssetAction.sell => route.last.trim(),
+          null => recordedAccount,
+        };
+      }
+    }
+    return cashAccount.toLowerCase() == account.name.trim().toLowerCase();
   }
 
   static bool _isOnOrAfterOpeningDate(Account account, DateTime date) {
