@@ -6,13 +6,17 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:uuid/uuid.dart';
 
 import 'household_schema_native.dart';
+import 'import_review_schema_native.dart';
 import 'backup_schema_native.dart';
+import 'budget_schema_native.dart';
 import 'native_database_path.dart';
 import 'sync_schema_native.dart';
+import 'transaction_import_rule_schema_native.dart';
+import 'transfer_link_schema_native.dart';
 
 class LocalStore {
   LocalStore({this.databasePath});
-  static const schemaVersion = 20;
+  static const schemaVersion = 25;
   static bool _ffiInitialized = false;
 
   final String? databasePath;
@@ -131,6 +135,10 @@ asset_symbol TEXT,
         await _createProfileTables(db);
         await HouseholdSchemaNative.createMembersTable(db);
         await SyncSchemaNative.create(db);
+        await BudgetSchemaNative.create(db);
+        await TransactionImportRuleSchemaNative.create(db);
+        await TransferLinkSchemaNative.create(db);
+        await ImportReviewSchemaNative.create(db);
         await db.execute('''
           CREATE TABLE IF NOT EXISTS asset_market_prices (
             asset_key TEXT NOT NULL,
@@ -411,6 +419,21 @@ asset_symbol TEXT,
         if (oldVersion < 20) {
           await BackupSchemaNative.upgradeToV20(db);
         }
+        if (oldVersion < 21) {
+          await BudgetSchemaNative.upgradeToV21(db);
+        }
+        if (oldVersion < 22) {
+          await TransactionImportRuleSchemaNative.upgradeToV22(db);
+        }
+        if (oldVersion < 23) {
+          await TransferLinkSchemaNative.create(db);
+        }
+        if (oldVersion < 24) {
+          await ImportReviewSchemaNative.create(db);
+        }
+        if (oldVersion < 25) {
+          await ImportReviewSchemaNative.upgradeToV25(db);
+        }
       },
     );
   }
@@ -496,6 +519,8 @@ asset_symbol TEXT,
     return value;
   }
 
+  Future<int> getSchemaVersion() => db.getVersion();
+
   Future<List<Map<String, Object?>>> getTransactions({
     bool includeDeleted = false,
     String? bookId,
@@ -541,6 +566,129 @@ asset_symbol TEXT,
       }
     });
     if (enqueueSync) onSyncMutation?.call();
+  }
+
+  Future<void> insertTransactionsAtomic(
+    List<Map<String, Object?>> records,
+  ) async {
+    if (records.isEmpty) return;
+    await db.transaction((transaction) async {
+      for (final record in records) {
+        final prepared = _withActiveBook(record);
+        await transaction.insert(
+          'transactions',
+          prepared,
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        await _enqueueSyncOperation(transaction, 'transactions', prepared);
+      }
+    });
+    onSyncMutation?.call();
+  }
+
+  Future<List<Map<String, Object?>>> getTransferLinks({
+    bool includeDeleted = false,
+    String? bookId,
+  }) {
+    final scope = bookId ?? _activeBookId;
+    return db.query(
+      'transfer_links',
+      where: _scopedWhere(scope, includeDeleted: includeDeleted),
+      whereArgs: scope == null ? null : [scope],
+      orderBy: 'updated_at DESC',
+    );
+  }
+
+  Future<void> saveInternalTransferAtomic({
+    required List<Map<String, Object?>> transactions,
+    required Map<String, Object?> link,
+    bool enqueueSync = true,
+    Map<String, int> expectedTransactionVersions = const {},
+    Set<String> requireNewTransactionIds = const {},
+  }) async {
+    await db.transaction((txn) async {
+      for (final entry in expectedTransactionVersions.entries) {
+        final rows = await txn.query(
+          'transactions',
+          columns: const ['version'],
+          where: 'id = ?',
+          whereArgs: [entry.key],
+          limit: 1,
+        );
+        if (rows.length != 1 ||
+            (rows.single['version'] as num).toInt() != entry.value) {
+          throw StateError('This transfer candidate changed. Review again.');
+        }
+      }
+      for (final id in requireNewTransactionIds) {
+        final rows = await txn.query(
+          'transactions',
+          columns: const ['id'],
+          where: 'id = ?',
+          whereArgs: [id],
+          limit: 1,
+        );
+        if (rows.isNotEmpty) {
+          throw StateError('This transfer candidate changed. Review again.');
+        }
+      }
+      for (final record in transactions) {
+        final prepared = _withActiveBook(record);
+        await txn.insert(
+          'transactions',
+          prepared,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        if (enqueueSync) {
+          await _enqueueSyncOperation(
+            txn,
+            'transactions',
+            prepared,
+            operationType: prepared['deleted_at'] == null ? 'upsert' : 'delete',
+          );
+        }
+      }
+      final preparedLink = _withActiveBook(link);
+      final existingLink = await txn.query(
+        'transfer_links',
+        columns: const ['id'],
+        where: 'id = ?',
+        whereArgs: [preparedLink['id']],
+        limit: 1,
+      );
+      if (existingLink.isEmpty) {
+        await txn.insert(
+          'transfer_links',
+          preparedLink,
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+      } else {
+        await txn.update(
+          'transfer_links',
+          preparedLink,
+          where: 'id = ?',
+          whereArgs: [preparedLink['id']],
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+      }
+      await _validateInternalTransfersInDatabase(
+        txn,
+        preparedLink['book_id'] as String,
+      );
+      if (enqueueSync) {
+        await _enqueueSyncOperation(
+          txn,
+          'transfer_links',
+          preparedLink,
+          operationType: preparedLink['deleted_at'] == null
+              ? 'upsert'
+              : 'delete',
+        );
+      }
+    });
+    if (enqueueSync) {
+      onSyncMutation?.call();
+    }
   }
 
   Future<void> softDeleteTransaction(
@@ -800,7 +948,16 @@ asset_symbol TEXT,
           'transactions',
           orderBy: 'transaction_date, created_at, id',
         ),
+        'transfer_links': await scoped('transfer_links'),
         'asset_definitions': await scoped('asset_definitions'),
+        'budgets': await scoped(
+          'monthly_category_budgets',
+          orderBy: 'month_start, category_id, id',
+        ),
+        'transaction_import_rules': await scoped(
+          'transaction_import_rules',
+          orderBy: 'priority DESC, name, id',
+        ),
         'manual_market_prices': await scoped(
           'asset_market_prices',
           orderBy: 'asset_key',
@@ -837,7 +994,10 @@ asset_symbol TEXT,
           throw StateError('Replacement requires a matching household ID.');
         }
         for (final table in const [
+          'transfer_links',
           'transactions',
+          'transaction_import_rules',
+          'monthly_category_budgets',
           'asset_market_prices',
           'asset_definitions',
           'projects',
@@ -903,10 +1063,13 @@ asset_symbol TEXT,
       await insertAll('household_members', 'members');
       await insertAll('accounts', 'accounts');
       await insertAll('categories', 'categories');
+      await insertAll('monthly_category_budgets', 'budgets');
+      await insertAll('transaction_import_rules', 'transaction_import_rules');
       await insertAll('projects', 'projects');
       await insertAll('asset_definitions', 'asset_definitions');
       await insertAll('asset_market_prices', 'manual_market_prices');
       await insertAll('transactions', 'transactions');
+      await insertAll('transfer_links', 'transfer_links');
 
       final session = await txn.query(
         'local_session',
@@ -926,6 +1089,213 @@ asset_symbol TEXT,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
     setActiveBookId(restoredBookId);
+  }
+
+  Future<int> recoverHouseholdBackupRecords(
+    String bookId,
+    Map<String, List<Map<String, Object?>>> records, {
+    required bool enqueueSync,
+  }) async {
+    const tables = <String, String>{
+      'accounts': 'accounts',
+      'categories': 'categories',
+      'projects': 'projects',
+      'asset_definitions': 'asset_definitions',
+      'budgets': 'monthly_category_budgets',
+      'transaction_import_rules': 'transaction_import_rules',
+      'transactions': 'transactions',
+      'transfer_links': 'transfer_links',
+    };
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((txn) async {
+      final book = await txn.query(
+        'books',
+        where: 'id = ? AND deleted_at IS NULL',
+        whereArgs: [bookId],
+        limit: 1,
+      );
+      if (book.isEmpty) {
+        throw StateError('The active household is unavailable.');
+      }
+
+      Future<bool> exists(String table, String id) async => (await txn.query(
+        table,
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      )).isNotEmpty;
+
+      Future<bool> available(String table, Object? id) async {
+        if (id == null) return true;
+        return (await txn.query(
+          table,
+          columns: ['id'],
+          where: 'id = ? AND book_id = ?',
+          whereArgs: [id, bookId],
+          limit: 1,
+        )).isNotEmpty;
+      }
+
+      final plannedAccountNames = {
+        for (final row in records['accounts'] ?? const [])
+          (row['name'] as String).trim().toLowerCase(),
+      };
+      final currentAccounts = await txn.query(
+        'accounts',
+        columns: ['name'],
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+      );
+      final availableAccountNames = {
+        ...plannedAccountNames,
+        for (final row in currentAccounts)
+          (row['name'] as String).trim().toLowerCase(),
+      };
+
+      for (final entry in records.entries) {
+        final table = tables[entry.key];
+        if (table == null) throw StateError('Unsupported recovery entity.');
+        for (final source in entry.value) {
+          final id = source['id'];
+          if (id is! String || id.isEmpty || source['book_id'] != bookId) {
+            throw StateError('Recovery record identity is invalid.');
+          }
+          if (source['deleted_at'] != null || await exists(table, id)) {
+            throw StateError('Recovery record is no longer missing.');
+          }
+        }
+      }
+
+      for (final source in records['accounts'] ?? const []) {
+        if (!await available('household_members', source['owner_member_id'])) {
+          throw StateError('A recovered account references a missing member.');
+        }
+      }
+      for (final source in records['budgets'] ?? const []) {
+        if (!await available('categories', source['category_id']) &&
+            !(records['categories'] ?? const []).any(
+              (row) => row['id'] == source['category_id'],
+            )) {
+          throw StateError('A recovered budget references a missing category.');
+        }
+        final collision = await txn.query(
+          'monthly_category_budgets',
+          columns: ['id'],
+          where:
+              'book_id = ? AND category_id = ? AND month_start = ? '
+              'AND deleted_at IS NULL',
+          whereArgs: [bookId, source['category_id'], source['month_start']],
+          limit: 1,
+        );
+        if (collision.isNotEmpty) {
+          throw StateError(
+            'A current budget already uses this category and month.',
+          );
+        }
+      }
+      for (final source in records['transaction_import_rules'] ?? const []) {
+        if (!await available('categories', source['category_id']) &&
+            !(records['categories'] ?? const []).any(
+              (row) => row['id'] == source['category_id'],
+            )) {
+          throw StateError(
+            'A recovered import rule references a missing category.',
+          );
+        }
+        if (!await available('accounts', source['account_id']) &&
+            !(records['accounts'] ?? const []).any(
+              (row) => row['id'] == source['account_id'],
+            )) {
+          throw StateError(
+            'A recovered import rule references a missing account.',
+          );
+        }
+      }
+      for (final source in records['transactions'] ?? const []) {
+        final account = (source['account'] as String? ?? '')
+            .trim()
+            .toLowerCase();
+        if (account.isNotEmpty && !availableAccountNames.contains(account)) {
+          throw StateError(
+            'A recovered transaction references a missing account.',
+          );
+        }
+        for (final dependency in <(String, Object?)>[
+          ('household_members', source['entered_by_member_id']),
+          ('projects', source['project_id']),
+          ('asset_definitions', source['asset_definition_id']),
+          ('transactions', source['related_transaction_id']),
+        ]) {
+          final plannedKey = switch (dependency.$1) {
+            'projects' => 'projects',
+            'asset_definitions' => 'asset_definitions',
+            'transactions' => 'transactions',
+            _ => null,
+          };
+          final planned =
+              plannedKey != null &&
+              (records[plannedKey] ?? const []).any(
+                (row) => row['id'] == dependency.$2,
+              );
+          if (!planned && !await available(dependency.$1, dependency.$2)) {
+            throw StateError('A recovered transaction dependency is missing.');
+          }
+        }
+      }
+      for (final source in records['transfer_links'] ?? const []) {
+        for (final dependency in <(String, Object?)>[
+          ('transactions', source['outgoing_transaction_id']),
+          ('transactions', source['incoming_transaction_id']),
+          ('accounts', source['source_account_id']),
+          ('accounts', source['destination_account_id']),
+        ]) {
+          final plannedKey = dependency.$1;
+          final planned = (records[plannedKey] ?? const []).any(
+            (row) => row['id'] == dependency.$2,
+          );
+          if (!planned && !await available(dependency.$1, dependency.$2)) {
+            throw StateError(
+              'A recovered internal transfer dependency is missing.',
+            );
+          }
+        }
+      }
+
+      for (final key in const [
+        'categories',
+        'projects',
+        'accounts',
+        'asset_definitions',
+        'budgets',
+        'transaction_import_rules',
+        'transactions',
+        'transfer_links',
+      ]) {
+        final table = tables[key]!;
+        final entityType = key == 'budgets' ? 'monthly_category_budgets' : key;
+        for (final source in records[key] ?? const []) {
+          final saved = <String, Object?>{
+            ...source,
+            'book_id': bookId,
+            'updated_at': now,
+            'version': 1,
+            'device_id': 'backup-recovery',
+            'sync_status': enqueueSync ? 'pending' : 'local_only',
+          };
+          await txn.insert(
+            table,
+            saved,
+            conflictAlgorithm: ConflictAlgorithm.abort,
+          );
+          if (enqueueSync) await _enqueueSyncOperation(txn, entityType, saved);
+        }
+      }
+    });
+    if (enqueueSync && records.values.any((rows) => rows.isNotEmpty)) {
+      onSyncMutation?.call();
+    }
+    return getPendingSyncCount(bookId);
   }
 
   Future<void> close() async => _database?.close();
@@ -1247,20 +1617,23 @@ asset_symbol TEXT,
     String entityType,
     Map<String, Object?> record, {
     String? operationType,
+    bool knownLinked = false,
   }) async {
     final bookId = entityType == 'books'
         ? record['id'] as String?
         : record['book_id'] as String?;
     final entityId = record['id'] as String?;
     if (bookId == null || entityId == null) return;
-    final linked = await executor.query(
-      'books',
-      columns: ['id'],
-      where: 'id = ? AND remote_linked_at IS NOT NULL',
-      whereArgs: [bookId],
-      limit: 1,
-    );
-    if (linked.isEmpty) return;
+    if (!knownLinked) {
+      final linked = await executor.query(
+        'books',
+        columns: ['id'],
+        where: 'id = ? AND remote_linked_at IS NOT NULL',
+        whereArgs: [bookId],
+        limit: 1,
+      );
+      if (linked.isEmpty) return;
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
     final version = (record['version'] as num?)?.toInt() ?? 1;
     await executor.insert('sync_outbox', {
@@ -1327,6 +1700,18 @@ asset_symbol TEXT,
       [bookId],
     );
     return (rows.single['total'] as num).toInt();
+  }
+
+  Future<Map<String, int>> getSyncOutboxStatusCounts(String bookId) async {
+    final rows = await db.rawQuery(
+      'SELECT status, COUNT(*) AS total FROM sync_outbox '
+      'WHERE book_id = ? GROUP BY status',
+      [bookId],
+    );
+    return {
+      for (final row in rows)
+        row['status'] as String: (row['total'] as num).toInt(),
+    };
   }
 
   Future<void> recoverInterruptedSyncOperations(String bookId) async {
@@ -1506,10 +1891,44 @@ asset_symbol TEXT,
       }
       final conflict = conflicts.first;
       final table = _syncTable(conflict['entity_type'] as String);
-      await txn.insert(table, {
+      final resolvedRecord = <String, Object?>{
         ...canonicalPayload,
         'sync_status': 'synced',
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      };
+      if (conflict['entity_type'] == 'transfer_links') {
+        final existing = await txn.query(
+          table,
+          columns: const ['id'],
+          where: 'id = ?',
+          whereArgs: [canonicalPayload['id']],
+          limit: 1,
+        );
+        if (existing.isEmpty) {
+          await txn.insert(
+            table,
+            resolvedRecord,
+            conflictAlgorithm: ConflictAlgorithm.abort,
+          );
+        } else {
+          await txn.update(
+            table,
+            resolvedRecord,
+            where: 'id = ?',
+            whereArgs: [canonicalPayload['id']],
+            conflictAlgorithm: ConflictAlgorithm.abort,
+          );
+        }
+      } else {
+        await txn.insert(
+          table,
+          resolvedRecord,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await _validateInternalTransfersInDatabase(
+        txn,
+        conflict['book_id'] as String,
+      );
       await txn.update(
         'sync_outbox',
         {
@@ -1569,12 +1988,31 @@ asset_symbol TEXT,
           ...payload,
           'sync_status': 'synced',
         };
-        await txn.insert(
-          table,
-          saved,
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        if (entityType == 'transfer_links') {
+          if (existing.isEmpty) {
+            await txn.insert(
+              table,
+              saved,
+              conflictAlgorithm: ConflictAlgorithm.abort,
+            );
+          } else {
+            await txn.update(
+              table,
+              saved,
+              where: 'id = ?',
+              whereArgs: [payload['id']],
+              conflictAlgorithm: ConflictAlgorithm.abort,
+            );
+          }
+        } else {
+          await txn.insert(
+            table,
+            saved,
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
       }
+      await _validateInternalTransfersInDatabase(txn, bookId);
       final now = DateTime.now().millisecondsSinceEpoch;
       await txn.rawInsert(
         '''
@@ -1590,6 +2028,70 @@ asset_symbol TEXT,
     });
   }
 
+  Future<void> _validateInternalTransfersInDatabase(
+    DatabaseExecutor executor,
+    String bookId,
+  ) async {
+    final links = await executor.query(
+      'transfer_links',
+      where: 'book_id = ? AND deleted_at IS NULL',
+      whereArgs: [bookId],
+    );
+    if (links.isEmpty) return;
+    final transactions = {
+      for (final row in await executor.query(
+        'transactions',
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+      ))
+        row['id']: row,
+    };
+    final accounts = {
+      for (final row in await executor.query(
+        'accounts',
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+      ))
+        row['id']: row,
+    };
+    final legIds = <Object?>{};
+    for (final link in links) {
+      final outgoing = transactions[link['outgoing_transaction_id']];
+      final incoming = transactions[link['incoming_transaction_id']];
+      final source = accounts[link['source_account_id']];
+      final destination = accounts[link['destination_account_id']];
+      final amount = (link['amount'] as num?)?.toInt();
+      final validIdentity =
+          legIds.add(link['outgoing_transaction_id']) &&
+          legIds.add(link['incoming_transaction_id']);
+      if (outgoing == null ||
+          incoming == null ||
+          source == null ||
+          destination == null ||
+          outgoing['deleted_at'] != null ||
+          incoming['deleted_at'] != null ||
+          source['deleted_at'] != null ||
+          destination['deleted_at'] != null ||
+          outgoing['transaction_type'] != 'expense' ||
+          incoming['transaction_type'] != 'income' ||
+          amount == null ||
+          amount <= 0 ||
+          outgoing['amount'] != amount ||
+          incoming['amount'] != amount ||
+          outgoing['account'] != source['name'] ||
+          incoming['account'] != destination['name'] ||
+          source['currency_code'] != destination['currency_code'] ||
+          source['currency_code'] != link['currency_code'] ||
+          link['source_account_id'] == link['destination_account_id'] ||
+          link['outgoing_transaction_id'] == link['incoming_transaction_id'] ||
+          !validIdentity) {
+        throw StateError(
+          'Remote internal transfer ${link['id']} is invalid or incomplete.',
+        );
+      }
+    }
+  }
+
   String _syncTable(String entityType) {
     if (!const {
       'books',
@@ -1599,6 +2101,11 @@ asset_symbol TEXT,
       'projects',
       'transactions',
       'asset_definitions',
+      'monthly_category_budgets',
+      'transaction_import_rules',
+      'transfer_links',
+      'import_review_sessions',
+      'import_review_drafts',
     }.contains(entityType)) {
       throw ArgumentError.value(entityType, 'entityType');
     }
@@ -1653,6 +2160,798 @@ asset_symbol TEXT,
       whereArgs: whereArgs,
       orderBy: 'name COLLATE NOCASE',
     );
+  }
+
+  Future<List<Map<String, Object?>>> getCategoryRecords({
+    bool includeDeleted = false,
+    String? categoryType,
+    String? bookId,
+  }) {
+    final scope = bookId ?? _activeBookId;
+    final where = <String>[];
+    final whereArgs = <Object?>[];
+    if (scope != null) {
+      where.add('book_id = ?');
+      whereArgs.add(scope);
+    }
+    if (!includeDeleted) where.add('deleted_at IS NULL');
+    if (categoryType != null) {
+      where.add('category_type = ?');
+      whereArgs.add(categoryType);
+    }
+    return db.query(
+      'categories',
+      where: where.join(' AND '),
+      whereArgs: whereArgs,
+      orderBy: 'name COLLATE NOCASE',
+    );
+  }
+
+  Future<List<Map<String, Object?>>> getBudgetCopyCategoryRecords(
+    Iterable<String> categoryIds,
+  ) {
+    final ids = categoryIds.toSet().toList();
+    if (ids.isEmpty) return Future.value(const []);
+    return db.query(
+      'categories',
+      where: 'id IN (${List.filled(ids.length, '?').join(', ')})',
+      whereArgs: ids,
+    );
+  }
+
+  Future<List<Map<String, Object?>>> getMonthlyCategoryBudgets({
+    bool includeDeleted = false,
+    String? bookId,
+    String? monthStart,
+  }) {
+    final scope = bookId ?? _activeBookId;
+    final where = <String>[];
+    final whereArgs = <Object?>[];
+    if (scope != null) {
+      where.add('book_id = ?');
+      whereArgs.add(scope);
+    }
+    if (!includeDeleted) where.add('deleted_at IS NULL');
+    if (monthStart != null) {
+      where.add('month_start = ?');
+      whereArgs.add(monthStart);
+    }
+    return db.query(
+      'monthly_category_budgets',
+      where: where.join(' AND '),
+      whereArgs: whereArgs,
+      orderBy: 'month_start, category_id, id',
+    );
+  }
+
+  Future<Map<String, Object?>> upsertMonthlyCategoryBudget(
+    Map<String, Object?> record, {
+    bool enqueueSync = true,
+  }) async {
+    final prepared = _withActiveBook(record);
+    final bookId = prepared['book_id'] as String?;
+    final note = prepared['note'] as String?;
+    final monthStart = prepared['month_start'] as String;
+    final parsedMonth = DateTime.tryParse(monthStart);
+    if (bookId == null || (prepared['limit_minor'] as num).toInt() <= 0) {
+      throw StateError('A positive household budget is required.');
+    }
+    if (note != null && note.length > 120) {
+      throw StateError('A budget note cannot exceed 120 characters.');
+    }
+    if (!RegExp(r'^\d{4}-\d{2}-01$').hasMatch(monthStart) ||
+        parsedMonth == null ||
+        parsedMonth.day != 1) {
+      throw StateError('A budget month must use YYYY-MM-01.');
+    }
+    late Map<String, Object?> saved;
+    await db.transaction((txn) async {
+      final book = await txn.query(
+        'books',
+        columns: ['base_currency_code'],
+        where: 'id = ?',
+        whereArgs: [bookId],
+        limit: 1,
+      );
+      if (book.isEmpty ||
+          prepared['currency_code'] != book.single['base_currency_code']) {
+        throw StateError('Budgets must use the household base currency.');
+      }
+      final sameId = await txn.query(
+        'monthly_category_budgets',
+        where: 'id = ?',
+        whereArgs: [prepared['id']],
+        limit: 1,
+      );
+      if (sameId.isNotEmpty &&
+          (sameId.single['book_id'] != bookId ||
+              sameId.single['category_id'] != prepared['category_id'] ||
+              sameId.single['month_start'] != prepared['month_start'] ||
+              sameId.single['currency_code'] != prepared['currency_code'])) {
+        throw StateError('Budget identity fields cannot be changed.');
+      }
+      final category = await txn.query(
+        'categories',
+        where: 'id = ? AND book_id = ? AND category_type = ?',
+        whereArgs: [prepared['category_id'], bookId, 'expense'],
+        limit: 1,
+      );
+      if (category.isEmpty ||
+          (sameId.isEmpty && category.single['deleted_at'] != null)) {
+        throw StateError('The budget category is invalid for this household.');
+      }
+      final duplicate = await txn.query(
+        'monthly_category_budgets',
+        where:
+            'book_id = ? AND category_id = ? AND month_start = ? '
+            'AND deleted_at IS NULL AND id <> ?',
+        whereArgs: [
+          bookId,
+          prepared['category_id'],
+          prepared['month_start'],
+          prepared['id'],
+        ],
+        limit: 1,
+      );
+      if (duplicate.isNotEmpty) {
+        throw StateError(
+          'A budget already exists for this category and month.',
+        );
+      }
+      final deletedMatch = sameId.isNotEmpty
+          ? const <Map<String, Object?>>[]
+          : await txn.query(
+              'monthly_category_budgets',
+              where:
+                  'book_id = ? AND category_id = ? AND month_start = ? '
+                  'AND deleted_at IS NOT NULL',
+              whereArgs: [
+                bookId,
+                prepared['category_id'],
+                prepared['month_start'],
+              ],
+              orderBy: 'updated_at DESC',
+              limit: 1,
+            );
+      if (deletedMatch.isEmpty) {
+        saved = prepared;
+      } else {
+        final deleted = deletedMatch.first;
+        final requestedVersion = (prepared['version'] as num).toInt();
+        final restoredVersion = (deleted['version'] as num).toInt() + 1;
+        saved = {
+          ...prepared,
+          'id': deleted['id'],
+          'created_at': deleted['created_at'],
+          'deleted_at': null,
+          'version': requestedVersion > restoredVersion
+              ? requestedVersion
+              : restoredVersion,
+        };
+      }
+      await txn.insert(
+        'monthly_category_budgets',
+        saved,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      if (enqueueSync) {
+        await _enqueueSyncOperation(txn, 'monthly_category_budgets', saved);
+      }
+    });
+    if (enqueueSync) onSyncMutation?.call();
+    return saved;
+  }
+
+  Future<List<Map<String, Object?>>> copyMonthlyCategoryBudgets(
+    List<Map<String, Object?>> records,
+  ) async {
+    if (records.isEmpty) return const [];
+    final copied = <Map<String, Object?>>[];
+    await db.transaction((txn) async {
+      for (final record in records) {
+        var prepared = _withActiveBook(record);
+        final bookId = prepared['book_id'] as String?;
+        final note = prepared['note'] as String?;
+        final monthStart = prepared['month_start'] as String;
+        final parsedMonth = DateTime.tryParse(monthStart);
+        if (bookId == null || (prepared['limit_minor'] as num).toInt() <= 0) {
+          throw StateError('A positive household budget is required.');
+        }
+        if (note != null && note.length > 120) {
+          throw StateError('A budget note cannot exceed 120 characters.');
+        }
+        if (!RegExp(r'^\d{4}-\d{2}-01$').hasMatch(monthStart) ||
+            parsedMonth == null ||
+            parsedMonth.day != 1) {
+          throw StateError('A budget month must use YYYY-MM-01.');
+        }
+        final book = await txn.query(
+          'books',
+          columns: ['base_currency_code'],
+          where: 'id = ?',
+          whereArgs: [bookId],
+          limit: 1,
+        );
+        if (book.isEmpty ||
+            prepared['currency_code'] != book.single['base_currency_code']) {
+          throw StateError('Budgets must use the household base currency.');
+        }
+        final sameId = await txn.query(
+          'monthly_category_budgets',
+          columns: ['id'],
+          where: 'id = ?',
+          whereArgs: [prepared['id']],
+          limit: 1,
+        );
+        if (sameId.isNotEmpty) {
+          throw StateError('A generated budget identity already exists.');
+        }
+        final category = await txn.query(
+          'categories',
+          where: 'id = ?',
+          whereArgs: [prepared['category_id']],
+          limit: 1,
+        );
+        if (category.isEmpty) {
+          throw StateError('A copied budget references a missing category.');
+        }
+        if (category.single['book_id'] != bookId) {
+          throw StateError('A copied budget references another household.');
+        }
+        if (category.single['category_type'] != 'expense' ||
+            category.single['deleted_at'] != null) {
+          throw StateError('A copied budget category is unavailable.');
+        }
+        final duplicate = await txn.query(
+          'monthly_category_budgets',
+          columns: ['id'],
+          where:
+              'book_id = ? AND category_id = ? AND month_start = ? '
+              'AND deleted_at IS NULL',
+          whereArgs: [bookId, prepared['category_id'], monthStart],
+          limit: 1,
+        );
+        if (duplicate.isNotEmpty) continue;
+        final deletedMatch = await txn.query(
+          'monthly_category_budgets',
+          where:
+              'book_id = ? AND category_id = ? AND month_start = ? '
+              'AND deleted_at IS NOT NULL',
+          whereArgs: [bookId, prepared['category_id'], monthStart],
+          orderBy: 'updated_at DESC',
+          limit: 1,
+        );
+        if (deletedMatch.isNotEmpty) {
+          final deleted = deletedMatch.first;
+          prepared = {
+            ...prepared,
+            'id': deleted['id'],
+            'created_at': deleted['created_at'],
+            'deleted_at': null,
+            'version': (deleted['version'] as num).toInt() + 1,
+          };
+        }
+        await txn.insert(
+          'monthly_category_budgets',
+          prepared,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        await _enqueueSyncOperation(txn, 'monthly_category_budgets', prepared);
+        copied.add(Map<String, Object?>.of(prepared));
+      }
+    });
+    if (copied.isNotEmpty) onSyncMutation?.call();
+    return copied;
+  }
+
+  Future<void> softDeleteMonthlyCategoryBudget(String id, int deletedAt) async {
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'monthly_category_budgets',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) return;
+      final saved = <String, Object?>{
+        ...rows.single,
+        'deleted_at': deletedAt,
+        'updated_at': deletedAt,
+        'version': (rows.single['version'] as num).toInt() + 1,
+        'sync_status': 'pending',
+      };
+      await txn.update(
+        'monthly_category_budgets',
+        saved,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await _enqueueSyncOperation(
+        txn,
+        'monthly_category_budgets',
+        saved,
+        operationType: 'delete',
+      );
+    });
+    onSyncMutation?.call();
+  }
+
+  Future<List<Map<String, Object?>>> getImportReviewSessions({
+    bool includeDeleted = false,
+    String? bookId,
+    String? state,
+  }) {
+    final scope = bookId ?? _activeBookId;
+    final where = <String>[];
+    final args = <Object?>[];
+    if (scope != null) {
+      where.add('book_id = ?');
+      args.add(scope);
+    }
+    if (!includeDeleted) where.add('deleted_at IS NULL');
+    if (state != null) {
+      where.add('state = ?');
+      args.add(state);
+    }
+    return db.query(
+      'import_review_sessions',
+      where: where.join(' AND '),
+      whereArgs: args,
+      orderBy: 'updated_at DESC, id',
+    );
+  }
+
+  Future<List<Map<String, Object?>>> getImportReviewDrafts({
+    required String sessionId,
+    bool includeDeleted = false,
+  }) => db.query(
+    'import_review_drafts',
+    where: 'session_id = ?${includeDeleted ? '' : ' AND deleted_at IS NULL'}',
+    whereArgs: [sessionId],
+    orderBy: 'source_index, id',
+  );
+
+  Future<List<Map<String, Object?>>> getAllImportReviewDrafts({
+    required String bookId,
+    bool includeDeleted = false,
+  }) => db.query(
+    'import_review_drafts',
+    where: 'book_id = ?${includeDeleted ? '' : ' AND deleted_at IS NULL'}',
+    whereArgs: [bookId],
+    orderBy: 'session_id, source_index, id',
+  );
+
+  Future<void> saveImportReviewSessionAtomic({
+    required Map<String, Object?> session,
+    required List<Map<String, Object?>> drafts,
+    bool enqueueSync = true,
+  }) async {
+    final preparedSession = _withActiveBook(session);
+    final bookId = preparedSession['book_id'] as String?;
+    if (bookId == null) {
+      throw StateError('An import session requires a household.');
+    }
+    await db.transaction((txn) async {
+      final linked =
+          enqueueSync &&
+          (await txn.query(
+            'books',
+            columns: ['id'],
+            where: 'id = ? AND remote_linked_at IS NOT NULL',
+            whereArgs: [bookId],
+            limit: 1,
+          )).isNotEmpty;
+      final existing = await txn.query(
+        'import_review_sessions',
+        where: 'id = ?',
+        whereArgs: [preparedSession['id']],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        final current = existing.single;
+        if (current['book_id'] != bookId ||
+            current['source_fingerprint'] !=
+                preparedSession['source_fingerprint']) {
+          throw StateError('Import session identity cannot change.');
+        }
+        final previousState = current['state'] as String;
+        final nextState = preparedSession['state'] as String;
+        final validTransition =
+            previousState == nextState ||
+            (previousState == 'pendingReview' &&
+                (nextState == 'readyToCommit' || nextState == 'discarded')) ||
+            (previousState == 'readyToCommit' && nextState == 'completed');
+        if (!validTransition) {
+          throw StateError('Invalid import review lifecycle transition.');
+        }
+      }
+      final memberId = preparedSession['created_by_member_id'] as String?;
+      if (memberId != null) {
+        final member = await txn.query(
+          'household_members',
+          columns: ['id'],
+          where: 'id = ? AND book_id = ? AND deleted_at IS NULL',
+          whereArgs: [memberId, bookId],
+          limit: 1,
+        );
+        if (member.isEmpty) {
+          throw StateError('The import creator is unavailable.');
+        }
+      }
+      final accountId = preparedSession['destination_account_id'] as String?;
+      if (accountId != null) {
+        final account = await txn.query(
+          'accounts',
+          columns: ['id'],
+          where: 'id = ? AND book_id = ? AND deleted_at IS NULL',
+          whereArgs: [accountId, bookId],
+          limit: 1,
+        );
+        if (account.isEmpty) {
+          throw StateError('The import account is unavailable.');
+        }
+      }
+      final categoryIds = drafts
+          .map((draft) => draft['category_id'] as String?)
+          .whereType<String>()
+          .toSet();
+      final categories = <String, String>{};
+      final categoryList = categoryIds.toList();
+      for (var offset = 0; offset < categoryList.length; offset += 900) {
+        final end = offset + 900 < categoryList.length
+            ? offset + 900
+            : categoryList.length;
+        final chunk = categoryList.sublist(offset, end);
+        final rows = await txn.query(
+          'categories',
+          columns: ['id', 'category_type'],
+          where:
+              'book_id = ? AND deleted_at IS NULL AND id IN (${List.filled(chunk.length, '?').join(', ')})',
+          whereArgs: [bookId, ...chunk],
+        );
+        for (final row in rows) {
+          categories[row['id']! as String] = row['category_type']! as String;
+        }
+      }
+      await txn.insert(
+        'import_review_sessions',
+        preparedSession,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      if (linked) {
+        await _enqueueSyncOperation(
+          txn,
+          'import_review_sessions',
+          preparedSession,
+          knownLinked: true,
+        );
+      }
+      for (final draft in drafts) {
+        final preparedDraft = _withActiveBook(draft);
+        if (preparedDraft['book_id'] != bookId ||
+            preparedDraft['session_id'] != preparedSession['id']) {
+          throw StateError(
+            'An import draft must belong to its session household.',
+          );
+        }
+        final categoryId = preparedDraft['category_id'] as String?;
+        if (categoryId != null &&
+            categories[categoryId] != preparedDraft['transaction_type']) {
+          throw StateError('The import category is unavailable.');
+        }
+        final transactionId =
+            preparedDraft['deterministic_transaction_id'] as String?;
+        final identityAccountId =
+            preparedDraft['deterministic_transaction_account_id'] as String?;
+        if ((transactionId == null) != (identityAccountId == null)) {
+          throw StateError(
+            'Import transaction identity and account binding must be resolved together.',
+          );
+        }
+        if (identityAccountId != null) {
+          if (identityAccountId != accountId) {
+            throw StateError(
+              'The import identity account must match the session account.',
+            );
+          }
+          final identityAccount = await txn.query(
+            'accounts',
+            columns: ['id'],
+            where: 'id = ? AND book_id = ? AND deleted_at IS NULL',
+            whereArgs: [identityAccountId, bookId],
+            limit: 1,
+          );
+          if (identityAccount.isEmpty) {
+            throw StateError(
+              'The import identity account belongs to another household.',
+            );
+          }
+        }
+        final existingDraft = await txn.query(
+          'import_review_drafts',
+          where: 'id = ?',
+          whereArgs: [preparedDraft['id']],
+          limit: 1,
+        );
+        if (existingDraft.isNotEmpty) {
+          final currentDraft = existingDraft.single;
+          if (currentDraft['session_id'] != preparedDraft['session_id'] ||
+              currentDraft['book_id'] != preparedDraft['book_id'] ||
+              currentDraft['source_row_identity'] !=
+                  preparedDraft['source_row_identity'] ||
+              currentDraft['source_row_key'] !=
+                  preparedDraft['source_row_key']) {
+            throw StateError('Import draft source identity cannot change.');
+          }
+          if (existing.single['state'] == 'completed' &&
+              (currentDraft['deterministic_transaction_id'] != transactionId ||
+                  currentDraft['deterministic_transaction_account_id'] !=
+                      identityAccountId)) {
+            throw StateError(
+              'A completed import transaction identity cannot change.',
+            );
+          }
+        }
+        await txn.insert(
+          'import_review_drafts',
+          preparedDraft,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        if (linked) {
+          await _enqueueSyncOperation(
+            txn,
+            'import_review_drafts',
+            preparedDraft,
+            knownLinked: true,
+          );
+        }
+      }
+    });
+    if (enqueueSync) onSyncMutation?.call();
+  }
+
+  Future<void> discardImportReviewSession(
+    String sessionId,
+    int discardedAt, {
+    bool enqueueSync = true,
+  }) async {
+    await db.transaction((txn) async {
+      final sessions = await txn.query(
+        'import_review_sessions',
+        where: 'id = ?',
+        whereArgs: [sessionId],
+        limit: 1,
+      );
+      if (sessions.isEmpty || sessions.single['deleted_at'] != null) return;
+      if (sessions.single['state'] != 'pendingReview') {
+        throw StateError('Only a pending import can be discarded.');
+      }
+      final session = <String, Object?>{
+        ...sessions.single,
+        'state': 'discarded',
+        'deleted_at': discardedAt,
+        'updated_at': discardedAt,
+        'version': (sessions.single['version'] as num).toInt() + 1,
+        'sync_status': 'pending',
+      };
+      final linked =
+          enqueueSync &&
+          (await txn.query(
+            'books',
+            columns: ['id'],
+            where: 'id = ? AND remote_linked_at IS NOT NULL',
+            whereArgs: [session['book_id']],
+            limit: 1,
+          )).isNotEmpty;
+      await txn.update(
+        'import_review_sessions',
+        session,
+        where: 'id = ?',
+        whereArgs: [sessionId],
+      );
+      final rows = await txn.query(
+        'import_review_drafts',
+        where: 'session_id = ? AND deleted_at IS NULL',
+        whereArgs: [sessionId],
+      );
+      for (final row in rows) {
+        final draft = <String, Object?>{
+          ...row,
+          'deleted_at': discardedAt,
+          'updated_at': discardedAt,
+          'version': (row['version'] as num).toInt() + 1,
+          'sync_status': 'pending',
+        };
+        await txn.update(
+          'import_review_drafts',
+          draft,
+          where: 'id = ?',
+          whereArgs: [draft['id']],
+        );
+        if (linked) {
+          await _enqueueSyncOperation(
+            txn,
+            'import_review_drafts',
+            draft,
+            operationType: 'delete',
+            knownLinked: true,
+          );
+        }
+      }
+      if (linked) {
+        await _enqueueSyncOperation(
+          txn,
+          'import_review_sessions',
+          session,
+          operationType: 'delete',
+          knownLinked: true,
+        );
+      }
+    });
+    if (enqueueSync) onSyncMutation?.call();
+  }
+
+  Future<List<Map<String, Object?>>> getTransactionImportRules({
+    bool includeDeleted = false,
+    bool activeOnly = false,
+    String? bookId,
+  }) {
+    final scope = bookId ?? _activeBookId;
+    final where = <String>[];
+    final args = <Object?>[];
+    if (scope != null) {
+      where.add('book_id = ?');
+      args.add(scope);
+    }
+    if (!includeDeleted) where.add('deleted_at IS NULL');
+    if (activeOnly) where.add('enabled = 1');
+    return db.query(
+      'transaction_import_rules',
+      where: where.join(' AND '),
+      whereArgs: args,
+      orderBy: 'priority DESC, name COLLATE NOCASE, id',
+    );
+  }
+
+  Future<Map<String, Object?>> upsertTransactionImportRule(
+    Map<String, Object?> record, {
+    bool enqueueSync = true,
+  }) async {
+    final prepared = _withActiveBook(record);
+    final bookId = prepared['book_id'] as String?;
+    if (bookId == null || (prepared['pattern_key'] as String).isEmpty) {
+      throw StateError('An import rule requires a household and pattern.');
+    }
+    late Map<String, Object?> saved;
+    await db.transaction((txn) async {
+      final category = await txn.query(
+        'categories',
+        where: 'id = ? AND book_id = ? AND category_type = ?',
+        whereArgs: [
+          prepared['category_id'],
+          bookId,
+          prepared['transaction_type'],
+        ],
+        limit: 1,
+      );
+      if (category.isEmpty) {
+        throw StateError(
+          'The import rule category belongs to another household or type.',
+        );
+      }
+      final accountId = prepared['account_id'] as String?;
+      if (accountId != null) {
+        final account = await txn.query(
+          'accounts',
+          where: 'id = ? AND book_id = ?',
+          whereArgs: [accountId, bookId],
+          limit: 1,
+        );
+        if (account.isEmpty) {
+          throw StateError(
+            'The import rule account belongs to another household.',
+          );
+        }
+      }
+      final sameId = await txn.query(
+        'transaction_import_rules',
+        where: 'id = ?',
+        whereArgs: [prepared['id']],
+        limit: 1,
+      );
+      if (sameId.isNotEmpty && sameId.single['book_id'] != bookId) {
+        throw StateError('An import rule cannot move between households.');
+      }
+      final semanticWhere =
+          '''book_id = ? AND transaction_type = ? AND match_field = ?
+        AND match_operator = ? AND pattern_key = ?
+        AND IFNULL(account_id, '') = IFNULL(?, '')''';
+      final semanticArgs = <Object?>[
+        bookId,
+        prepared['transaction_type'],
+        prepared['match_field'],
+        prepared['match_operator'],
+        prepared['pattern_key'],
+        accountId,
+      ];
+      final duplicate = await txn.query(
+        'transaction_import_rules',
+        where: '$semanticWhere AND deleted_at IS NULL AND id <> ?',
+        whereArgs: [...semanticArgs, prepared['id']],
+        limit: 1,
+      );
+      if (duplicate.isNotEmpty) {
+        throw StateError(
+          'An active import rule with this match already exists.',
+        );
+      }
+      final deletedMatch = sameId.isNotEmpty
+          ? const <Map<String, Object?>>[]
+          : await txn.query(
+              'transaction_import_rules',
+              where: '$semanticWhere AND deleted_at IS NOT NULL',
+              whereArgs: semanticArgs,
+              orderBy: 'updated_at DESC',
+              limit: 1,
+            );
+      saved = deletedMatch.isEmpty
+          ? prepared
+          : {
+              ...prepared,
+              'id': deletedMatch.single['id'],
+              'created_at': deletedMatch.single['created_at'],
+              'deleted_at': null,
+              'version': (deletedMatch.single['version'] as num).toInt() + 1,
+            };
+      await txn.insert(
+        'transaction_import_rules',
+        saved,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      if (enqueueSync) {
+        await _enqueueSyncOperation(txn, 'transaction_import_rules', saved);
+      }
+    });
+    if (enqueueSync) onSyncMutation?.call();
+    return saved;
+  }
+
+  Future<void> softDeleteTransactionImportRule(
+    String id,
+    int deletedAt, {
+    bool enqueueSync = true,
+  }) async {
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'transaction_import_rules',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty || rows.single['deleted_at'] != null) return;
+      final saved = <String, Object?>{
+        ...rows.single,
+        'deleted_at': deletedAt,
+        'updated_at': deletedAt,
+        'version': (rows.single['version'] as num).toInt() + 1,
+        'sync_status': 'pending',
+      };
+      await txn.update(
+        'transaction_import_rules',
+        saved,
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (enqueueSync) {
+        await _enqueueSyncOperation(
+          txn,
+          'transaction_import_rules',
+          saved,
+          operationType: 'delete',
+        );
+      }
+    });
+    if (enqueueSync) onSyncMutation?.call();
   }
 
   Future<void> saveMasterName(

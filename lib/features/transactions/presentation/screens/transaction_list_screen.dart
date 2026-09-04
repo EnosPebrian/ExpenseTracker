@@ -12,11 +12,17 @@ class TransactionListScreen extends StatefulWidget {
     super.key,
     required this.controller,
     this.onEdit,
+    this.onImportCsv,
+    this.onReviewTransfers,
+    this.importedTransactionIds = const {},
     this.initialDate,
   });
 
   final TransactionController controller;
   final ValueChanged<Transaction>? onEdit;
+  final VoidCallback? onImportCsv;
+  final VoidCallback? onReviewTransfers;
+  final Set<String> importedTransactionIds;
 
   /// Primarily useful for deterministic widget tests.
   /// Production uses the current date when this is null.
@@ -31,6 +37,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
   late DateTime to;
 
   String query = '';
+  bool showImportedOnly = false;
 
   void _changeFrom(DateTime value) {
     final range = updateTransactionFrom(selectedFrom: value, currentTo: to);
@@ -74,12 +81,20 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
-        final filtered = filterTransactions(
-          transactions: widget.controller.transactions,
+        var filtered = filterTransactions(
+          transactions: widget.controller.displayTransactions,
           from: from,
           to: to,
           query: query,
         );
+        if (showImportedOnly && widget.importedTransactionIds.isNotEmpty) {
+          filtered = filtered
+              .where(
+                (transaction) =>
+                    widget.importedTransactionIds.contains(transaction.id),
+              )
+              .toList();
+        }
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(32),
@@ -103,12 +118,43 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              if (widget.onImportCsv != null) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (widget.onReviewTransfers != null)
+                      OutlinedButton.icon(
+                        onPressed: widget.onReviewTransfers,
+                        icon: const Icon(Icons.compare_arrows),
+                        label: const Text('Review possible transfers'),
+                      ),
+                    OutlinedButton.icon(
+                      onPressed: widget.onImportCsv,
+                      icon: const Icon(Icons.upload_file),
+                      label: const Text('Import'),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 6),
               const Text(
                 'Every movement, accounted for.',
                 style: TextStyle(color: Color(0xFF92929F), fontSize: 12),
               ),
               const SizedBox(height: 28),
+              if (widget.importedTransactionIds.isNotEmpty) ...[
+                FilterChip(
+                  selected: showImportedOnly,
+                  label: Text(
+                    'Current import (${widget.importedTransactionIds.length})',
+                  ),
+                  onSelected: (value) =>
+                      setState(() => showImportedOnly = value),
+                ),
+                const SizedBox(height: 12),
+              ],
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(20),

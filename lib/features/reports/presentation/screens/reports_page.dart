@@ -6,9 +6,10 @@ import '../../../../core/shared/widgets/page_layout.dart';
 import '../../../analytics/domain/financial_summary.dart';
 
 class ReportsPage extends StatelessWidget {
-  const ReportsPage({super.key, required this.summary});
+  const ReportsPage({super.key, required this.summary, this.onOpenStatements});
 
   final FinancialSummary summary;
+  final VoidCallback? onOpenStatements;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +58,24 @@ class ReportsPage extends StatelessWidget {
               );
             },
           ),
+          if (onOpenStatements != null) ...[
+            const SizedBox(height: 18),
+            Card(
+              child: ListTile(
+                key: const Key('reports-statements'),
+                leading: const Icon(
+                  Icons.description_outlined,
+                  color: Color(0xFF6D54E8),
+                ),
+                title: const Text('Financial Statements'),
+                subtitle: const Text(
+                  'Preview and export monthly or annual household and account statements.',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: onOpenStatements,
+              ),
+            ),
+          ],
         ],
       ),
     );

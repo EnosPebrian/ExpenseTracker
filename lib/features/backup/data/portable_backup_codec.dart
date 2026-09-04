@@ -28,12 +28,26 @@ class PortableBackupCodec {
     required Map<String, List<Map<String, Object?>>> snapshot,
     required String password,
     DateTime? exportedAt,
+    int formatVersion = portableBackupFormatVersion,
   }) async {
     if (password.isEmpty) {
       throw const BackupValidationException('A backup password is required.');
     }
+    if (formatVersion < 1 || formatVersion > portableBackupFormatVersion) {
+      throw UnsupportedBackupVersionException(formatVersion);
+    }
     final clean = HouseholdBackupIntegrity.sanitize(snapshot);
     HouseholdBackupIntegrity.validate(clean);
+    final encodedKeys = switch (formatVersion) {
+      1 => portableBackupV1EntityKeys,
+      2 => portableBackupV2EntityKeys,
+      3 => portableBackupV3EntityKeys,
+      _ => portableBackupEntityKeys,
+    };
+    final encodedSnapshot = <String, List<Map<String, Object?>>>{
+      for (final key in portableBackupEntityKeys)
+        key: encodedKeys.contains(key) ? clean[key]! : const [],
+    };
     final salt = _randomBytes(16);
     final nonce = _randomBytes(12);
     final encryptionMetadata = <String, Object?>{
@@ -45,7 +59,7 @@ class PortableBackupCodec {
     };
 
     final contentFiles = <String, Uint8List>{};
-    for (final key in portableBackupEntityKeys) {
+    for (final key in encodedKeys) {
       final jsonValue = key == 'household' ? clean[key]!.single : clean[key]!;
       contentFiles['$key.json'] = _jsonBytes(jsonValue);
     }
@@ -56,20 +70,27 @@ class PortableBackupCodec {
     final contentChecksum = await _hash(_jsonBytes(checksums));
     final household = clean['household']!.single;
     final manifest = PortableBackupManifest(
-      formatVersion: portableBackupFormatVersion,
+      formatVersion: formatVersion,
       applicationVersion: portableBackupApplicationVersion,
       databaseSchemaVersion: databaseSchemaVersion,
       exportedAt: (exportedAt ?? DateTime.now()).toUtc(),
       bookId: household['id'] as String,
       bookName: household['name'] as String,
       baseCurrencyCode: household['base_currency_code'] as String,
-      entityCounts: {
-        for (final key in portableBackupEntityKeys) key: clean[key]!.length,
-      },
+      entityCounts: {for (final key in encodedKeys) key: clean[key]!.length},
       contentChecksum: contentChecksum,
       encryptionMetadata: encryptionMetadata,
-      financialSummary: HouseholdBackupIntegrity.financialSummary(clean),
-      deletedStateCounts: HouseholdBackupIntegrity.deletedStateCounts(clean),
+      financialSummary: HouseholdBackupIntegrity.financialSummary(
+        encodedSnapshot,
+      ),
+      deletedStateCounts: {
+        for (final key in encodedKeys)
+          key:
+              HouseholdBackupIntegrity.deletedStateCounts(
+                encodedSnapshot,
+              )[key] ??
+              0,
+      },
     );
 
     final archive = Archive();
@@ -155,7 +176,7 @@ class PortableBackupCodec {
       if (manifest.formatVersion > portableBackupFormatVersion) {
         throw UnsupportedBackupVersionException(manifest.formatVersion);
       }
-      if (manifest.formatVersion != portableBackupFormatVersion) {
+      if (manifest.formatVersion < 1) {
         throw const FormatException('Unsupported older backup format.');
       }
       final checksums = _jsonMap(
@@ -173,7 +194,13 @@ class PortableBackupCodec {
       }
 
       final snapshot = <String, List<Map<String, Object?>>>{};
-      for (final key in portableBackupEntityKeys) {
+      final encodedKeys = switch (manifest.formatVersion) {
+        1 => portableBackupV1EntityKeys,
+        2 => portableBackupV2EntityKeys,
+        3 => portableBackupV3EntityKeys,
+        _ => portableBackupEntityKeys,
+      };
+      for (final key in encodedKeys) {
         final decoded = jsonDecode(
           utf8.decode(files['$key.json'] ?? (throw const FormatException())),
         );
@@ -182,8 +209,11 @@ class PortableBackupCodec {
             .map((value) => Map<String, Object?>.from(value as Map))
             .toList(growable: false);
       }
+      snapshot.putIfAbsent('budgets', () => const []);
+      snapshot.putIfAbsent('transaction_import_rules', () => const []);
+      snapshot.putIfAbsent('transfer_links', () => const []);
       HouseholdBackupIntegrity.validate(snapshot);
-      for (final key in portableBackupEntityKeys) {
+      for (final key in encodedKeys) {
         if (manifest.entityCounts[key] != snapshot[key]!.length) {
           throw const FormatException('Manifest entity count mismatch.');
         }
@@ -192,9 +222,12 @@ class PortableBackupCodec {
           _canonicalJson(manifest.financialSummary)) {
         throw const FormatException('Backup accounting summary mismatch.');
       }
-      if (_canonicalJson(
-            HouseholdBackupIntegrity.deletedStateCounts(snapshot),
-          ) !=
+      final deletedStateCounts = HouseholdBackupIntegrity.deletedStateCounts(
+        snapshot,
+      );
+      if (_canonicalJson({
+            for (final key in encodedKeys) key: deletedStateCounts[key] ?? 0,
+          }) !=
           _canonicalJson(manifest.deletedStateCounts)) {
         throw const FormatException('Backup lifecycle summary mismatch.');
       }

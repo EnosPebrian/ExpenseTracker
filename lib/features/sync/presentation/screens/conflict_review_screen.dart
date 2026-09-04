@@ -57,12 +57,23 @@ class _ConflictReviewScreenState extends State<ConflictReviewScreen> {
               }.contains(f),
             )
             .toList();
+        final mergeFields = conflict.entityType == 'monthly_category_budgets'
+            ? fields
+                  .where(
+                    (field) => const {'limit_minor', 'note'}.contains(field),
+                  )
+                  .toSet()
+            : fields.toSet();
         final merged = {...?conflict.serverPayload};
-        for (final field in fields) {
+        for (final field in mergeFields) {
           if (choices[field] ?? false) {
             merged[field] = conflict.localPayload?[field];
           }
         }
+        final budgetLifecycleConflict =
+            conflict.entityType == 'monthly_category_budgets' &&
+            (conflict.serverPayload?['deleted_at'] != null ||
+                conflict.localPayload?['deleted_at'] != null);
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -99,25 +110,35 @@ class _ConflictReviewScreenState extends State<ConflictReviewScreen> {
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
-                      SegmentedButton<bool>(
-                        segments: [
-                          ButtonSegment(
-                            value: false,
-                            label: Text(
-                              'Shared: ${_value(conflict.serverPayload?[field])}',
+                      if (mergeFields.contains(field))
+                        SegmentedButton<bool>(
+                          segments: [
+                            ButtonSegment(
+                              value: false,
+                              label: Text(
+                                'Shared: ${_value(conflict.serverPayload?[field])}',
+                              ),
                             ),
-                          ),
-                          ButtonSegment(
-                            value: true,
-                            label: Text(
-                              'This device: ${_value(conflict.localPayload?[field])}',
+                            ButtonSegment(
+                              value: true,
+                              label: Text(
+                                'This device: ${_value(conflict.localPayload?[field])}',
+                              ),
                             ),
-                          ),
-                        ],
-                        selected: {choices[field] ?? false},
-                        onSelectionChanged: (value) =>
-                            setState(() => choices[field] = value.single),
-                      ),
+                          ],
+                          selected: {choices[field] ?? false},
+                          onSelectionChanged: (value) =>
+                              setState(() => choices[field] = value.single),
+                        )
+                      else ...[
+                        Text(
+                          'Shared: ${_value(conflict.serverPayload?[field])}',
+                        ),
+                        Text(
+                          'This device: ${_value(conflict.localPayload?[field])}',
+                        ),
+                        const Text('Identity or lifecycle field (review only)'),
+                      ],
                     ],
                   ),
                 ),
@@ -145,9 +166,10 @@ class _ConflictReviewScreenState extends State<ConflictReviewScreen> {
                   child: const Text('Keep this device'),
                 ),
                 if (!{
-                  SyncConflictType.linkedTransactionConflict,
-                  SyncConflictType.assetTradeConflict,
-                }.contains(conflict.conflictType))
+                      SyncConflictType.linkedTransactionConflict,
+                      SyncConflictType.assetTradeConflict,
+                    }.contains(conflict.conflictType) &&
+                    !budgetLifecycleConflict)
                   FilledButton(
                     onPressed: controller.resolvingId == null
                         ? () => _confirm(

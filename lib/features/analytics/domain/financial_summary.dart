@@ -1,4 +1,5 @@
 import '../../transactions/domain/entities/transaction.dart';
+import '../../transactions/domain/entities/internal_transfer_link.dart';
 import '../../tithe/domain/tithe_policy.dart';
 
 class CategorySpending {
@@ -156,6 +157,7 @@ class FinancialSummary {
     double? titheRate,
     Iterable<FinancialAsset> assets = const [],
     Iterable<FinancialLiability> liabilities = const [],
+    Iterable<InternalTransferLink> transferLinks = const [],
   }) {
     return FinancialSummary.forPeriod(
       transactions: transactions,
@@ -165,6 +167,7 @@ class FinancialSummary {
       titheRate: titheRate,
       assets: assets,
       liabilities: liabilities,
+      transferLinks: transferLinks,
     );
   }
 
@@ -176,6 +179,7 @@ class FinancialSummary {
     double? titheRate,
     Iterable<FinancialAsset> assets = const [],
     Iterable<FinancialLiability> liabilities = const [],
+    Iterable<InternalTransferLink> transferLinks = const [],
   }) {
     if (!periodEndExclusive.isAfter(periodStart)) {
       throw ArgumentError('The financial period end must be after its start.');
@@ -196,11 +200,18 @@ class FinancialSummary {
     final activeTransactions = transactions
         .where((transaction) => transaction.deletedAt == null)
         .toList(growable: false);
+    final activeTransferLinks = transferLinks
+        .where((link) => link.deletedAt == null)
+        .toList(growable: false);
+    final pairedTransactionIds = {
+      for (final link in activeTransferLinks) ...link.transactionIds,
+    };
 
     var allTimeIncome = 0;
     var allTimeExpenses = 0;
 
     for (final transaction in activeTransactions) {
+      if (pairedTransactionIds.contains(transaction.id)) continue;
       switch (transaction.type) {
         case TransactionType.income:
           allTimeIncome += transaction.amount;
@@ -227,6 +238,7 @@ class FinancialSummary {
     final categoryTotals = <String, int>{};
 
     for (final transaction in periodTransactions) {
+      if (pairedTransactionIds.contains(transaction.id)) continue;
       switch (transaction.type) {
         case TransactionType.income:
           periodIncome += transaction.amount;
@@ -327,7 +339,22 @@ class FinancialSummary {
       savingsRate: savingsRate,
       titheRate: resolvedTitheRate,
       monthlyTithe: (periodIncome * resolvedTitheRate).round(),
-      activityCount: periodTransactions.length,
+      activityCount:
+          periodTransactions.length -
+          activeTransferLinks.where((link) {
+            final outgoing = activeTransactions
+                .where((item) => item.id == link.outgoingTransactionId)
+                .firstOrNull;
+            final incoming = activeTransactions
+                .where((item) => item.id == link.incomingTransactionId)
+                .firstOrNull;
+            return outgoing != null &&
+                incoming != null &&
+                !outgoing.date.isBefore(periodStart) &&
+                outgoing.date.isBefore(periodEndExclusive) &&
+                !incoming.date.isBefore(periodStart) &&
+                incoming.date.isBefore(periodEndExclusive);
+          }).length,
       spendingByCategory: List<CategorySpending>.unmodifiable(
         spendingByCategory,
       ),

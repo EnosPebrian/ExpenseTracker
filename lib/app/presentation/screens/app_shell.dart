@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/database/local_store.dart';
 import '../../../core/config/app_environment.dart';
@@ -11,10 +12,18 @@ import '../../../features/assets/controllers/asset_price_controller.dart';
 import '../../../features/assets/data/repositories/alpha_vantage_asset_price_repository.dart';
 import '../../../features/assets/domain/services/asset_portfolio_calculator.dart';
 import '../../../features/backup/data/local_household_backup_store.dart';
+import '../../../features/backup/data/initial_sync_backup_recovery_reader.dart';
 import '../../../features/backup/data/portable_file_service.dart';
+import '../../../features/backup/domain/backup_recovery_service.dart';
 import '../../../features/backup/domain/household_backup_service.dart';
+import '../../../features/backup/domain/restore_lifecycle_service.dart';
 import '../../../features/backup/presentation/controllers/backup_export_controller.dart';
+import '../../../features/backup/presentation/controllers/backup_recovery_controller.dart';
+import '../../../features/backup/presentation/controllers/restore_lifecycle_controller.dart';
 import '../../../features/backup/presentation/screens/backup_export_screen.dart';
+import '../../../features/budgets/data/local_monthly_budget_repository.dart';
+import '../../../features/budgets/presentation/controllers/monthly_budget_controller.dart';
+import '../../../features/budgets/presentation/screens/budgets_page.dart';
 import '../../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../../features/cloud_sharing/domain/cloud_models.dart';
 import '../../../features/cloud_sharing/domain/cloud_sharing_repository.dart';
@@ -29,7 +38,13 @@ import '../../../features/master_data/domain/entities/financial_project.dart';
 import '../../../features/master_data/presentation/screens/household_settings_page.dart';
 import '../../../features/master_data/presentation/screens/categories_page.dart';
 import '../../../features/master_data/presentation/screens/projects_page.dart';
+import '../../../features/health/data/local_health_check_data_source.dart';
+import '../../../features/health/domain/health_check_service.dart';
+import '../../../features/health/presentation/controllers/health_check_controller.dart';
+import '../../../features/health/presentation/screens/health_check_screen.dart';
 import '../../../features/reports/presentation/screens/reports_page.dart';
+import '../../../features/reports/presentation/controllers/financial_statement_controller.dart';
+import '../../../features/reports/presentation/screens/statements_screen.dart';
 import '../../../features/sync/data/local_sync_repository.dart';
 import '../../../features/sync/data/initial_sync_store.dart';
 import '../../../features/sync/data/local_initial_sync_repository.dart';
@@ -46,14 +61,34 @@ import '../../../features/sync/presentation/screens/conflict_review_screen.dart'
 import '../../../features/sync/presentation/controllers/initial_sync_controller.dart';
 import '../../../features/tithe/presentation/screens/tithe_page.dart';
 import '../../../features/tithe/domain/tithe_policy.dart';
+import '../../../features/telegram_integration/domain/telegram_integration_repository.dart';
+import '../../../features/telegram_integration/presentation/screens/integrations_screen.dart';
 import '../../../features/transactions/domain/entities/transaction.dart';
 import '../../../features/transactions/data/repositories/local_transaction_repository.dart';
+import '../../../features/transactions/data/transaction_import_file_service.dart';
+import '../../../features/transactions/data/document_import_file_service.dart';
+import '../../../features/transactions/data/local_transaction_import_rule_repository.dart';
+import '../../../features/transactions/data/local_import_review_repository.dart';
+import '../../../features/transactions/data/supabase_document_extraction_provider.dart';
+import '../../../features/transactions/domain/extraction/document_extraction_models.dart';
+import '../../../features/transactions/domain/extraction/document_extraction_provider.dart';
+import '../../../features/transactions/domain/usecases/transaction_usecases.dart';
+import '../../../features/transactions/domain/import/transaction_import_models.dart';
+import '../../../features/transactions/domain/services/transaction_import_rule_engine.dart';
+import '../../../features/transactions/presentation/controllers/transaction_import_controller.dart';
+import '../../../features/transactions/presentation/controllers/internal_transfer_review_controller.dart';
+import '../../../features/transactions/presentation/controllers/document_import_controller.dart';
+import '../../../features/transactions/presentation/import/document_import_screen.dart';
+import '../../../features/transactions/presentation/import/transaction_import_screen.dart';
+import '../../../features/transactions/presentation/import/import_review_inbox_screen.dart';
+import '../../../features/transactions/presentation/import/transaction_import_rules_screen.dart';
 import '../../../features/transactions/presentation/edit/edit_transaction_screen.dart';
 import '../../../features/transactions/presentation/edit/transaction_form.dart';
 import '../../../features/transactions/presentation/providers/transaction_providers.dart';
 import '../../../features/transactions/presentation/quick_add/quick_add_controller.dart';
 import '../../../features/transactions/presentation/quick_add/quick_add_screen.dart';
 import '../../../features/transactions/presentation/screens/transaction_detail_screen.dart';
+import '../../../features/transactions/presentation/screens/internal_transfer_review_screen.dart';
 import '../../../features/transactions/presentation/screens/transaction_list_screen.dart';
 import '../../../features/master_data/presentation/controllers/master_data_controller.dart';
 import '../../../features/analytics/domain/financial_period.dart';
@@ -70,11 +105,14 @@ class AppShell extends StatefulWidget {
     required this.cloudSharingRepository,
     required this.syncTransport,
     required this.initialSyncTransport,
+    this.telegramIntegrationRepository =
+        const UnavailableTelegramIntegrationRepository(),
   });
 
   final CloudSharingRepository cloudSharingRepository;
   final SyncTransport syncTransport;
   final InitialSyncTransport initialSyncTransport;
+  final TelegramIntegrationRepository telegramIntegrationRepository;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -88,6 +126,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   FinancialBook? financialBook;
   List<HouseholdMember> householdMembers = const [];
   String? activeMemberId;
+  Set<String> currentSessionImportedTransactionIds = const {};
 
   late FinancialPeriod dashboardPeriod;
 
@@ -98,6 +137,28 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         backupService: HouseholdBackupService(LocalHouseholdBackupStore(store)),
         fileService: const PortableFileService(),
         onRestored: _refreshAfterRestore,
+      );
+
+  late final BackupRecoveryController backupRecoveryController =
+      BackupRecoveryController(
+        backupService: HouseholdBackupService(LocalHouseholdBackupStore(store)),
+        recoveryService: BackupRecoveryService(
+          store: LocalHouseholdBackupStore(store),
+          remoteReader: InitialSyncBackupRecoveryReader(
+            widget.initialSyncTransport,
+          ),
+        ),
+        fileService: const PortableFileService(),
+        onRecovered: _refreshSyncedData,
+        onViewTransactions: () {
+          if (mounted) setState(() => selected = 2);
+        },
+      );
+
+  late final RestoreLifecycleController restoreLifecycleController =
+      RestoreLifecycleController(
+        service: RestoreLifecycleService(LocalHouseholdBackupStore(store)),
+        bootstrapCloud: _bootstrapRestoredClone,
       );
 
   late final CloudSharingController cloudSharingController =
@@ -118,6 +179,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     ),
     onRemoteDataApplied: _refreshSyncedData,
   );
+  late final HealthCheckController healthCheckController =
+      HealthCheckController(
+        HealthCheckService(
+          dataSource: LocalHealthCheckDataSource(
+            store: store,
+            bookId: () => financialBook?.id ?? '',
+            syncStatus: () => syncController.status,
+            lastSuccessfulSyncAt: () => syncController.lastSuccessfulSyncAt,
+          ),
+        ),
+      );
   late final SyncConflictController? syncConflictController =
       widget.syncTransport is ConflictResolutionTransport
       ? SyncConflictController(
@@ -167,6 +239,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     assetDefinitionResolver: assetDefinitionController.definitionById,
     afterMutation: assetDefinitionController.reload,
   );
+  late final monthlyBudgetController = MonthlyBudgetController(
+    repository: LocalMonthlyBudgetRepository(store),
+  );
   late final masterDataController = MasterDataController(
     persistAccount: (account) => store.upsertAccount(account.toRecord()),
     loadProjectRecords: () async => (await store.getProjectRecords())
@@ -205,6 +280,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     masterDataController.addListener(_onAppStateChanged);
     assetDefinitionController.addListener(_onAppStateChanged);
     assetPriceController.addListener(_onAppStateChanged);
+    monthlyBudgetController.addListener(_onAppStateChanged);
     cloudSharingController.addListener(_onCloudStateChanged);
 
     _loadLocalData();
@@ -258,8 +334,29 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       }
 
       await assetPriceController.load();
+      final categoryRows = await store.getCategoryRecords(
+        includeDeleted: true,
+        categoryType: 'expense',
+        bookId: result.financialBook?.id,
+      );
+      await monthlyBudgetController.load(
+        bookId: result.financialBook?.id,
+        categoryNames: {
+          for (final row in categoryRows)
+            row['id'] as String: row['name'] as String,
+        },
+        activeCategoryIds: {
+          for (final row in categoryRows)
+            if (row['deleted_at'] == null) row['id'] as String,
+        },
+        currencyCode: result.financialBook?.baseCurrencyCode ?? 'IDR',
+        transactions: transactionController.transactions,
+        pairedTransactionIds: transactionController.pairedTransactionIds,
+      );
       if (result.financialBook != null) {
         await backupExportController.load(result.financialBook!.id);
+        backupRecoveryController.load(result.financialBook!.id);
+        await restoreLifecycleController.load(result.financialBook!.id);
       }
 
       if (!mounted) {
@@ -310,12 +407,35 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Future<void> _refreshSyncedData({bool reloadBackup = true}) async {
     final result = await bootstrapService.load(requireProfile: true);
     await assetDefinitionController.reload();
+    final categoryRows = await store.getCategoryRecords(
+      includeDeleted: true,
+      categoryType: 'expense',
+      bookId: result.financialBook?.id,
+    );
+    await monthlyBudgetController.load(
+      bookId: result.financialBook?.id,
+      categoryNames: {
+        for (final row in categoryRows)
+          row['id'] as String: row['name'] as String,
+      },
+      activeCategoryIds: {
+        for (final row in categoryRows)
+          if (row['deleted_at'] == null) row['id'] as String,
+      },
+      currencyCode: result.financialBook?.baseCurrencyCode ?? 'IDR',
+      transactions: transactionController.transactions,
+      pairedTransactionIds: transactionController.pairedTransactionIds,
+    );
     final assetDefinitionError = assetDefinitionController.error;
     if (assetDefinitionError != null) {
       throw StateError(assetDefinitionError);
     }
     if (reloadBackup && result.financialBook != null) {
       await backupExportController.load(result.financialBook!.id);
+      backupRecoveryController.load(result.financialBook!.id);
+    }
+    if (result.financialBook != null) {
+      await restoreLifecycleController.load(result.financialBook!.id);
     }
     if (!mounted) return;
     setState(() {
@@ -334,8 +454,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _refreshAfterRestore() {
-    return _refreshSyncedData(reloadBackup: false);
+  Future<void> _refreshAfterRestore() async {
+    await _refreshSyncedData(reloadBackup: false);
+    await syncController.setBook(financialBook, runWhenReady: false);
+    await syncConflictController?.setBook(financialBook?.id);
+    await _configureInitialSyncContext();
   }
 
   Future<void> _completeLocalProfile(LocalProfile profile) async {
@@ -455,6 +578,55 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     await _configureInitialSyncContext();
   }
 
+  Future<void> _bootstrapRestoredClone(RestoreLifecycleClone clone) async {
+    await _refreshAfterRestore();
+    final book = financialBook;
+    HouseholdMember? member;
+    for (final candidate in householdMembers) {
+      if (candidate.id == activeMemberId) {
+        member = candidate;
+        break;
+      }
+    }
+    if (book == null || book.id != clone.book.id || member == null) {
+      throw StateError('The recovery clone could not be activated locally.');
+    }
+    if (cloudSharingController.user == null) {
+      throw StateError('Sign in before creating a new shared household.');
+    }
+
+    await cloudSharingController.linkHousehold(
+      book: book,
+      activeMember: member,
+    );
+    final linkedMembership = cloudSharingController.memberships.any(
+      (membership) =>
+          membership.bookId == clone.book.id &&
+          membership.status == 'active' &&
+          membership.role == CloudMembershipRole.owner,
+    );
+    if (cloudSharingController.error != null || !linkedMembership) {
+      throw StateError(
+        cloudSharingController.error ??
+            'The new hosted household owner membership was not created.',
+      );
+    }
+
+    await _configureInitialSyncContext();
+    if (!initialSyncController.canUpload) {
+      throw StateError(
+        'The new hosted household did not enter the protected initial-upload state.',
+      );
+    }
+    await initialSyncController.upload(confirmed: true);
+    if (initialSyncController.lastResult?.success != true) {
+      throw StateError(
+        initialSyncController.error ?? 'Initial upload did not complete.',
+      );
+    }
+    await syncController.setBook(financialBook);
+  }
+
   Future<void> _configureInitialSyncContext() async {
     final book = financialBook;
     final memberships = cloudSharingController.memberships
@@ -476,6 +648,20 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       secondaryRole: secondaryMembership?.role.name,
       secondaryMemberId: secondaryMembership?.householdMemberId,
       authUserId: cloudSharingController.user?.id,
+      hostedBookIds: memberships
+          .map((membership) => membership.bookId)
+          .toList(),
+      hostedRoles: {
+        for (final membership in memberships)
+          membership.bookId: membership.role.name,
+      },
+      hostedMemberIds: {
+        for (final membership in memberships)
+          membership.bookId: membership.householdMemberId,
+      },
+      cloudConfigured: cloudSharingController.diagnostics.isConfigured,
+      remoteStateLoaded: cloudSharingController.remoteStateLoaded,
+      remoteStateError: cloudSharingController.error,
     );
   }
 
@@ -538,6 +724,244 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> openCsvImport(BuildContext context) async {
+    final fileService = TransactionImportFileService();
+    final controller = _createTransactionImportController(fileService.pick);
+    if (controller == null) return;
+    await TransactionImportScreen.show(
+      context,
+      controller: controller,
+      onViewImported: (ids) {
+        Navigator.of(context).pop();
+        setState(() {
+          currentSessionImportedTransactionIds = ids.toSet();
+          selected = 2;
+        });
+      },
+    );
+    controller.dispose();
+  }
+
+  Future<void> openInternalTransferReview(BuildContext context) async {
+    final service = transactionController.internalTransfers;
+    if (service == null) return;
+    final controller = InternalTransferReviewController(
+      transactions: List.of(transactionController.transactions),
+      accounts: List.of(masterDataController.accountRecords),
+      links: List.of(transactionController.transferLinks),
+      service: service,
+      afterMutation: _refreshSyncedData,
+    );
+    await controller.scan();
+    if (!context.mounted) {
+      controller.dispose();
+      return;
+    }
+    await InternalTransferReviewScreen.show(context, controller: controller);
+    controller.dispose();
+    await transactionController.load();
+  }
+
+  TransactionImportController? _createTransactionImportController(
+    Future<SelectedCsvFile?> Function() pickFile,
+  ) {
+    final book = financialBook;
+    if (book == null) return null;
+    final repository = assetUsageTransactionRepository;
+    return TransactionImportController(
+      pickFile: pickFile,
+      importBatch: ImportTransactionsBatch(repository),
+      existingTransactions: () => repository.getAll(includeDeleted: true),
+      accounts: masterDataController.accountRecords,
+      expenseCategories: masterDataController.expenseCategories,
+      incomeCategories: masterDataController.incomeCategories,
+      activeBookId: book.id,
+      activeMemberId: activeMemberId,
+      internalTransfers: transactionController.internalTransfers,
+      existingTransferLinks: () async =>
+          transactionController.internalTransfers?.getLinks() ?? const [],
+      importReviewRepository: LocalImportReviewRepository(store),
+      hasUnresolvedSyncConflict: () async =>
+          await store.getUnresolvedSyncConflictCount(book.id) > 0,
+      importRules: () => LocalTransactionImportRuleRepository(
+        store,
+      ).getAll(bookId: book.id, activeOnly: true),
+      saveImportRule: LocalTransactionImportRuleRepository(store).save,
+      ruleCategories: () async {
+        final rows = await store.getCategoryRecords(
+          bookId: book.id,
+          includeDeleted: true,
+        );
+        return {
+          for (final row in rows)
+            row['id'] as String: ImportRuleCategory(
+              id: row['id'] as String,
+              bookId: row['book_id'] as String,
+              name: row['name'] as String,
+              type: row['category_type'] == 'income'
+                  ? TransactionType.income
+                  : TransactionType.expense,
+              available: row['deleted_at'] == null,
+            ),
+        };
+      },
+      refreshBeforeAnalysis: () async {
+        if (!syncController.canSync) {
+          return syncController.status == SyncStatus.localOnly;
+        }
+        await syncController.syncNow();
+        return syncController.status == SyncStatus.synced ||
+            syncController.status == SyncStatus.pending ||
+            syncController.status == SyncStatus.conflict;
+      },
+      afterImport: _refreshSyncedData,
+    );
+  }
+
+  Future<void> openDocumentImport(
+    BuildContext context,
+    FinancialDocumentType type,
+  ) async {
+    final transactionController = _createTransactionImportController(
+      () async => null,
+    );
+    if (transactionController == null) return;
+    final DocumentExtractionProvider provider =
+        AppEnvironment.hasSupabaseConfiguration
+        ? SupabaseDocumentExtractionProvider(Supabase.instance.client)
+        : const UnavailableDocumentExtractionProvider();
+    final controller = DocumentImportController(
+      type: type,
+      provider: provider,
+      fileService: DocumentImportFileService(),
+      transactions: transactionController,
+    );
+    await DocumentImportScreen.show(
+      context,
+      controller: controller,
+      onViewImported: (ids) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        setState(() {
+          currentSessionImportedTransactionIds = ids.toSet();
+          selected = 2;
+        });
+      },
+    );
+    controller.dispose();
+    transactionController.dispose();
+  }
+
+  Future<void> openTransactionImport(BuildContext context) async {
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(title: Text('Import transactions')),
+            ListTile(
+              leading: const Icon(Icons.inbox_outlined),
+              title: const Text('Import Inbox'),
+              subtitle: const Text('Resume saved transaction drafts'),
+              onTap: () => Navigator.pop(context, 'inbox'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.table_view),
+              title: const Text('CSV'),
+              onTap: () => Navigator.pop(context, 'csv'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.receipt_long),
+              title: const Text('Receipt / invoice photo'),
+              onTap: () => Navigator.pop(context, 'receipt'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.account_balance),
+              title: const Text('Bank statement PDF / images'),
+              onTap: () => Navigator.pop(context, 'statement'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted) return;
+    switch (source) {
+      case 'inbox':
+        await openImportInbox(context);
+        break;
+      case 'csv':
+        await openCsvImport(context);
+        break;
+      case 'receipt':
+        await openDocumentImport(context, FinancialDocumentType.receiptInvoice);
+        break;
+      case 'statement':
+        await openDocumentImport(context, FinancialDocumentType.bankStatement);
+        break;
+      default:
+        break;
+    }
+  }
+
+  Future<void> openImportInbox(BuildContext context) async {
+    final book = financialBook;
+    if (book == null) return;
+    final repository = LocalImportReviewRepository(store);
+    await ImportReviewInboxScreen.show(
+      context,
+      repository: repository,
+      bookId: book.id,
+      onReview: (sessionId) => openSavedImportReview(context, sessionId),
+    );
+  }
+
+  Future<void> openSavedImportReview(
+    BuildContext context,
+    String sessionId,
+  ) async {
+    final repository = LocalImportReviewRepository(store);
+    final bundle = await repository.load(sessionId);
+    if (bundle == null || !context.mounted) return;
+    final controller = _createTransactionImportController(() async => null);
+    if (controller == null) return;
+    await controller.loadSavedReview(bundle);
+    if (!context.mounted) {
+      controller.dispose();
+      return;
+    }
+    if (controller.reviewBundle?.session.terminal == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This import was already completed on another device.'),
+        ),
+      );
+      controller.dispose();
+      return;
+    }
+    await TransactionImportScreen.showPrepared(
+      context,
+      controller: controller,
+      title: bundle.session.title,
+      sourceSummary: const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text(
+            'Resumed from the Import Inbox. The original source file is not stored. '
+            'Rules, duplicates, and possible transfers were checked again using current data.',
+          ),
+        ),
+      ),
+      onViewImported: (ids) {
+        Navigator.of(context).pop();
+        setState(() {
+          currentSessionImportedTransactionIds = ids.toSet();
+          selected = 2;
+        });
+      },
+    );
+    controller.dispose();
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -546,17 +970,22 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     masterDataController.removeListener(_onAppStateChanged);
     assetDefinitionController.removeListener(_onAppStateChanged);
     assetPriceController.removeListener(_onAppStateChanged);
+    monthlyBudgetController.removeListener(_onAppStateChanged);
     cloudSharingController.removeListener(_onCloudStateChanged);
 
     transactionController.dispose();
     masterDataController.dispose();
     assetDefinitionController.dispose();
     assetPriceController.dispose();
+    monthlyBudgetController.dispose();
     cloudSharingController.dispose();
     syncController.dispose();
     syncConflictController?.dispose();
     initialSyncController.dispose();
     backupExportController.dispose();
+    backupRecoveryController.dispose();
+    restoreLifecycleController.dispose();
+    healthCheckController.dispose();
     assetPriceRepository?.close();
     store.close();
 
@@ -571,6 +1000,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final transactions = transactionController.transactions;
+    final displayTransactions = transactionController.displayTransactions;
+    monthlyBudgetController.updateTransactions(
+      transactions,
+      pairedTransactionIds: transactionController.pairedTransactionIds,
+    );
 
     final referenceDate = DateTime.now();
 
@@ -584,6 +1018,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       transactions: transactions,
       referenceDate: referenceDate,
       tithePolicy: TithePolicy.defaultPolicy,
+      transferLinks: transactionController.transferLinks,
     );
 
     final dashboardSummary = FinancialSummary.forPeriod(
@@ -591,18 +1026,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       periodStart: dashboardPeriod.start,
       periodEndExclusive: dashboardPeriod.endExclusive,
       tithePolicy: TithePolicy.defaultPolicy,
+      transferLinks: transactionController.transferLinks,
     );
 
     final pages = [
       Dashboard(
-        transactions: transactions,
+        transactions: displayTransactions,
         hasAccounts: masterDataController.accountRecords.isNotEmpty,
         summary: dashboardSummary,
         referenceDate: referenceDate,
         period: dashboardPeriod,
         transactionChanges: transactionController,
         transactionsProvider: () {
-          return transactionController.transactions;
+          return transactionController.displayTransactions;
         },
         onPeriodChanged: (period) {
           setState(() {
@@ -627,6 +1063,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       ),
       TransactionListScreen(
         controller: transactionController,
+        importedTransactionIds: currentSessionImportedTransactionIds,
+        onImportCsv: () => openTransactionImport(context),
+        onReviewTransfers: () => openInternalTransferReview(context),
         onEdit: (transaction) {
           EditTransactionScreen.show(
             context,
@@ -638,7 +1077,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       ),
       AccountsPage(
         accountRecords: masterDataController.accountRecords,
-        transactions: transactions,
+        transactions: displayTransactions,
         defaultCurrencyCode: localProfile?.defaultCurrencyCode ?? 'IDR',
         onSave: masterDataController.saveAccount,
         members: householdMembers,
@@ -647,6 +1086,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         expenseCategories: masterDataController.expenseCategories,
         incomeCategories: masterDataController.incomeCategories,
         onSave: masterDataController.save,
+        onManageImportRules: financialBook == null
+            ? null
+            : () => TransactionImportRulesScreen.show(
+                context,
+                store: store,
+                bookId: financialBook!.id,
+                accounts: masterDataController.accountRecords,
+              ),
       ),
       AssetConversionScreen(
         accounts: masterDataController.accounts,
@@ -662,8 +1109,30 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         currencyCode: localProfile?.defaultCurrencyCode ?? 'IDR',
         onSave: masterDataController.save,
       ),
+      BudgetsPage(
+        controller: monthlyBudgetController,
+        currencyCode: financialBook?.baseCurrencyCode ?? 'IDR',
+      ),
       TithePage(summary: currentMonthSummary),
-      ReportsPage(summary: currentMonthSummary),
+      ReportsPage(
+        summary: currentMonthSummary,
+        onOpenStatements: financialBook == null
+            ? null
+            : () => StatementsScreen.show(
+                context,
+                FinancialStatementController(
+                  book: financialBook!,
+                  accounts: masterDataController.accountRecords,
+                  transactions: transactionController.transactions,
+                  transferLinks: transactionController.transferLinks,
+                  budgets: monthlyBudgetController.budgets,
+                  categoryNamesById: monthlyBudgetController.categoryNames,
+                  localDataWarning:
+                      financialBook!.remoteLinkedAt != null &&
+                      syncController.status != SyncStatus.synced,
+                ),
+              ),
+      ),
       if (financialBook != null)
         HouseholdSettingsPage(
           book: financialBook!,
@@ -680,6 +1149,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             activeMemberId: activeMemberId,
             syncController: syncController,
             initialSyncController: initialSyncController,
+            backupExportController: backupExportController,
+            restoreLifecycleController: restoreLifecycleController,
+            onOpenRecovery: () => setState(() => selected = 12),
             onReviewConflicts: syncConflictController == null
                 ? null
                 : () => ConflictReviewScreen.show(
@@ -690,7 +1162,30 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         )
       else
         const SizedBox.shrink(),
-      BackupExportScreen(controller: backupExportController),
+      if (financialBook != null && activeMemberId != null)
+        IntegrationsScreen(
+          repository: widget.telegramIntegrationRepository,
+          bookId: financialBook!.id,
+          memberId: activeMemberId!,
+        )
+      else
+        const SizedBox.shrink(),
+      BackupExportScreen(
+        controller: backupExportController,
+        recoveryController: backupRecoveryController,
+        restoreLifecycleController: restoreLifecycleController,
+        authenticatedEmail: cloudSharingController.user?.email,
+        onOpenHousehold: () => setState(() => selected = 10),
+      ),
+      HealthCheckScreen(
+        controller: healthCheckController,
+        onOpenConflicts: syncConflictController == null
+            ? null
+            : () => ConflictReviewScreen.show(context, syncConflictController!),
+        onOpenImportInbox: () => openImportInbox(context),
+        onOpenBackup: () => setState(() => selected = 12),
+        onOpenHousehold: () => setState(() => selected = 10),
+      ),
     ];
 
     if (loading || transactionController.isLoading) {

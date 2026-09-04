@@ -15,6 +15,7 @@ primary records. Flutter captures `books`, household members, categories,
 projects, accounts, asset definitions, and transactions in one SQLite read
 transaction. The same transaction records the outbox row boundary and a
 manifest of entity counts. Upload uses batches of at most 100 records.
+From BETA-07A, the snapshot and manifest also include monthly category budgets.
 
 The server atomically claims one upload session, requires an empty financial
 mirror, validates book scope and allowed fields, and deduplicates each row by
@@ -43,6 +44,18 @@ content. An unrelated local book remains untouched.
 A populated target with the same remote UUID is rejected; independent local
 history is never merged or deleted.
 
+The sole exception is the explicit BETA-07C1 recovery operation. A signed-in,
+mapped active member may select one of their active hosted memberships after a
+restore has deliberately cleared the local cloud identity. The client inspects
+the RLS-protected manifest, requires a verified encrypted safety backup, stages
+an authoritative download, validates every entity and reference, and only then
+atomically replaces a same-ID local copy. A different-ID hosted household uses
+the existing secondary download and preserves the current local-only book.
+Neither path uploads or merges local-only changes.
+Budget validation additionally requires the same book, an expense category,
+`YYYY-MM-01`, book-base currency, a positive limit, and no duplicate active
+category/month. Categories are activated before their budgets.
+
 ## Recovery and handoff
 
 Initialization states are `notInitialized`, `primaryUploadRequired`,
@@ -65,4 +78,21 @@ Apply Supabase migrations in order through
 `supabase test db` in the linked test environment. Configure only the public
 Supabase URL/publishable key in Flutter. Never mark a book `ready` manually and
 never use production household data for protocol tests.
+
+## Disaster-recovery clone upload
+
+A BETA-08A1 disaster-recovery clone enters the same primary-upload protocol;
+there is no backup-specific upload path. The clone has a fresh book identity,
+the authenticated current user is linked as owner, and normal manifest,
+empty-hosted-state, batch, cursor, readiness, and completion checks apply.
+Historical restore cursor, outbox, conflict, and staging state is not uploaded.
+
+## Pending import workflow
+
+SQLite v24 treats `import_review_sessions` and `import_review_drafts` as durable
+household entities in the existing manifest. Sessions are ordered before child
+drafts for upload/download, counts participate in validation, and secondary
+devices receive normalized review state without source files. Initial snapshot
+transfer does not financially commit a session; only the later explicit import
+creates ordinary transaction/transfer rows.
 

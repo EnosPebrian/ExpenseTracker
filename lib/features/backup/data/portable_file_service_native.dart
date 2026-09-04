@@ -18,9 +18,11 @@ Future<PortableDestination?> choosePortableDestination(
     );
   }
   final selected = await FilePicker.platform.getDirectoryPath(
-    dialogTitle: kind == PortableDestinationKind.backup
-        ? 'Choose encrypted backup folder'
-        : 'Choose CSV export folder',
+    dialogTitle: switch (kind) {
+      PortableDestinationKind.backup => 'Choose encrypted backup folder',
+      PortableDestinationKind.csv => 'Choose CSV export folder',
+      PortableDestinationKind.statement => 'Choose statement export folder',
+    },
     lockParentWindow: Platform.isWindows,
   );
   if (selected == null) return null;
@@ -200,6 +202,7 @@ Future<void> _remember(PortableDestinationKind kind, String directory) async {
 String _key(PortableDestinationKind kind) => switch (kind) {
   PortableDestinationKind.backup => 'backupDestination',
   PortableDestinationKind.csv => 'csvDestination',
+  PortableDestinationKind.statement => 'statementDestination',
 };
 
 File _preferencesFile() {

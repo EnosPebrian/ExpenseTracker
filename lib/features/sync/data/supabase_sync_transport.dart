@@ -212,7 +212,7 @@ class SupabaseSyncTransport
               value.toInt(),
               isUtc: true,
             ).toIso8601String()
-          : entry.key == 'online_pricing_enabled' && value is num
+          : _booleanFields.contains(entry.key) && value is num
           ? value.toInt() == 1
           : value;
     }
@@ -231,7 +231,7 @@ class SupabaseSyncTransport
       result[entry.key] =
           _timestampFields.contains(entry.key) && value is String
           ? DateTime.parse(value).millisecondsSinceEpoch
-          : entry.key == 'online_pricing_enabled' && value is bool
+          : _booleanFields.contains(entry.key) && value is bool
           ? value
                 ? 1
                 : 0
@@ -264,6 +264,13 @@ class SupabaseSyncTransport
     'created_at',
     'updated_at',
     'deleted_at',
+    'completed_at',
+  };
+
+  static const _booleanFields = {
+    'online_pricing_enabled',
+    'enabled',
+    'included',
   };
 
   static const Map<String, Set<String>> _remoteFields = {
@@ -371,6 +378,100 @@ class SupabaseSyncTransport
       'market_reference_unit',
       'market_reference_source',
       'market_reference_quoted_at',
+      'created_at',
+      'updated_at',
+      'deleted_at',
+      'version',
+      'device_id',
+    },
+    'transfer_links': {
+      'id',
+      'book_id',
+      'outgoing_transaction_id',
+      'incoming_transaction_id',
+      'source_account_id',
+      'destination_account_id',
+      'currency_code',
+      'amount',
+      'created_at',
+      'updated_at',
+      'deleted_at',
+      'version',
+      'device_id',
+    },
+    'monthly_category_budgets': {
+      'id',
+      'book_id',
+      'category_id',
+      'month_start',
+      'limit_minor',
+      'currency_code',
+      'note',
+      'created_at',
+      'updated_at',
+      'deleted_at',
+      'version',
+      'device_id',
+    },
+    'transaction_import_rules': {
+      'id',
+      'book_id',
+      'name',
+      'enabled',
+      'priority',
+      'transaction_type',
+      'match_field',
+      'match_operator',
+      'pattern',
+      'pattern_key',
+      'account_id',
+      'category_id',
+      'created_at',
+      'updated_at',
+      'deleted_at',
+      'version',
+      'device_id',
+    },
+    'import_review_sessions': {
+      'id',
+      'book_id',
+      'source_type',
+      'title',
+      'source_fingerprint',
+      'destination_account_id',
+      'state',
+      'created_by_member_id',
+      'summary_json',
+      'created_at',
+      'updated_at',
+      'completed_at',
+      'deleted_at',
+      'version',
+      'device_id',
+    },
+    'import_review_drafts': {
+      'id',
+      'session_id',
+      'book_id',
+      'source_row_identity',
+      'source_row_key',
+      'deterministic_transaction_id',
+      'deterministic_transaction_account_id',
+      'source_index',
+      'transaction_date',
+      'description',
+      'amount_minor',
+      'currency_code',
+      'transaction_type',
+      'category_name',
+      'category_id',
+      'category_provenance',
+      'reference_text',
+      'note_text',
+      'merchant_hint',
+      'included',
+      'user_edited_fields_json',
+      'warnings_json',
       'created_at',
       'updated_at',
       'deleted_at',

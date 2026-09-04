@@ -1,5 +1,28 @@
 # Closed-Beta Checklist
 
+## BETA-07C deployment and owner acceptance — 2026-08-03
+
+- [x] Linked private Supabase project confirmed.
+- [x] Local reset applies all migrations through `202608020001`.
+- [x] Local pgTAP passes 81 assertions.
+- [x] Hosted monthly-budget migration deployed; local/remote histories agree.
+- [x] Remote table and authenticated household-member RLS policies verified.
+- [x] Configured Windows release rebuilt.
+- [x] Configured owner-signed APK and AAB rebuilt.
+- [x] APK certificate matches Enos/Pilgrim Tracker/Tebu Nai and is not debug.
+- [ ] Existing Windows and Android v20 to v21 upgrades accepted — NOT RUN.
+- [ ] Budget CRUD, calculation, navigation, and close/reopen accepted — NOT RUN.
+- [ ] Copy-month preview/cancel/idempotency accepted — NOT RUN.
+- [ ] Cross-device and offline convergence accepted — NOT RUN.
+- [ ] Budget conflicts and delete-versus-update accepted — NOT RUN.
+- [ ] Backup v2, authentic v1 compatibility, and restore accepted — NOT RUN.
+- [ ] CSV and category lifecycle accepted — NOT RUN.
+- [ ] **BETA-07C PASS** — NO; required owner runtime gates remain open.
+- [ ] BETA-07A/B released for controlled private use — NO.
+
+See `BETA07_ACCEPTANCE_RESULTS.md` for the complete status matrix. This open
+post-D14 milestone does not alter the historical D14 closure below.
+
 ## D14 closure — 2026-08-02
 
 - [x] **D14 PASS — Ready for controlled private deployment by Enos and Grace.**
@@ -150,6 +173,25 @@ the owner-signed Android builds and both platform smoke/reopen checklists.
 - [ ] Complete Enos/Grace hosted-sync matrix — NOT RUN; earlier evidence is partial.
 - [ ] Controlled closed-beta ready — FAIL.
 - [ ] D14 complete — FAIL; critical blockers remain.
+
+## BETA-07 final owner closure
+
+- [x] BETA-07A monthly category budgets — PASS.
+- [x] BETA-07B copy-month budgets — PASS.
+- [x] BETA-07C hosted reconnect/recovery — PASS.
+- [x] BETA-07C1 — superseded by C2.
+- [x] BETA-07C2 owner Windows/Android acceptance — PASS.
+- [x] Scope remains controlled private deployment by Enos and Grace.
+
+## BETA-08A engineering checklist
+
+- [x] Recover from backup is separate from replacement restore.
+- [x] Same-household validation and foreign-household block.
+- [x] Mandatory read-only hosted verification for linked ready books.
+- [x] Stable-ID, duplicate, conflict, tombstone, and dependency classification.
+- [x] Atomic additive mutation and ordinary outbox path.
+- [x] Current-only records and cloud identity are preserved.
+- [ ] Owner cross-device acceptance — follow `BETA08A_OWNER_ACCEPTANCE.md`.
 
 ## D14A signed-artifact recovery — 2026-07-30
 

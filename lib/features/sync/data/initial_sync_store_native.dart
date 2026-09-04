@@ -11,6 +11,20 @@ class InitialSyncStoreAdapter {
 
   final LocalStore store;
 
+  Future<bool> isIncrementallySyncReady(String bookId) async {
+    final books = await store.db.query(
+      'books',
+      columns: ['remote_linked_at'],
+      where: 'id = ?',
+      whereArgs: [bookId],
+      limit: 1,
+    );
+    if (books.isEmpty || books.single['remote_linked_at'] == null) return false;
+    final cursor = await store.getSyncCursor(bookId);
+    return cursor?['initialization_state'] ==
+        SyncInitializationState.ready.name;
+  }
+
   Future<InitialSyncManifest> captureUploadSnapshot(String bookId) =>
       store.db.transaction((txn) async {
         final bookRows = await txn.query(
@@ -327,14 +341,16 @@ class InitialSyncStoreAdapter {
     });
   }
 
-  Future<void> activateDownload({
+  Future<bool> activateDownload({
     required String bookId,
     required InitialSyncManifest manifest,
     required String? authUserId,
+    bool replaceExisting = false,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
+    var alreadyMatched = false;
     await store.db.transaction((txn) async {
-      if (await _financialRowCount(txn, bookId) > 0) {
+      if (!replaceExisting && await _financialRowCount(txn, bookId) > 0) {
         throw const InitialSyncException(
           InitialSyncErrorCode.localTargetPopulated,
           'This device already contains independent data for that household.',
@@ -342,12 +358,46 @@ class InitialSyncStoreAdapter {
       }
       final rowsByType = await _loadStagedRows(txn, bookId);
       _validateManifest(manifest, rowsByType);
+      final alreadyMatches =
+          replaceExisting &&
+          await _matchesHostedSnapshot(txn, bookId, rowsByType);
+      alreadyMatched = alreadyMatches;
+      if (replaceExisting && !alreadyMatches) {
+        for (final table in const [
+          'import_review_drafts',
+          'import_review_sessions',
+          'transfer_links',
+          'transactions',
+          'transaction_import_rules',
+          'monthly_category_budgets',
+          'asset_market_prices',
+          'asset_definitions',
+          'projects',
+          'categories',
+          'accounts',
+          'household_members',
+        ]) {
+          await txn.delete(table, where: 'book_id = ?', whereArgs: [bookId]);
+        }
+        await txn.delete('books', where: 'id = ?', whereArgs: [bookId]);
+        await txn.delete(
+          'sync_outbox',
+          where: 'book_id = ?',
+          whereArgs: [bookId],
+        );
+        await txn.delete(
+          'sync_conflicts',
+          where: 'book_id = ?',
+          whereArgs: [bookId],
+        );
+      }
       final diagnostic = await _diagnostic(txn, bookId);
       var finalDiagnostic = diagnostic;
       for (final entityType in initialSyncEntityOrder) {
         final table = _table(entityType);
         final localColumns = await _columnNames(txn, table);
         for (final source in rowsByType[entityType]!) {
+          if (alreadyMatches) continue;
           final saved = <String, Object?>{
             for (final entry in source.entries)
               if (localColumns.contains(entry.key)) entry.key: entry.value,
@@ -376,6 +426,30 @@ class InitialSyncStoreAdapter {
             );
           }
         }
+      }
+      if (alreadyMatches) {
+        await txn.update(
+          'books',
+          {'remote_linked_at': now, 'sync_status': 'synced'},
+          where: 'id = ?',
+          whereArgs: [bookId],
+        );
+        await txn.update(
+          'household_members',
+          {'auth_user_id': authUserId, 'sync_status': 'synced'},
+          where: 'id = ? AND book_id = ?',
+          whereArgs: [manifest.householdMemberId, bookId],
+        );
+        await txn.delete(
+          'sync_outbox',
+          where: 'book_id = ?',
+          whereArgs: [bookId],
+        );
+        await txn.delete(
+          'sync_conflicts',
+          where: 'book_id = ?',
+          whereArgs: [bookId],
+        );
       }
       for (final entityType in initialSyncEntityOrder) {
         final localRows = await _rowsForBook(txn, entityType, bookId);
@@ -425,6 +499,7 @@ class InitialSyncStoreAdapter {
       );
     });
     store.setActiveBookId(bookId);
+    return alreadyMatched;
   }
 
   Future<InitialSyncDiagnosticSummary> getDiagnosticSummary(String bookId) =>
@@ -603,6 +678,21 @@ class InitialSyncStoreAdapter {
         .map((row) => row['id'])
         .toSet();
     final projectIds = rowsByType['projects']!.map((row) => row['id']).toSet();
+    final expenseCategoryIds = rowsByType['categories']!
+        .where((row) => row['category_type'] == 'expense')
+        .map((row) => row['id'])
+        .toSet();
+    final categoryIds = rowsByType['categories']!
+        .map((row) => row['id'])
+        .toSet();
+    final categoryTypes = {
+      for (final row in rowsByType['categories']!)
+        row['id']: row['category_type'],
+    };
+    final accountIds = rowsByType['accounts']!.map((row) => row['id']).toSet();
+    final accountsById = {
+      for (final row in rowsByType['accounts']!) row['id']: row,
+    };
     final assetIds = rowsByType['asset_definitions']!
         .map((row) => row['id'])
         .toSet();
@@ -617,6 +707,94 @@ class InitialSyncStoreAdapter {
           'An account owner is missing from the household snapshot.',
           entityType: 'accounts',
           recordId: account['id'] as String?,
+          phase: 'validate',
+          committedRecords: 0,
+        );
+      }
+    }
+    final budgetKeys = <String>{};
+    for (final budget in rowsByType['monthly_category_budgets']!) {
+      final key = '${budget['category_id']}:${budget['month_start']}';
+      final monthStart = budget['month_start'];
+      final parsedMonth = monthStart is String
+          ? DateTime.tryParse(monthStart)
+          : null;
+      final note = budget['note'];
+      if (!expenseCategoryIds.contains(budget['category_id']) ||
+          monthStart is! String ||
+          !RegExp(r'^\d{4}-\d{2}-01$').hasMatch(monthStart) ||
+          parsedMonth == null ||
+          parsedMonth.day != 1 ||
+          budget['limit_minor'] is! num ||
+          (budget['limit_minor'] as num).toInt() <= 0 ||
+          budget['currency_code'] != manifest.baseCurrencyCode ||
+          (note != null && (note is! String || note.length > 120)) ||
+          (budget['deleted_at'] == null && !budgetKeys.add(key))) {
+        throw InitialSyncException(
+          InitialSyncErrorCode.validation,
+          'A monthly budget is invalid or references a missing category.',
+          entityType: 'monthly_category_budgets',
+          recordId: budget['id'] as String?,
+          phase: 'validate',
+          committedRecords: 0,
+        );
+      }
+    }
+    final activeRuleKeys = <String>{};
+    for (final rule in rowsByType['transaction_import_rules']!) {
+      final semanticKey = [
+        rule['transaction_type'],
+        rule['match_field'],
+        rule['match_operator'],
+        rule['pattern_key'],
+        rule['account_id'] ?? '',
+      ].join('|');
+      if (!categoryIds.contains(rule['category_id']) ||
+          categoryTypes[rule['category_id']] != rule['transaction_type'] ||
+          (rule['account_id'] != null &&
+              !accountIds.contains(rule['account_id'])) ||
+          (rule['deleted_at'] == null && !activeRuleKeys.add(semanticKey))) {
+        throw InitialSyncException(
+          InitialSyncErrorCode.validation,
+          'An import rule is invalid or references missing master data.',
+          entityType: 'transaction_import_rules',
+          recordId: rule['id'] as String?,
+          phase: 'validate',
+          committedRecords: 0,
+        );
+      }
+    }
+    final sessionIds = <Object?>{};
+    for (final session in rowsByType['import_review_sessions']!) {
+      final validAccount =
+          session['destination_account_id'] == null ||
+          accountIds.contains(session['destination_account_id']);
+      final validMember =
+          session['created_by_member_id'] == null ||
+          memberIds.contains(session['created_by_member_id']);
+      if (!sessionIds.add(session['id']) || !validAccount || !validMember) {
+        throw InitialSyncException(
+          InitialSyncErrorCode.validation,
+          'An import review session references another household.',
+          entityType: 'import_review_sessions',
+          recordId: session['id'] as String?,
+          phase: 'validate',
+          committedRecords: 0,
+        );
+      }
+    }
+    final draftIdentity = <String>{};
+    for (final draft in rowsByType['import_review_drafts']!) {
+      final key = '${draft['session_id']}:${draft['source_row_identity']}';
+      if (!sessionIds.contains(draft['session_id']) ||
+          !draftIdentity.add(key) ||
+          (draft['category_id'] != null &&
+              !categoryIds.contains(draft['category_id']))) {
+        throw InitialSyncException(
+          InitialSyncErrorCode.validation,
+          'An import review draft is invalid or belongs to another session.',
+          entityType: 'import_review_drafts',
+          recordId: draft['id'] as String?,
           phase: 'validate',
           committedRecords: 0,
         );
@@ -639,6 +817,48 @@ class InitialSyncStoreAdapter {
           'Transaction references or financial amounts are invalid.',
           entityType: 'transactions',
           recordId: transaction['id'] as String?,
+          phase: 'validate',
+          committedRecords: 0,
+        );
+      }
+    }
+    final transactionsById = {
+      for (final row in rowsByType['transactions']!) row['id']: row,
+    };
+    final activeLegIds = <Object?>{};
+    for (final link in rowsByType['transfer_links']!) {
+      final outgoing = transactionsById[link['outgoing_transaction_id']];
+      final incoming = transactionsById[link['incoming_transaction_id']];
+      final source = accountsById[link['source_account_id']];
+      final destination = accountsById[link['destination_account_id']];
+      final isActive = link['deleted_at'] == null;
+      final amount = (link['amount'] as num?)?.toInt();
+      final validActiveIdentity =
+          !isActive ||
+          (activeLegIds.add(link['outgoing_transaction_id']) &&
+              activeLegIds.add(link['incoming_transaction_id']));
+      if (outgoing == null ||
+          incoming == null ||
+          source == null ||
+          destination == null ||
+          link['outgoing_transaction_id'] == link['incoming_transaction_id'] ||
+          link['source_account_id'] == link['destination_account_id'] ||
+          amount == null ||
+          amount <= 0 ||
+          outgoing['transaction_type'] != 'expense' ||
+          incoming['transaction_type'] != 'income' ||
+          outgoing['amount'] != amount ||
+          incoming['amount'] != amount ||
+          outgoing['account'] != source['name'] ||
+          incoming['account'] != destination['name'] ||
+          source['currency_code'] != destination['currency_code'] ||
+          source['currency_code'] != link['currency_code'] ||
+          !validActiveIdentity) {
+        throw InitialSyncException(
+          InitialSyncErrorCode.validation,
+          'An internal transfer relation is invalid or incomplete.',
+          entityType: 'transfer_links',
+          recordId: link['id'] as String?,
           phase: 'validate',
           committedRecords: 0,
         );
@@ -681,6 +901,32 @@ class InitialSyncStoreAdapter {
       for (final entityType in initialSyncEntityOrder)
         entityType: const InitialSyncEntityDiagnostic(),
     });
+  }
+
+  static Future<bool> _matchesHostedSnapshot(
+    DatabaseExecutor db,
+    String bookId,
+    Map<String, List<Map<String, Object?>>> rowsByType,
+  ) async {
+    for (final entityType in initialSyncEntityOrder) {
+      final localRows = await _rowsForBook(db, entityType, bookId);
+      final hostedRows = rowsByType[entityType] ?? const [];
+      if (localRows.length != hostedRows.length) return false;
+      final localById = {for (final row in localRows) row['id'] as String: row};
+      for (final hosted in hostedRows) {
+        final local = localById[hosted['id']];
+        if (local == null) return false;
+        for (final entry in hosted.entries) {
+          if (entry.key == 'sync_status' ||
+              entry.key == 'remote_linked_at' ||
+              entry.key == 'auth_user_id') {
+            continue;
+          }
+          if (local[entry.key] != entry.value) return false;
+        }
+      }
+    }
+    return true;
   }
 
   static Future<void> _upsertCursor(

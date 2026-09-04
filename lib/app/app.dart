@@ -6,6 +6,7 @@ import '../features/cloud_sharing/data/unconfigured_cloud_sharing_repository.dar
 import '../features/cloud_sharing/domain/cloud_sharing_repository.dart';
 import '../features/sync/domain/sync_transport.dart';
 import '../features/sync/domain/initial_sync_transport.dart';
+import '../features/telegram_integration/domain/telegram_integration_repository.dart';
 
 class PilgrimApp extends StatelessWidget {
   const PilgrimApp({
@@ -13,11 +14,14 @@ class PilgrimApp extends StatelessWidget {
     this.cloudSharingRepository = const UnconfiguredCloudSharingRepository(),
     this.syncTransport = const UnavailableSyncTransport(),
     this.initialSyncTransport = const UnavailableInitialSyncTransport(),
+    this.telegramIntegrationRepository =
+        const UnavailableTelegramIntegrationRepository(),
   });
 
   final CloudSharingRepository cloudSharingRepository;
   final SyncTransport syncTransport;
   final InitialSyncTransport initialSyncTransport;
+  final TelegramIntegrationRepository telegramIntegrationRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +33,7 @@ class PilgrimApp extends StatelessWidget {
         cloudSharingRepository: cloudSharingRepository,
         syncTransport: syncTransport,
         initialSyncTransport: initialSyncTransport,
+        telegramIntegrationRepository: telegramIntegrationRepository,
       ),
     );
   }

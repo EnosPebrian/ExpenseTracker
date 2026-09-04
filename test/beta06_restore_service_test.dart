@@ -285,7 +285,177 @@ void main() {
       }
     }
   });
+
+  test('format 1 replacement preserves existing monthly budgets', () async {
+    final local = beta06Snapshot();
+    local['budgets'] = [
+      {
+        'id': 'budget-existing',
+        'book_id': 'book-beta06',
+        'category_id': 'category-expense',
+        'month_start': '2026-07-01',
+        'limit_minor': 750000,
+        'currency_code': 'IDR',
+        'note': null,
+        'created_at': 1767225600000,
+        'updated_at': 1767225600000,
+        'deleted_at': null,
+        'version': 1,
+        'device_id': 'device-secret',
+        'sync_status': 'local_only',
+      },
+    ];
+    final store = _MemoryBackupStore([
+      HouseholdBackupIntegrity.prepareForRestore(local),
+    ]);
+    final service = HouseholdBackupService(store);
+    final created = await service.codec.encode(
+      snapshot: beta06Snapshot(),
+      password: 'strong-password',
+      formatVersion: 1,
+    );
+    final decoded = await service.validate(created.bytes, 'strong-password');
+
+    final preview = await service.preview(
+      backup: decoded,
+      mode: RestoreMode.replaceMatchingHousehold,
+      activeBookId: 'book-beta06',
+    );
+    await service.restore(
+      backup: decoded,
+      mode: RestoreMode.replaceMatchingHousehold,
+      activeBookId: 'book-beta06',
+      confirmedHouseholdName: 'Beta Household',
+    );
+
+    expect(preview.expectedFinalTotals['budgets'], 1);
+    expect(store.snapshots.single['budgets'], hasLength(1));
+    expect(store.snapshots.single['budgets']!.single['id'], 'budget-existing');
+  });
+
+  test('format 1 preview explains that budgets were not supported', () async {
+    final service = HouseholdBackupService(_MemoryBackupStore([]));
+    final created = await service.codec.encode(
+      snapshot: beta06Snapshot(),
+      password: 'strong-password',
+      formatVersion: 1,
+    );
+    final decoded = await service.validate(created.bytes, 'strong-password');
+
+    final preview = await service.preview(
+      backup: decoded,
+      mode: RestoreMode.newHousehold,
+      activeBookId: 'empty',
+    );
+
+    expect(
+      preview.details,
+      contains(
+        'This backup was created before monthly budgets were supported.',
+      ),
+    );
+  });
+
+  test('format 2 restores budgets as new without outbox work', () async {
+    final source = beta06Snapshot();
+    source['budgets'] = [_budgetRecord(limitMinor: 750000)];
+    final sourceService = HouseholdBackupService(_MemoryBackupStore([source]));
+    final created = await sourceService.create(
+      bookId: 'book-beta06',
+      password: 'strong-password',
+    );
+    final target = _MemoryBackupStore([]);
+    final service = HouseholdBackupService(target);
+    final decoded = await service.validate(created.bytes, 'strong-password');
+
+    await service.restore(
+      backup: decoded,
+      mode: RestoreMode.newHousehold,
+      activeBookId: 'empty',
+    );
+
+    expect(target.snapshots.single['budgets'], hasLength(1));
+    expect(target.snapshots.single['budgets']!.single['id'], 'budget-food');
+    expect(target.snapshots.single['budgets']!.single['limit_minor'], 750000);
+    expect(target.outboxWrites, 0);
+  });
+
+  test('format 2 replacement classifies and replaces a budget', () async {
+    final incoming = beta06Snapshot();
+    incoming['budgets'] = [_budgetRecord(limitMinor: 900000)];
+    final existing = HouseholdBackupIntegrity.prepareForRestore(
+      beta06Snapshot(),
+    );
+    existing['budgets'] = [_budgetRecord(limitMinor: 750000)];
+    final store = _MemoryBackupStore([existing]);
+    final service = HouseholdBackupService(store);
+    final created = await HouseholdBackupService(
+      _MemoryBackupStore([incoming]),
+    ).create(bookId: 'book-beta06', password: 'strong-password');
+    final decoded = await service.validate(created.bytes, 'strong-password');
+
+    final preview = await service.preview(
+      backup: decoded,
+      mode: RestoreMode.replaceMatchingHousehold,
+      activeBookId: 'book-beta06',
+    );
+    expect(preview.replacementByEntity['budgets'], 1);
+    await service.restore(
+      backup: decoded,
+      mode: RestoreMode.replaceMatchingHousehold,
+      activeBookId: 'book-beta06',
+      confirmedHouseholdName: 'Beta Household',
+    );
+
+    expect(store.snapshots.single['budgets']!.single['limit_minor'], 900000);
+    expect(store.outboxWrites, 0);
+  });
+
+  test(
+    'budget with missing category fails preview without activation',
+    () async {
+      final valid = beta06Snapshot();
+      final created = await HouseholdBackupService(
+        _MemoryBackupStore([valid]),
+      ).create(bookId: 'book-beta06', password: 'strong-password');
+      final invalid = beta06Snapshot();
+      invalid['budgets'] = [
+        {
+          ..._budgetRecord(limitMinor: 750000),
+          'category_id': 'missing-category',
+        },
+      ];
+      final store = _MemoryBackupStore([]);
+      final service = HouseholdBackupService(store);
+
+      final preview = await service.preview(
+        backup: DecodedBackup(manifest: created.manifest, snapshot: invalid),
+        mode: RestoreMode.newHousehold,
+        activeBookId: 'empty',
+      );
+
+      expect(preview.canRestore, isFalse);
+      expect(store.activationCount, 0);
+      expect(store.snapshots, isEmpty);
+    },
+  );
 }
+
+Map<String, Object?> _budgetRecord({required int limitMinor}) => {
+  'id': 'budget-food',
+  'book_id': 'book-beta06',
+  'category_id': 'category-expense',
+  'month_start': '2026-07-01',
+  'limit_minor': limitMinor,
+  'currency_code': 'IDR',
+  'note': 'Household groceries',
+  'created_at': 1767225600000,
+  'updated_at': 1767225600000,
+  'deleted_at': null,
+  'version': 1,
+  'device_id': 'device-beta06',
+  'sync_status': 'local_only',
+};
 
 class _MemoryBackupStore implements HouseholdBackupStore {
   _MemoryBackupStore(this.snapshots);
@@ -296,7 +466,7 @@ class _MemoryBackupStore implements HouseholdBackupStore {
   int outboxWrites = 0;
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   @override
   Future<void> activate(

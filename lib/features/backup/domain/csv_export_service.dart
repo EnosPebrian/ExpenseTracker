@@ -116,9 +116,29 @@ class CsvExportService {
         'deleted_at',
         'version',
       ]),
+      'budgets.csv': _budgetsCsv(visible, visible['budgets']!),
       'transactions.csv': _transactionsCsv(visible, transactions),
+      'transfer_links.csv': _entityCsv(visible['transfer_links']!, const [
+        'id',
+        'book_id',
+        'outgoing_transaction_id',
+        'incoming_transaction_id',
+        'source_account_id',
+        'destination_account_id',
+        'currency_code',
+        'amount',
+        'created_at',
+        'updated_at',
+        'deleted_at',
+        'version',
+      ]),
       'asset_activity.csv': _assetActivityCsv(transactions),
-      'summary.csv': _summaryCsv(transactions),
+      'summary.csv': _summaryCsv(
+        transactions,
+        visible['transfer_links']!,
+        visible['budgets']!,
+        filter,
+      ),
       'README.txt': Uint8List.fromList(
         utf8.encode(
           'Pilgrim Tracker CSV export\r\n\r\n'
@@ -164,6 +184,8 @@ class CsvExportService {
       'entered_by_member_id',
       'entered_by_name',
       'related_transaction_id',
+      'transfer_link_id',
+      'transfer_direction',
       'fee_amount_minor',
       'fee_treatment',
       'asset_definition_id',
@@ -181,6 +203,19 @@ class CsvExportService {
     final members = _byId(snapshot['members']!);
     final household = snapshot['household']!.single;
     final currency = household['base_currency_code'];
+    final transferByTransactionId = <String, (String, String)>{};
+    for (final link in snapshot['transfer_links']!) {
+      if (link['deleted_at'] != null) continue;
+      final id = link['id'] as String;
+      transferByTransactionId[link['outgoing_transaction_id'] as String] = (
+        id,
+        'outgoing',
+      );
+      transferByTransactionId[link['incoming_transaction_id'] as String] = (
+        id,
+        'incoming',
+      );
+    }
 
     return _csv(
       headers,
@@ -192,6 +227,7 @@ class CsvExportService {
         final project = projects[row['project_id']];
         final member = members[row['entered_by_member_id']];
         final amount = (row['amount'] as int?) ?? 0;
+        final transfer = transferByTransactionId[row['id']];
         return [
           _text(row['id']),
           _text(row['book_id']),
@@ -210,6 +246,8 @@ class CsvExportService {
           _text(row['entered_by_member_id']),
           _text(member?['display_name']),
           _text(row['related_transaction_id']),
+          _text(transfer?.$1),
+          _text(transfer?.$2),
           _raw(row['fee_amount'] ?? 0),
           _raw(row['fee_treatment'] ?? 'none'),
           _text(row['asset_definition_id']),
@@ -263,10 +301,83 @@ class CsvExportService {
             ),
       );
 
-  static Uint8List _summaryCsv(List<Map<String, Object?>> transactions) {
+  static Uint8List _budgetsCsv(
+    Map<String, List<Map<String, Object?>>> snapshot,
+    List<Map<String, Object?>> budgets,
+  ) {
+    final categories = _byId(snapshot['categories']!);
+    final ordered = budgets.map(Map<String, Object?>.of).toList()
+      ..sort((left, right) {
+        final month = (left['month_start'] as String).compareTo(
+          right['month_start'] as String,
+        );
+        if (month != 0) return month;
+        final category = (left['category_id'] as String).compareTo(
+          right['category_id'] as String,
+        );
+        return category != 0
+            ? category
+            : (left['id'] as String).compareTo(right['id'] as String);
+      });
+    return _csv(
+      const [
+        'budget_id',
+        'book_id',
+        'month_start',
+        'category_id',
+        'category_name',
+        'limit_minor',
+        'limit_display',
+        'currency_code',
+        'note',
+        'deleted_at',
+        'created_at',
+        'updated_at',
+        'version',
+      ],
+      ordered.map((row) {
+        final category = categories[row['category_id']];
+        final amount = (row['limit_minor'] as num).toInt();
+        final currency = row['currency_code'];
+        return [
+          _text(row['id']),
+          _text(row['book_id']),
+          _raw(row['month_start']),
+          _text(row['category_id']),
+          _text(category?['name'] ?? 'Missing category'),
+          _raw(amount),
+          _raw('$currency $amount'),
+          _text(currency),
+          _text(row['note']),
+          _date(row['deleted_at']),
+          _date(row['created_at']),
+          _date(row['updated_at']),
+          _raw(row['version']),
+        ];
+      }),
+    );
+  }
+
+  static Uint8List _summaryCsv(
+    List<Map<String, Object?>> transactions,
+    List<Map<String, Object?>> transferLinks,
+    List<Map<String, Object?>> budgets,
+    CsvExportFilter filter,
+  ) {
     var income = 0;
     var expenses = 0;
+    final pairedIds = {
+      for (final link in transferLinks.where(
+        (row) => row['deleted_at'] == null,
+      ))
+        link['outgoing_transaction_id'],
+      for (final link in transferLinks.where(
+        (row) => row['deleted_at'] == null,
+      ))
+        link['incoming_transaction_id'],
+    };
     for (final row in transactions.where((row) => row['deleted_at'] == null)) {
+      if (pairedIds.contains(row['id'])) continue;
       if (row['transaction_type'] == 'income') {
         income += row['amount'] as int;
       }
@@ -274,6 +385,25 @@ class CsvExportService {
         expenses += row['amount'] as int;
       }
     }
+    final budgetRows = budgets.where((row) {
+      if (row['deleted_at'] != null) return false;
+      final month = DateTime.parse(row['month_start'] as String);
+      final start = filter.startDate == null
+          ? null
+          : DateTime(filter.startDate!.year, filter.startDate!.month);
+      final end = filter.endDateInclusive == null
+          ? null
+          : DateTime(
+              filter.endDateInclusive!.year,
+              filter.endDateInclusive!.month + 1,
+            );
+      return (start == null || !month.isBefore(start)) &&
+          (end == null || month.isBefore(end));
+    }).toList();
+    final budgetLimit = budgetRows.fold<int>(
+      0,
+      (total, row) => total + (row['limit_minor'] as num).toInt(),
+    );
     return _csv(
       const ['metric', 'value'],
       [
@@ -281,6 +411,8 @@ class CsvExportService {
         [_raw('income_minor'), _raw(income)],
         [_raw('expenses_minor'), _raw(expenses)],
         [_raw('cash_flow_minor'), _raw(income - expenses)],
+        [_raw('budget_count'), _raw(budgetRows.length)],
+        [_raw('budget_limit_minor'), _raw(budgetLimit)],
       ],
     );
   }

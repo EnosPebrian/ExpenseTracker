@@ -1,9 +1,48 @@
 import 'dart:typed_data';
 
-const portableBackupFormatVersion = 1;
+const portableBackupFormatVersion = 4;
 const portableBackupApplicationVersion = '1.0.0+1';
 
 const portableBackupEntityKeys = <String>[
+  'household',
+  'members',
+  'accounts',
+  'categories',
+  'projects',
+  'transactions',
+  'transfer_links',
+  'asset_definitions',
+  'budgets',
+  'transaction_import_rules',
+  'manual_market_prices',
+];
+
+const portableBackupV3EntityKeys = <String>[
+  'household',
+  'members',
+  'accounts',
+  'categories',
+  'projects',
+  'transactions',
+  'asset_definitions',
+  'budgets',
+  'transaction_import_rules',
+  'manual_market_prices',
+];
+
+const portableBackupV2EntityKeys = <String>[
+  'household',
+  'members',
+  'accounts',
+  'categories',
+  'projects',
+  'transactions',
+  'asset_definitions',
+  'budgets',
+  'manual_market_prices',
+];
+
+const portableBackupV1EntityKeys = <String>[
   'household',
   'members',
   'accounts',

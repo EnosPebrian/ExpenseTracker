@@ -125,3 +125,137 @@ ended in a JVM native-memory crash. Signed APK/AAB artifacts, Android runtime,
 interactive Windows portability/reopen, and the remaining owner acceptance
 matrix were unresolved at that checkpoint. Subsequent owner evidence closed
 those gates; the 2026-08-02 PASS above is authoritative.
+
+## Post-D14 BETA-07A — Monthly category budgets
+
+Implementation is complete but unreleased pending owner acceptance. It adds
+shared monthly expense-category limits, derived progress and unbudgeted spend,
+SQLite v21, synchronized tombstones/conflicts, backup format v2, and
+`budgets.csv`. D14 remains historically complete and unchanged in scope.
+
+## Post-D14 BETA-07B — Copy monthly budgets
+
+Implementation is complete but unreleased pending owner acceptance. Users can
+preview and explicitly copy active budget definitions from a selected source
+month into the displayed target month. The only mode is add-missing: existing
+target plans are preserved, unavailable categories are skipped safely, and
+spending is never copied or rolled over. Local budget rows and ordinary linked
+outbox entries commit atomically without a schema, backup-format, or Supabase
+protocol change.
+
+## Post-D14 BETA-07C — Deployment and owner acceptance
+
+Deployment automation completed on 2026-08-03. Migration `202608020001` is
+applied to the linked private Supabase project, local/remote histories agree,
+81 pgTAP assertions pass, configured Windows/APK/AAB artifacts build, and the
+APK verifies with the expected non-debug owner certificate. Owner runtime
+acceptance subsequently closed BETA-07A, BETA-07B, BETA-07C, and corrective
+BETA-07C2 on Windows and Android. BETA-07C1 is superseded by C2. Scope remains
+controlled private deployment by Enos and Grace; D14 remains historically
+complete.
+
+## Post-D14 BETA-08 ingestion roadmap
+
+- BETA-08A: same-household selective backup recovery and shared candidate,
+  duplicate-review, dependency, and atomic commit foundations.
+- BETA-08B: canonical/external CSV mapping, duplicate review, and normal outbox.
+- BETA-08C: reviewed camera/gallery receipt and invoice extraction.
+- BETA-08D: reviewed bank statement PDF/image extraction.
+- Later: merchant/category rules, Telegram, and automated inbox ingestion after
+  local import/review workflows are stable.
+# Post-D14 ingestion milestones
+
+- BETA-08B: CSV bulk transaction import and shared ingestion pipeline.
+- BETA-08C: receipt/invoice photo source adapter using the same drafts/review.
+- BETA-08D: bank statement PDF/image source adapter.
+- BETA-08E: explicit merchant/category mapping rules.
+- Later: Telegram attachment source adapter through the same pipeline.
+# BETA-08C/D reviewed ingestion extension
+
+Engineering adds receipt/invoice photo and bank-statement PDF/image sources to
+the existing reviewed import pipeline. This establishes the bounded future
+foundation for Telegram attachment classification (CSV, receipt, statement)
+into the same review queue; Telegram is not implemented and may never write a
+transaction directly without review. Engineering verification completed on
+2026-08-19 with 48 focused tests, 703 full-suite tests, 7 local Edge Function
+tests, a clean analyzer, and passing web, Windows debug, and Android debug build
+gates. Owner runtime acceptance remains deferred.
+
+# BETA-08E deterministic import automation
+
+BETA-08E engineering implements explicit household merchant/category rules as
+review-time suggestions across CSV, receipt, and statement drafts. It includes
+SQLite v22, normal sync/conflicts/RLS, encrypted backup v3, recovery, and clone
+remapping without AI or retroactive transaction changes. Owner runtime
+acceptance remains deferred.
+
+# BETA-08F — Internal Transfer Matching & Conversion (documented only)
+
+The next candidate milestone may identify likely paired outgoing/incoming
+drafts between owned accounts and let the user explicitly convert them into one
+Pilgrim internal transfer. It should reuse import drafts, duplicate evidence,
+review UI, and current account semantics. It must not silently distort income
+or expense reporting. No BETA-08F implementation is included in BETA-08E.
+
+# BETA-08F0 — Canonical transfer foundation
+
+Engineering foundation implemented on 2026-08-20: two stable directional
+transaction legs plus one explicit transfer relation, SQLite v23, ordinary
+sync/conflict/Supabase coverage, backup v4/recovery/clone support, and financial
+classification safeguards. This is not the BETA-08F matcher. Matching remains
+blocked until the BETA-08F0 engineering gates pass; owner runtime acceptance is
+documented and deferred.
+
+# BETA-08F1 — Matcher and review
+
+Engineering adds explicitly confirmed deterministic matching over BETA-08F0.
+Consolidated BETA-08F owner runtime acceptance remains deferred.
+
+# BETA-08G — Persistent Import Review Inbox (engineering complete)
+
+Durable household-scoped sessions and normalized drafts now support restart and
+cross-device review for CSV, receipt/invoice, and statement sources. Current
+rules, duplicates, transfers, and references are reanalyzed on resume while
+stable identity and manual provenance survive. Commit/discard remain explicit,
+backup stays v4, source files are not stored, the new migration remains local,
+and Telegram ingestion is deferred to BETA-08H. Owner acceptance is not run.
+
+# BETA-08G1 — Deferred Final Transaction Identity
+
+Engineering implementation separates stable review/source identity from the
+nullable account-dependent financial UUID, adds SQLite v25 and one undeployed
+Supabase migration, and preserves BETA-08B UUIDv5 compatibility. BETA-08H was
+safety-blocked on this prerequisite and may resume after the G1 engineering
+gate. Owner acceptance is **NOT RUN**. Telegram was not implemented in G1.
+
+### BETA-08H — Secure Telegram ingestion gateway
+
+Engineering implementation now uses G1 deferred identity to deliver private
+Telegram attachments into the existing Inbox without financial authority.
+Local migration/function deployment and security verification are required for
+Engineering PASS. Hosted deployment and consolidated owner acceptance move to
+BETA-08H1 and remain **NOT RUN**.
+
+# BETA-08I — Monthly & Annual Financial Statements
+
+Local implementation adds Monthly/Annual Household and Account statements,
+responsive preview, and offline PDF export without persistence, sync, backup,
+or Supabase changes. SQLite remains 25 and backup remains v4. Historical
+year-end net worth is omitted until reliable as-of valuation exists. Hosted
+BETA-08H1 remains safety-blocked and untouched. Engineering verification is
+PASS; owner acceptance is NOT RUN.
+
+# BETA-08J — Data Health & Sync Diagnostics Center
+
+Read-only local diagnostics cover structural finance, canonical transfers,
+Import Inbox/G1 identity, rules/planning, outbox/conflicts, cloud availability,
+and encrypted-backup capability without repair or persistence. SQLite remains
+25, backup remains v4, and no Supabase/SQL change is introduced. Owner
+acceptance is NOT RUN.
+
+**BETA-08J Engineering PASS.** The owner temporarily lifted feature freeze for
+four bounded milestones: BETA-08K cloud durability/new-device bootstrap,
+BETA-08L fixed tithe category/payment tracking, BETA-08M CSV unknown-category
+resolution, and BETA-08N investment/brokerage ledger. BETA-08K is implemented
+without a schema or hosted deployment change. BETA-08L/M/N remain
+unimplemented; feature freeze resumes after BETA-08N.

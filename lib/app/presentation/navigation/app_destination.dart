@@ -21,8 +21,11 @@ const appDestinations = <AppDestination>[
     icon: Icons.currency_exchange_rounded,
   ),
   AppDestination(label: 'Projects', icon: Icons.work_outline_rounded),
+  AppDestination(label: 'Budgets', icon: Icons.savings_outlined),
   AppDestination(label: 'Tithe', icon: Icons.volunteer_activism_outlined),
   AppDestination(label: 'Reports', icon: Icons.insights_outlined),
   AppDestination(label: 'Household', icon: Icons.group_outlined),
+  AppDestination(label: 'Integrations', icon: Icons.hub_outlined),
   AppDestination(label: 'Backup & Export', icon: Icons.shield_outlined),
+  AppDestination(label: 'Data & Sync', icon: Icons.health_and_safety_outlined),
 ];

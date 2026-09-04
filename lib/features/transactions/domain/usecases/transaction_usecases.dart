@@ -264,6 +264,44 @@ class GetTransactions {
   Future<List<Transaction>> call() => repository.getAll();
 }
 
+class ImportTransactionsBatch {
+  ImportTransactionsBatch(this.repository);
+  final TransactionBatchRepository repository;
+
+  Future<List<Transaction>> call(List<Transaction> transactions) async {
+    final ids = <String>{};
+    final prepared = <Transaction>[];
+    for (final transaction in transactions) {
+      if (!ids.add(transaction.id)) {
+        throw TransactionValidationException(
+          'The import contains duplicate stable identities.',
+        );
+      }
+      if (transaction.type != TransactionType.expense &&
+          transaction.type != TransactionType.income) {
+        throw TransactionValidationException(
+          'CSV import supports only income and expense transactions.',
+        );
+      }
+      validateTransaction(transaction);
+      if (transaction.amount == 0) {
+        throw TransactionValidationException(
+          'Imported transaction amounts must be greater than zero.',
+        );
+      }
+      prepared.add(
+        transaction.copyWith(
+          version: 1,
+          updatedAt: transaction.createdAt,
+          syncStatus: 'pending',
+        ),
+      );
+    }
+    await repository.saveAllAtomic(prepared);
+    return prepared;
+  }
+}
+
 class DuplicateTransaction {
   DuplicateTransaction(
     this.repository, {

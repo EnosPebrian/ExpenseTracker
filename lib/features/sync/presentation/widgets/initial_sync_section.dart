@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/cloud_sync_state_classifier.dart';
 import '../../domain/sync_models.dart';
 import '../controllers/initial_sync_controller.dart';
 
@@ -24,9 +25,13 @@ class _InitialSyncSectionState extends State<InitialSyncSection> {
         final primaryState = controller.primaryCursor?.initializationState;
         final secondaryState = controller.secondaryCursor?.initializationState;
         final showPrimary =
+            controller.decision.classification ==
+                CloudSyncClassification.genuinePrimaryUploadRequired &&
             controller.primaryBook?.remoteLinkedAt != null &&
             primaryState != SyncInitializationState.ready;
         final showSecondary =
+            controller.decision.classification ==
+                CloudSyncClassification.downloadAdditionalHostedHousehold &&
             controller.secondaryBookId != null &&
             secondaryState != SyncInitializationState.ready;
         if (!showPrimary && !showSecondary) return const SizedBox.shrink();
@@ -119,6 +124,41 @@ class _InitialSyncSectionState extends State<InitialSyncSection> {
                   const Text(
                     'Download the existing shared household to this device.',
                   ),
+                  if (controller.additionalDownloadManifests.length > 1) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Choose a household',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    RadioGroup<String>(
+                      groupValue: controller.secondaryBookId,
+                      onChanged: (bookId) {
+                        if (!controller.busy && bookId != null) {
+                          controller.selectSecondaryBook(bookId);
+                        }
+                      },
+                      child: Column(
+                        children: [
+                          for (final entry
+                              in controller.additionalDownloadManifests.entries)
+                            RadioListTile<String>(
+                              key: ValueKey(
+                                'initial-download-household-${entry.key}',
+                              ),
+                              contentPadding: EdgeInsets.zero,
+                              value: entry.key,
+                              enabled: !controller.busy,
+                              title: Text(entry.value.bookName),
+                              subtitle: Text(
+                                '${entry.value.baseCurrencyCode} · '
+                                '${controller.hostedRoles[entry.key] ?? entry.value.memberRole ?? 'member'} · '
+                                '${entry.value.totalCount} records',
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 6),
                   Text(
                     'Household: '

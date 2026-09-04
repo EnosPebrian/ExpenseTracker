@@ -9,11 +9,13 @@ class CategoriesPage extends StatelessWidget {
     required this.expenseCategories,
     required this.incomeCategories,
     required this.onSave,
+    this.onManageImportRules,
   });
 
   final List<String> expenseCategories;
   final List<String> incomeCategories;
   final MasterDataSaveCallback onSave;
+  final VoidCallback? onManageImportRules;
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +29,15 @@ class CategoriesPage extends StatelessWidget {
             subtitle:
                 'Maintain the categories available during transaction entry.',
           ),
+          if (onManageImportRules != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: FilledButton.tonalIcon(
+                onPressed: onManageImportRules,
+                icon: const Icon(Icons.rule),
+                label: const Text('Manage import rules'),
+              ),
+            ),
           ResponsivePair(
             left: MasterDataList(
               title: 'Expense categories',

@@ -40,6 +40,7 @@ class InitialSyncCoordinator {
   Future<InitialSyncResult> download({
     required String bookId,
     required String? authUserId,
+    bool replaceExisting = false,
     Future<void> Function()? onProgress,
   }) {
     final active = _activeRun;
@@ -47,6 +48,7 @@ class InitialSyncCoordinator {
     final run = _download(
       bookId: bookId,
       authUserId: authUserId,
+      replaceExisting: replaceExisting,
       onProgress: onProgress,
     );
     _activeRun = run;
@@ -55,6 +57,14 @@ class InitialSyncCoordinator {
 
   Future<void> prepareSecondary(String bookId) =>
       repository.prepareSecondary(bookId);
+
+  Future<void> prepareReconnect(String bookId) async {
+    await repository.cancelInitialization(
+      bookId,
+      InitialSyncDirection.download,
+    );
+    await repository.prepareSecondary(bookId);
+  }
 
   Future<void> cancel(String bookId) async {
     final cursor = await repository.getCursor(bookId);
@@ -195,13 +205,14 @@ class InitialSyncCoordinator {
   Future<InitialSyncResult> _download({
     required String bookId,
     required String? authUserId,
+    required bool replaceExisting,
     Future<void> Function()? onProgress,
   }) async {
     String? activeEntity;
     String? lastCommittedCursor;
     try {
       _requireCloud();
-      if (await repository.targetHasFinancialData(bookId)) {
+      if (!replaceExisting && await repository.targetHasFinancialData(bookId)) {
         throw const InitialSyncException(
           InitialSyncErrorCode.localTargetPopulated,
           'Initial download cannot merge independent local financial history.',
@@ -281,15 +292,18 @@ class InitialSyncCoordinator {
           if (batch.complete) break;
         }
       }
-      await repository.activateDownload(
+      final alreadyMatched = await repository.activateDownload(
         bookId: bookId,
         manifest: manifest,
         authUserId: authUserId,
+        replaceExisting: replaceExisting,
       );
       await _logSuccessDiagnostic(bookId);
       return InitialSyncResult(
         success: true,
-        message: 'Shared household downloaded and activated.',
+        message: alreadyMatched
+            ? 'Local data already matched the hosted household. Cloud sharing was reattached.'
+            : 'Shared household downloaded and activated.',
         manifest: manifest,
         finalSequence: manifest.snapshotSequence,
       );

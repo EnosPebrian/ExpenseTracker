@@ -4,7 +4,7 @@ import 'portable_file_service_native.dart'
     if (dart.library.html) 'portable_file_service_web.dart'
     as platform;
 
-enum PortableDestinationKind { backup, csv }
+enum PortableDestinationKind { backup, csv, statement }
 
 class PortableDestination {
   const PortableDestination({

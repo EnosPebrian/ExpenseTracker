@@ -92,7 +92,7 @@ void main() {
       final reopened = LocalStore(databasePath: path);
       await reopened.initialize();
       addTearDown(reopened.close);
-      expect(await reopened.db.getVersion(), 20);
+      expect(await reopened.db.getVersion(), LocalStore.schemaVersion);
       final transactions = await reopened.db.query('transactions');
       expect(
         transactions.singleWhere(

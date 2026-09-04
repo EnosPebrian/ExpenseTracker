@@ -5,7 +5,7 @@ import 'package:uuid/uuid.dart';
 class LocalStore {
   LocalStore({String? databasePath});
 
-  static const schemaVersion = 20;
+  static const schemaVersion = 25;
   static final List<Map<String, Object?>> _records = [];
   static final List<Map<String, Object?>> _assetMarketPrices = [];
   static final List<Map<String, Object?>> _assetDefinitions = [];
@@ -19,11 +19,17 @@ class LocalStore {
   static final List<Map<String, Object?>> _syncOutbox = [];
   static final List<Map<String, Object?>> _syncCursors = [];
   static final List<Map<String, Object?>> _syncConflicts = [];
+  static final List<Map<String, Object?>> _monthlyCategoryBudgets = [];
+  static final List<Map<String, Object?>> _transactionImportRules = [];
+  static final List<Map<String, Object?>> _transferLinks = [];
+  static final List<Map<String, Object?>> _importReviewSessions = [];
+  static final List<Map<String, Object?>> _importReviewDrafts = [];
   String? _activeBookId;
   String? get activeBookId => _activeBookId;
   void setActiveBookId(String? value) => _activeBookId = value;
   void Function()? onSyncMutation;
   Future<void> initialize() async {}
+  Future<int> getSchemaVersion() async => schemaVersion;
   Future<List<Map<String, Object?>>> getTransactions({
     bool includeDeleted = false,
     String? bookId,
@@ -60,6 +66,111 @@ class LocalStore {
       _enqueueSyncOperation('transactions', prepared);
       onSyncMutation?.call();
     }
+  }
+
+  Future<void> insertTransactionsAtomic(
+    List<Map<String, Object?>> records,
+  ) async {
+    if (records.isEmpty) return;
+    final recordSnapshot = _records.map(Map<String, Object?>.of).toList();
+    final outboxSnapshot = _syncOutbox.map(Map<String, Object?>.of).toList();
+    try {
+      final incomingIds = <Object?>{};
+      for (final record in records) {
+        if (!incomingIds.add(record['id']) ||
+            _records.any((item) => item['id'] == record['id'])) {
+          throw StateError('A transaction with this stable identity exists.');
+        }
+        final prepared = _withActiveBook(record);
+        _records.add(prepared);
+        _enqueueSyncOperation('transactions', prepared);
+      }
+    } catch (_) {
+      _records
+        ..clear()
+        ..addAll(recordSnapshot);
+      _syncOutbox
+        ..clear()
+        ..addAll(outboxSnapshot);
+      rethrow;
+    }
+    onSyncMutation?.call();
+  }
+
+  Future<List<Map<String, Object?>>> getTransferLinks({
+    bool includeDeleted = false,
+    String? bookId,
+  }) async => List.unmodifiable(
+    _transferLinks
+        .where(
+          (record) =>
+              _inBook(record, bookId) &&
+              (includeDeleted || record['deleted_at'] == null),
+        )
+        .map(Map<String, Object?>.of),
+  );
+
+  Future<void> saveInternalTransferAtomic({
+    required List<Map<String, Object?>> transactions,
+    required Map<String, Object?> link,
+    bool enqueueSync = true,
+    Map<String, int> expectedTransactionVersions = const {},
+    Set<String> requireNewTransactionIds = const {},
+  }) async {
+    final transactionSnapshot = _records.map(Map<String, Object?>.of).toList();
+    final linkSnapshot = _transferLinks.map(Map<String, Object?>.of).toList();
+    final outboxSnapshot = _syncOutbox.map(Map<String, Object?>.of).toList();
+    try {
+      for (final entry in expectedTransactionVersions.entries) {
+        final matches = _records.where((item) => item['id'] == entry.key);
+        if (matches.length != 1 ||
+            (matches.single['version'] as num).toInt() != entry.value) {
+          throw StateError('This transfer candidate changed. Review again.');
+        }
+      }
+      if (requireNewTransactionIds.any(
+        (id) => _records.any((item) => item['id'] == id),
+      )) {
+        throw StateError('This transfer candidate changed. Review again.');
+      }
+      for (final record in transactions) {
+        final prepared = _withActiveBook(record);
+        _records.removeWhere((item) => item['id'] == prepared['id']);
+        _records.add(prepared);
+        if (enqueueSync) {
+          _enqueueSyncOperation(
+            'transactions',
+            prepared,
+            operationType: prepared['deleted_at'] == null ? 'upsert' : 'delete',
+          );
+        }
+      }
+      final preparedLink = _withActiveBook(link);
+      _transferLinks.removeWhere((item) => item['id'] == preparedLink['id']);
+      _transferLinks.add(preparedLink);
+      _validateActiveTransferLinks(preparedLink['book_id'] as String);
+      if (enqueueSync) {
+        _enqueueSyncOperation(
+          'transfer_links',
+          preparedLink,
+          operationType: preparedLink['deleted_at'] == null
+              ? 'upsert'
+              : 'delete',
+        );
+      }
+    } catch (_) {
+      _records
+        ..clear()
+        ..addAll(transactionSnapshot);
+      _transferLinks
+        ..clear()
+        ..addAll(linkSnapshot);
+      _syncOutbox
+        ..clear()
+        ..addAll(outboxSnapshot);
+      rethrow;
+    }
+    if (enqueueSync) onSyncMutation?.call();
   }
 
   Future<void> softDeleteTransaction(
@@ -284,7 +395,10 @@ class LocalStore {
         where: (record) => record['_entity_type'] == 'projects',
       ),
       'transactions': records(_records),
+      'transfer_links': records(_transferLinks),
       'asset_definitions': records(_assetDefinitions),
+      'budgets': records(_monthlyCategoryBudgets),
+      'transaction_import_rules': records(_transactionImportRules),
       'manual_market_prices': records(
         _assetMarketPrices,
         where: (record) =>
@@ -319,6 +433,7 @@ class LocalStore {
 
     final snapshots = <List<Map<String, Object?>>, List<Map<String, Object?>>>{
       _records: _records.map(Map<String, Object?>.of).toList(),
+      _transferLinks: _transferLinks.map(Map<String, Object?>.of).toList(),
       _assetMarketPrices: _assetMarketPrices
           .map(Map<String, Object?>.of)
           .toList(),
@@ -334,6 +449,12 @@ class LocalStore {
       _syncOutbox: _syncOutbox.map(Map<String, Object?>.of).toList(),
       _syncCursors: _syncCursors.map(Map<String, Object?>.of).toList(),
       _syncConflicts: _syncConflicts.map(Map<String, Object?>.of).toList(),
+      _monthlyCategoryBudgets: _monthlyCategoryBudgets
+          .map(Map<String, Object?>.of)
+          .toList(),
+      _transactionImportRules: _transactionImportRules
+          .map(Map<String, Object?>.of)
+          .toList(),
     };
     final sessionSnapshot = _localSession == null
         ? null
@@ -347,11 +468,14 @@ class LocalStore {
       if (replaceBookId != null) {
         for (final collection in [
           _records,
+          _transferLinks,
           _assetMarketPrices,
           _assetDefinitions,
           _accounts,
           _householdMembers,
           _masterRecords,
+          _monthlyCategoryBudgets,
+          _transactionImportRules,
         ]) {
           collection.removeWhere(
             (record) => record['book_id'] == replaceBookId,
@@ -406,6 +530,8 @@ class LocalStore {
       addAll(_householdMembers, 'members');
       addAll(_accounts, 'accounts');
       addMaster('categories');
+      addAll(_monthlyCategoryBudgets, 'budgets');
+      addAll(_transactionImportRules, 'transaction_import_rules');
       addMaster('projects');
       addAll(_assetDefinitions, 'asset_definitions');
       for (final record in snapshot['manual_market_prices'] ?? const []) {
@@ -426,6 +552,7 @@ class LocalStore {
         _assetMarketPrices.add(Map<String, Object?>.of(record));
       }
       addAll(_records, 'transactions');
+      addAll(_transferLinks, 'transfer_links');
 
       _activeBookId = restoredBookId;
       _localSession = {
@@ -461,6 +588,208 @@ class LocalStore {
         ..addAll(masterSnapshot);
       rethrow;
     }
+  }
+
+  Future<int> recoverHouseholdBackupRecords(
+    String bookId,
+    Map<String, List<Map<String, Object?>>> records, {
+    required bool enqueueSync,
+  }) async {
+    final snapshots = <List<Map<String, Object?>>, List<Map<String, Object?>>>{
+      _records: _records.map(Map<String, Object?>.of).toList(),
+      _transferLinks: _transferLinks.map(Map<String, Object?>.of).toList(),
+      _assetDefinitions: _assetDefinitions
+          .map(Map<String, Object?>.of)
+          .toList(),
+      _accounts: _accounts.map(Map<String, Object?>.of).toList(),
+      _masterRecords: _masterRecords.map(Map<String, Object?>.of).toList(),
+      _monthlyCategoryBudgets: _monthlyCategoryBudgets
+          .map(Map<String, Object?>.of)
+          .toList(),
+      _transactionImportRules: _transactionImportRules
+          .map(Map<String, Object?>.of)
+          .toList(),
+      _syncOutbox: _syncOutbox.map(Map<String, Object?>.of).toList(),
+    };
+    final targets = <String, List<Map<String, Object?>>>{
+      'accounts': _accounts,
+      'categories': _masterRecords,
+      'projects': _masterRecords,
+      'asset_definitions': _assetDefinitions,
+      'budgets': _monthlyCategoryBudgets,
+      'transaction_import_rules': _transactionImportRules,
+      'transactions': _records,
+      'transfer_links': _transferLinks,
+    };
+    try {
+      if (!_books.any(
+        (book) => book['id'] == bookId && book['deleted_at'] == null,
+      )) {
+        throw StateError('The active household is unavailable.');
+      }
+      final plannedIds = {
+        for (final entry in records.entries)
+          entry.key: {for (final row in entry.value) row['id']},
+      };
+      bool current(String type, Object? id) =>
+          id == null ||
+          (targets[type] ?? const []).any(
+            (row) => row['id'] == id && row['book_id'] == bookId,
+          );
+      final accountNames = {
+        for (final row in _accounts.where((row) => row['book_id'] == bookId))
+          (row['name'] as String).trim().toLowerCase(),
+        for (final row in records['accounts'] ?? const [])
+          (row['name'] as String).trim().toLowerCase(),
+      };
+      for (final entry in records.entries) {
+        final target = targets[entry.key];
+        if (target == null) throw StateError('Unsupported recovery entity.');
+        for (final row in entry.value) {
+          if (row['id'] is! String ||
+              row['book_id'] != bookId ||
+              row['deleted_at'] != null ||
+              target.any((item) => item['id'] == row['id'])) {
+            throw StateError('Recovery record is no longer missing.');
+          }
+        }
+      }
+      for (final row in records['accounts'] ?? const []) {
+        final memberId = row['owner_member_id'];
+        if (memberId != null &&
+            !_householdMembers.any(
+              (member) =>
+                  member['id'] == memberId && member['book_id'] == bookId,
+            )) {
+          throw StateError('A recovered account references a missing member.');
+        }
+      }
+      for (final row in records['budgets'] ?? const []) {
+        if (!current('categories', row['category_id']) &&
+            !(plannedIds['categories'] ?? const {}).contains(
+              row['category_id'],
+            )) {
+          throw StateError('A recovered budget references a missing category.');
+        }
+        if (_monthlyCategoryBudgets.any(
+          (item) =>
+              item['book_id'] == bookId &&
+              item['deleted_at'] == null &&
+              item['category_id'] == row['category_id'] &&
+              item['month_start'] == row['month_start'],
+        )) {
+          throw StateError(
+            'A current budget already uses this category and month.',
+          );
+        }
+      }
+      for (final row in records['transaction_import_rules'] ?? const []) {
+        if (!current('categories', row['category_id']) &&
+            !(plannedIds['categories'] ?? const {}).contains(
+              row['category_id'],
+            )) {
+          throw StateError(
+            'A recovered import rule references a missing category.',
+          );
+        }
+        if (!current('accounts', row['account_id']) &&
+            !(plannedIds['accounts'] ?? const {}).contains(row['account_id'])) {
+          throw StateError(
+            'A recovered import rule references a missing account.',
+          );
+        }
+      }
+      for (final row in records['transactions'] ?? const []) {
+        final account = (row['account'] as String? ?? '').trim().toLowerCase();
+        if (account.isNotEmpty && !accountNames.contains(account)) {
+          throw StateError(
+            'A recovered transaction references a missing account.',
+          );
+        }
+        for (final dependency in <(String, Object?)>[
+          ('projects', row['project_id']),
+          ('asset_definitions', row['asset_definition_id']),
+          ('transactions', row['related_transaction_id']),
+        ]) {
+          if (!current(dependency.$1, dependency.$2) &&
+              !(plannedIds[dependency.$1] ?? const {}).contains(
+                dependency.$2,
+              )) {
+            throw StateError('A recovered transaction dependency is missing.');
+          }
+        }
+        final memberId = row['entered_by_member_id'];
+        if (memberId != null &&
+            !_householdMembers.any(
+              (member) =>
+                  member['id'] == memberId && member['book_id'] == bookId,
+            )) {
+          throw StateError(
+            'A recovered transaction references a missing member.',
+          );
+        }
+      }
+      for (final row in records['transfer_links'] ?? const []) {
+        for (final dependency in <(String, Object?)>[
+          ('transactions', row['outgoing_transaction_id']),
+          ('transactions', row['incoming_transaction_id']),
+          ('accounts', row['source_account_id']),
+          ('accounts', row['destination_account_id']),
+        ]) {
+          if (!current(dependency.$1, dependency.$2) &&
+              !(plannedIds[dependency.$1] ?? const {}).contains(
+                dependency.$2,
+              )) {
+            throw StateError(
+              'A recovered internal transfer dependency is missing.',
+            );
+          }
+        }
+      }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (final key in const [
+        'categories',
+        'projects',
+        'accounts',
+        'asset_definitions',
+        'budgets',
+        'transaction_import_rules',
+        'transactions',
+        'transfer_links',
+      ]) {
+        for (final source in records[key] ?? const []) {
+          final saved = <String, Object?>{
+            ...source,
+            'book_id': bookId,
+            'updated_at': now,
+            'version': 1,
+            'device_id': 'backup-recovery',
+            'sync_status': enqueueSync ? 'pending' : 'local_only',
+            if (key == 'categories' || key == 'projects') '_entity_type': key,
+          };
+          targets[key]!.add(saved);
+          if (enqueueSync) {
+            _enqueueSyncOperation(
+              key == 'budgets' ? 'monthly_category_budgets' : key,
+              _withoutInternalFields(saved),
+            );
+          }
+        }
+      }
+      _rebuildMasterValues('categories', null);
+      _rebuildMasterValues('projects', null);
+    } catch (_) {
+      for (final entry in snapshots.entries) {
+        entry.key
+          ..clear()
+          ..addAll(entry.value);
+      }
+      rethrow;
+    }
+    if (enqueueSync && records.values.any((rows) => rows.isNotEmpty)) {
+      onSyncMutation?.call();
+    }
+    return getPendingSyncCount(bookId);
   }
 
   Future<void> close() async {}
@@ -608,6 +937,623 @@ class LocalStore {
             ),
           );
     return List.unmodifiable(records);
+  }
+
+  Future<List<Map<String, Object?>>> getCategoryRecords({
+    bool includeDeleted = false,
+    String? categoryType,
+    String? bookId,
+  }) async {
+    final scope = bookId ?? _activeBookId;
+    final records =
+        _masterRecords
+            .where(
+              (record) =>
+                  record['_entity_type'] == 'categories' &&
+                  (scope == null || record['book_id'] == scope) &&
+                  (includeDeleted || record['deleted_at'] == null) &&
+                  (categoryType == null ||
+                      record['category_type'] == categoryType),
+            )
+            .map(_withoutInternalFields)
+            .toList()
+          ..sort(
+            (a, b) => (a['name'] as String).compareTo(b['name'] as String),
+          );
+    return List.unmodifiable(records);
+  }
+
+  Future<List<Map<String, Object?>>> getBudgetCopyCategoryRecords(
+    Iterable<String> categoryIds,
+  ) async {
+    final ids = categoryIds.toSet();
+    return _masterRecords
+        .where(
+          (record) =>
+              record['_entity_type'] == 'categories' &&
+              ids.contains(record['id']),
+        )
+        .map(_withoutInternalFields)
+        .toList();
+  }
+
+  Future<List<Map<String, Object?>>> getMonthlyCategoryBudgets({
+    bool includeDeleted = false,
+    String? bookId,
+    String? monthStart,
+  }) async => List.unmodifiable(
+    _monthlyCategoryBudgets
+        .where(
+          (record) =>
+              _inBook(record, bookId) &&
+              (includeDeleted || record['deleted_at'] == null) &&
+              (monthStart == null || record['month_start'] == monthStart),
+        )
+        .map(Map<String, Object?>.of),
+  );
+
+  Future<Map<String, Object?>> upsertMonthlyCategoryBudget(
+    Map<String, Object?> record, {
+    bool enqueueSync = true,
+  }) async {
+    var prepared = _withActiveBook(record);
+    final bookId = prepared['book_id'];
+    final note = prepared['note'] as String?;
+    final monthStart = prepared['month_start'] as String;
+    final parsedMonth = DateTime.tryParse(monthStart);
+    if (bookId == null || (prepared['limit_minor'] as num).toInt() <= 0) {
+      throw StateError('A positive household budget is required.');
+    }
+    if (note != null && note.length > 120) {
+      throw StateError('A budget note cannot exceed 120 characters.');
+    }
+    if (!RegExp(r'^\d{4}-\d{2}-01$').hasMatch(monthStart) ||
+        parsedMonth == null ||
+        parsedMonth.day != 1) {
+      throw StateError('A budget month must use YYYY-MM-01.');
+    }
+    final book = _books.where((item) => item['id'] == bookId);
+    if (book.isEmpty ||
+        prepared['currency_code'] != book.single['base_currency_code']) {
+      throw StateError('Budgets must use the household base currency.');
+    }
+    final sameId = _monthlyCategoryBudgets.where(
+      (item) => item['id'] == prepared['id'],
+    );
+    if (sameId.isNotEmpty &&
+        (sameId.single['book_id'] != bookId ||
+            sameId.single['category_id'] != prepared['category_id'] ||
+            sameId.single['month_start'] != prepared['month_start'] ||
+            sameId.single['currency_code'] != prepared['currency_code'])) {
+      throw StateError('Budget identity fields cannot be changed.');
+    }
+    final category = _masterRecords.where(
+      (category) =>
+          category['_entity_type'] == 'categories' &&
+          category['id'] == prepared['category_id'] &&
+          category['book_id'] == bookId &&
+          category['category_type'] == 'expense',
+    );
+    if (category.isEmpty ||
+        (sameId.isEmpty && category.single['deleted_at'] != null)) {
+      throw StateError('The budget category is invalid for this household.');
+    }
+    final duplicate = _monthlyCategoryBudgets.indexWhere(
+      (item) =>
+          item['id'] != prepared['id'] &&
+          item['book_id'] == bookId &&
+          item['category_id'] == prepared['category_id'] &&
+          item['month_start'] == prepared['month_start'] &&
+          item['deleted_at'] == null,
+    );
+    if (duplicate >= 0) {
+      throw StateError('A budget already exists for this category and month.');
+    }
+    var index = _monthlyCategoryBudgets.indexWhere(
+      (item) => item['id'] == prepared['id'],
+    );
+    if (index < 0) {
+      final deleted = _monthlyCategoryBudgets.indexWhere(
+        (item) =>
+            item['book_id'] == bookId &&
+            item['category_id'] == prepared['category_id'] &&
+            item['month_start'] == prepared['month_start'] &&
+            item['deleted_at'] != null,
+      );
+      if (deleted >= 0) {
+        final deletedRecord = _monthlyCategoryBudgets[deleted];
+        final requestedVersion = (prepared['version'] as num).toInt();
+        final restoredVersion = (deletedRecord['version'] as num).toInt() + 1;
+        prepared = {
+          ...prepared,
+          'id': deletedRecord['id'],
+          'created_at': deletedRecord['created_at'],
+          'deleted_at': null,
+          'version': requestedVersion > restoredVersion
+              ? requestedVersion
+              : restoredVersion,
+        };
+        index = deleted;
+      }
+    }
+    if (index >= 0) _monthlyCategoryBudgets.removeAt(index);
+    _monthlyCategoryBudgets.add(prepared);
+    if (enqueueSync) {
+      _enqueueSyncOperation('monthly_category_budgets', prepared);
+      onSyncMutation?.call();
+    }
+    return Map<String, Object?>.of(prepared);
+  }
+
+  Future<List<Map<String, Object?>>> copyMonthlyCategoryBudgets(
+    List<Map<String, Object?>> records,
+  ) async {
+    if (records.isEmpty) return const [];
+    final budgetSnapshot = _monthlyCategoryBudgets
+        .map(Map<String, Object?>.of)
+        .toList();
+    final outboxSnapshot = _syncOutbox.map(Map<String, Object?>.of).toList();
+    final copied = <Map<String, Object?>>[];
+    try {
+      for (final record in records) {
+        final prepared = _withActiveBook(record);
+        final bookId = prepared['book_id'];
+        if (_monthlyCategoryBudgets.any(
+          (item) => item['id'] == prepared['id'],
+        )) {
+          throw StateError('A generated budget identity already exists.');
+        }
+        final category = _masterRecords.where(
+          (item) =>
+              item['_entity_type'] == 'categories' &&
+              item['id'] == prepared['category_id'],
+        );
+        if (category.isEmpty) {
+          throw StateError('A copied budget references a missing category.');
+        }
+        if (category.single['book_id'] != bookId) {
+          throw StateError('A copied budget references another household.');
+        }
+        if (category.single['category_type'] != 'expense' ||
+            category.single['deleted_at'] != null) {
+          throw StateError('A copied budget category is unavailable.');
+        }
+        final duplicate = _monthlyCategoryBudgets.any(
+          (item) =>
+              item['book_id'] == bookId &&
+              item['category_id'] == prepared['category_id'] &&
+              item['month_start'] == prepared['month_start'] &&
+              item['deleted_at'] == null,
+        );
+        if (duplicate) continue;
+        copied.add(
+          await upsertMonthlyCategoryBudget(prepared, enqueueSync: false),
+        );
+      }
+      for (final record in copied) {
+        _enqueueSyncOperation('monthly_category_budgets', record);
+      }
+    } catch (_) {
+      _monthlyCategoryBudgets
+        ..clear()
+        ..addAll(budgetSnapshot);
+      _syncOutbox
+        ..clear()
+        ..addAll(outboxSnapshot);
+      rethrow;
+    }
+    if (copied.isNotEmpty) onSyncMutation?.call();
+    return copied;
+  }
+
+  Future<void> softDeleteMonthlyCategoryBudget(String id, int deletedAt) async {
+    final index = _monthlyCategoryBudgets.indexWhere(
+      (item) => item['id'] == id,
+    );
+    if (index < 0) return;
+    final saved = <String, Object?>{
+      ..._monthlyCategoryBudgets[index],
+      'deleted_at': deletedAt,
+      'updated_at': deletedAt,
+      'version': (_monthlyCategoryBudgets[index]['version'] as num).toInt() + 1,
+      'sync_status': 'pending',
+    };
+    _monthlyCategoryBudgets[index] = saved;
+    _enqueueSyncOperation(
+      'monthly_category_budgets',
+      saved,
+      operationType: 'delete',
+    );
+    onSyncMutation?.call();
+  }
+
+  Future<List<Map<String, Object?>>> getImportReviewSessions({
+    bool includeDeleted = false,
+    String? bookId,
+    String? state,
+  }) async {
+    final rows = _importReviewSessions
+        .where(
+          (row) =>
+              _inBook(row, bookId) &&
+              (includeDeleted || row['deleted_at'] == null) &&
+              (state == null || row['state'] == state),
+        )
+        .map(Map<String, Object?>.of)
+        .toList();
+    rows.sort(
+      (a, b) => (b['updated_at'] as num).compareTo(a['updated_at'] as num),
+    );
+    return rows;
+  }
+
+  Future<List<Map<String, Object?>>> getImportReviewDrafts({
+    required String sessionId,
+    bool includeDeleted = false,
+  }) async {
+    final rows = _importReviewDrafts
+        .where(
+          (row) =>
+              row['session_id'] == sessionId &&
+              (includeDeleted || row['deleted_at'] == null),
+        )
+        .map(Map<String, Object?>.of)
+        .toList();
+    rows.sort(
+      (a, b) => (a['source_index'] as num).compareTo(b['source_index'] as num),
+    );
+    return rows;
+  }
+
+  Future<List<Map<String, Object?>>> getAllImportReviewDrafts({
+    required String bookId,
+    bool includeDeleted = false,
+  }) async {
+    final rows = _importReviewDrafts
+        .where(
+          (row) =>
+              row['book_id'] == bookId &&
+              (includeDeleted || row['deleted_at'] == null),
+        )
+        .map(Map<String, Object?>.of)
+        .toList();
+    rows.sort((a, b) {
+      final session = (a['session_id'] as String).compareTo(
+        b['session_id'] as String,
+      );
+      if (session != 0) return session;
+      final source = (a['source_index'] as num).compareTo(
+        b['source_index'] as num,
+      );
+      return source != 0
+          ? source
+          : (a['id'] as String).compareTo(b['id'] as String);
+    });
+    return rows;
+  }
+
+  Future<void> saveImportReviewSessionAtomic({
+    required Map<String, Object?> session,
+    required List<Map<String, Object?>> drafts,
+    bool enqueueSync = true,
+  }) async {
+    final sessionSnapshot = _importReviewSessions
+        .map(Map<String, Object?>.of)
+        .toList();
+    final draftSnapshot = _importReviewDrafts
+        .map(Map<String, Object?>.of)
+        .toList();
+    final outboxSnapshot = _syncOutbox.map(Map<String, Object?>.of).toList();
+    try {
+      final prepared = _withActiveBook(session);
+      final bookId = prepared['book_id'] as String?;
+      if (bookId == null) {
+        throw StateError('An import session requires a household.');
+      }
+      final existing = _importReviewSessions.where(
+        (row) => row['id'] == prepared['id'],
+      );
+      if (existing.isNotEmpty) {
+        if (existing.single['book_id'] != bookId ||
+            existing.single['source_fingerprint'] !=
+                prepared['source_fingerprint']) {
+          throw StateError('Import session identity cannot change.');
+        }
+        final previousState = existing.single['state'] as String;
+        final nextState = prepared['state'] as String;
+        final validTransition =
+            previousState == nextState ||
+            (previousState == 'pendingReview' &&
+                (nextState == 'readyToCommit' || nextState == 'discarded')) ||
+            (previousState == 'readyToCommit' && nextState == 'completed');
+        if (!validTransition) {
+          throw StateError('Invalid import review lifecycle transition.');
+        }
+      }
+      final memberId = prepared['created_by_member_id'] as String?;
+      if (memberId != null &&
+          !_householdMembers.any(
+            (row) =>
+                row['id'] == memberId &&
+                row['book_id'] == bookId &&
+                row['deleted_at'] == null,
+          )) {
+        throw StateError('The import creator is unavailable.');
+      }
+      final accountId = prepared['destination_account_id'] as String?;
+      if (accountId != null &&
+          !_accounts.any(
+            (row) =>
+                row['id'] == accountId &&
+                row['book_id'] == bookId &&
+                row['deleted_at'] == null,
+          )) {
+        throw StateError('The import account is unavailable.');
+      }
+      _importReviewSessions.removeWhere((row) => row['id'] == prepared['id']);
+      _importReviewSessions.add(prepared);
+      if (enqueueSync) {
+        _enqueueSyncOperation('import_review_sessions', prepared);
+      }
+      for (final value in drafts) {
+        final draft = _withActiveBook(value);
+        if (draft['book_id'] != bookId ||
+            draft['session_id'] != prepared['id']) {
+          throw StateError(
+            'An import draft must belong to its session household.',
+          );
+        }
+        final categoryId = draft['category_id'] as String?;
+        if (categoryId != null &&
+            !_masterRecords.any(
+              (row) =>
+                  row['_entity_type'] == 'categories' &&
+                  row['id'] == categoryId &&
+                  row['book_id'] == bookId &&
+                  row['deleted_at'] == null &&
+                  row['category_type'] == draft['transaction_type'],
+            )) {
+          throw StateError('The import category is unavailable.');
+        }
+        final transactionId = draft['deterministic_transaction_id'] as String?;
+        final identityAccountId =
+            draft['deterministic_transaction_account_id'] as String?;
+        if ((transactionId == null) != (identityAccountId == null)) {
+          throw StateError(
+            'Import transaction identity and account binding must be resolved together.',
+          );
+        }
+        if (identityAccountId != null &&
+            (identityAccountId != accountId ||
+                !_accounts.any(
+                  (row) =>
+                      row['id'] == identityAccountId &&
+                      row['book_id'] == bookId &&
+                      row['deleted_at'] == null,
+                ))) {
+          throw StateError(
+            'The import identity account belongs to another household.',
+          );
+        }
+        final existingDraft = _importReviewDrafts
+            .where((row) => row['id'] == draft['id'])
+            .firstOrNull;
+        if (existingDraft != null) {
+          if (existingDraft['session_id'] != draft['session_id'] ||
+              existingDraft['book_id'] != draft['book_id'] ||
+              existingDraft['source_row_identity'] !=
+                  draft['source_row_identity'] ||
+              existingDraft['source_row_key'] != draft['source_row_key']) {
+            throw StateError('Import draft source identity cannot change.');
+          }
+          if (existing.single['state'] == 'completed' &&
+              (existingDraft['deterministic_transaction_id'] != transactionId ||
+                  existingDraft['deterministic_transaction_account_id'] !=
+                      identityAccountId)) {
+            throw StateError(
+              'A completed import transaction identity cannot change.',
+            );
+          }
+        }
+        _importReviewDrafts.removeWhere((row) => row['id'] == draft['id']);
+        _importReviewDrafts.add(draft);
+        if (enqueueSync) _enqueueSyncOperation('import_review_drafts', draft);
+      }
+    } catch (_) {
+      _importReviewSessions
+        ..clear()
+        ..addAll(sessionSnapshot);
+      _importReviewDrafts
+        ..clear()
+        ..addAll(draftSnapshot);
+      _syncOutbox
+        ..clear()
+        ..addAll(outboxSnapshot);
+      rethrow;
+    }
+    if (enqueueSync) onSyncMutation?.call();
+  }
+
+  Future<void> discardImportReviewSession(
+    String sessionId,
+    int discardedAt, {
+    bool enqueueSync = true,
+  }) async {
+    final index = _importReviewSessions.indexWhere(
+      (row) => row['id'] == sessionId,
+    );
+    if (index < 0 || _importReviewSessions[index]['deleted_at'] != null) return;
+    if (_importReviewSessions[index]['state'] != 'pendingReview') {
+      throw StateError('Only a pending import can be discarded.');
+    }
+    final session = <String, Object?>{
+      ..._importReviewSessions[index],
+      'state': 'discarded',
+      'deleted_at': discardedAt,
+      'updated_at': discardedAt,
+      'version': (_importReviewSessions[index]['version'] as num).toInt() + 1,
+      'sync_status': 'pending',
+    };
+    _importReviewSessions[index] = session;
+    for (
+      var draftIndex = 0;
+      draftIndex < _importReviewDrafts.length;
+      draftIndex++
+    ) {
+      final current = _importReviewDrafts[draftIndex];
+      if (current['session_id'] != sessionId || current['deleted_at'] != null) {
+        continue;
+      }
+      final draft = <String, Object?>{
+        ...current,
+        'deleted_at': discardedAt,
+        'updated_at': discardedAt,
+        'version': (current['version'] as num).toInt() + 1,
+        'sync_status': 'pending',
+      };
+      _importReviewDrafts[draftIndex] = draft;
+      if (enqueueSync) {
+        _enqueueSyncOperation(
+          'import_review_drafts',
+          draft,
+          operationType: 'delete',
+        );
+      }
+    }
+    if (enqueueSync) {
+      _enqueueSyncOperation(
+        'import_review_sessions',
+        session,
+        operationType: 'delete',
+      );
+      onSyncMutation?.call();
+    }
+  }
+
+  Future<List<Map<String, Object?>>> getTransactionImportRules({
+    bool includeDeleted = false,
+    bool activeOnly = false,
+    String? bookId,
+  }) async {
+    final scope = bookId ?? _activeBookId;
+    final rows =
+        _transactionImportRules
+            .where(
+              (row) =>
+                  (scope == null || row['book_id'] == scope) &&
+                  (includeDeleted || row['deleted_at'] == null) &&
+                  (!activeOnly || row['enabled'] == 1),
+            )
+            .map(Map<String, Object?>.of)
+            .toList()
+          ..sort((a, b) {
+            final priority = (b['priority'] as num).compareTo(
+              a['priority'] as num,
+            );
+            if (priority != 0) return priority;
+            return (a['name'] as String).compareTo(b['name'] as String);
+          });
+    return rows;
+  }
+
+  Future<Map<String, Object?>> upsertTransactionImportRule(
+    Map<String, Object?> record, {
+    bool enqueueSync = true,
+  }) async {
+    var prepared = _withActiveBook(record);
+    final bookId = prepared['book_id'] as String?;
+    if (bookId == null || (prepared['pattern_key'] as String).isEmpty) {
+      throw StateError('An import rule requires a household and pattern.');
+    }
+    final category = _masterRecords.where(
+      (row) =>
+          row['id'] == prepared['category_id'] &&
+          row['book_id'] == bookId &&
+          row['category_type'] == prepared['transaction_type'],
+    );
+    if (category.isEmpty) {
+      throw StateError(
+        'The import rule category belongs to another household or type.',
+      );
+    }
+    final accountId = prepared['account_id'] as String?;
+    if (accountId != null &&
+        !_accounts.any(
+          (row) => row['id'] == accountId && row['book_id'] == bookId,
+        )) {
+      throw StateError('The import rule account belongs to another household.');
+    }
+    bool sameSemantic(Map<String, Object?> row) =>
+        row['book_id'] == bookId &&
+        row['transaction_type'] == prepared['transaction_type'] &&
+        row['match_field'] == prepared['match_field'] &&
+        row['match_operator'] == prepared['match_operator'] &&
+        row['pattern_key'] == prepared['pattern_key'] &&
+        row['account_id'] == accountId;
+    if (_transactionImportRules.any(
+      (row) =>
+          sameSemantic(row) &&
+          row['deleted_at'] == null &&
+          row['id'] != prepared['id'],
+    )) {
+      throw StateError('An active import rule with this match already exists.');
+    }
+    final sameId = _transactionImportRules.indexWhere(
+      (row) => row['id'] == prepared['id'],
+    );
+    if (sameId >= 0 && _transactionImportRules[sameId]['book_id'] != bookId) {
+      throw StateError('An import rule cannot move between households.');
+    }
+    var index = sameId;
+    if (index < 0) {
+      index = _transactionImportRules.indexWhere(
+        (row) => sameSemantic(row) && row['deleted_at'] != null,
+      );
+      if (index >= 0) {
+        final deleted = _transactionImportRules[index];
+        prepared = {
+          ...prepared,
+          'id': deleted['id'],
+          'created_at': deleted['created_at'],
+          'deleted_at': null,
+          'version': (deleted['version'] as num).toInt() + 1,
+        };
+      }
+    }
+    if (index >= 0) _transactionImportRules.removeAt(index);
+    _transactionImportRules.add(prepared);
+    if (enqueueSync) {
+      _enqueueSyncOperation('transaction_import_rules', prepared);
+      onSyncMutation?.call();
+    }
+    return Map<String, Object?>.of(prepared);
+  }
+
+  Future<void> softDeleteTransactionImportRule(
+    String id,
+    int deletedAt, {
+    bool enqueueSync = true,
+  }) async {
+    final index = _transactionImportRules.indexWhere((row) => row['id'] == id);
+    if (index < 0 || _transactionImportRules[index]['deleted_at'] != null) {
+      return;
+    }
+    final saved = <String, Object?>{
+      ..._transactionImportRules[index],
+      'deleted_at': deletedAt,
+      'updated_at': deletedAt,
+      'version': (_transactionImportRules[index]['version'] as num).toInt() + 1,
+      'sync_status': 'pending',
+    };
+    _transactionImportRules[index] = saved;
+    if (enqueueSync) {
+      _enqueueSyncOperation(
+        'transaction_import_rules',
+        saved,
+        operationType: 'delete',
+      );
+      onSyncMutation?.call();
+    }
   }
 
   Future<void> ensureMasterSeeds(
@@ -1000,6 +1946,15 @@ class LocalStore {
       )
       .length;
 
+  Future<Map<String, int>> getSyncOutboxStatusCounts(String bookId) async {
+    final counts = <String, int>{};
+    for (final item in _syncOutbox.where((row) => row['book_id'] == bookId)) {
+      final status = item['status'] as String;
+      counts[status] = (counts[status] ?? 0) + 1;
+    }
+    return counts;
+  }
+
   Future<void> recoverInterruptedSyncOperations(String bookId) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     for (var index = 0; index < _syncOutbox.length; index++) {
@@ -1184,8 +2139,17 @@ class LocalStore {
     if (index < 0) throw StateError('Conflict is no longer resolving.');
     final conflict = _syncConflicts[index];
     final collection = _syncCollection(conflict['entity_type'] as String);
-    collection.removeWhere((item) => item['id'] == conflict['entity_id']);
-    collection.add({...canonicalPayload, 'sync_status': 'synced'});
+    final collectionSnapshot = collection.map(Map<String, Object?>.of).toList();
+    try {
+      collection.removeWhere((item) => item['id'] == conflict['entity_id']);
+      collection.add({...canonicalPayload, 'sync_status': 'synced'});
+      _validateActiveTransferLinks(conflict['book_id'] as String);
+    } catch (_) {
+      collection
+        ..clear()
+        ..addAll(collectionSnapshot);
+      rethrow;
+    }
     _updateOutbox([
       conflict['operation_id'] as String,
     ], (item) => {...item, 'status': 'completed'});
@@ -1210,6 +2174,7 @@ class LocalStore {
     String bookId, {
     required List<Map<String, Object?>> changes,
     required int finalSequence,
+    bool replaceExisting = false,
   }) async {
     final snapshots = <List<Map<String, Object?>>>[
       for (final collection in [
@@ -1219,6 +2184,14 @@ class LocalStore {
         _records,
         _assetDefinitions,
         _masterRecords,
+        _monthlyCategoryBudgets,
+        _transactionImportRules,
+        _transferLinks,
+        _importReviewSessions,
+        _importReviewDrafts,
+        _assetMarketPrices,
+        _syncOutbox,
+        _syncConflicts,
       ])
         collection.map(Map<String, Object?>.of).toList(),
     ];
@@ -1228,6 +2201,26 @@ class LocalStore {
         entry.key: List<String>.of(entry.value),
     };
     try {
+      if (replaceExisting) {
+        for (final collection in [
+          _householdMembers,
+          _accounts,
+          _records,
+          _assetDefinitions,
+          _masterRecords,
+          _monthlyCategoryBudgets,
+          _transactionImportRules,
+          _transferLinks,
+          _importReviewSessions,
+          _importReviewDrafts,
+          _assetMarketPrices,
+        ]) {
+          collection.removeWhere((record) => record['book_id'] == bookId);
+        }
+        _books.removeWhere((record) => record['id'] == bookId);
+        _syncOutbox.removeWhere((record) => record['book_id'] == bookId);
+        _syncConflicts.removeWhere((record) => record['book_id'] == bookId);
+      }
       for (final change in changes) {
         final entityType = change['entity_type'] as String;
         final payload = Map<String, Object?>.of(
@@ -1258,6 +2251,7 @@ class LocalStore {
           _rebuildMasterValues(entityType, payload['category_type'] as String?);
         }
       }
+      _validateActiveTransferLinks(bookId);
       await setSyncInitializationState(bookId, 'ready');
       final cursorIndex = _syncCursors.indexWhere(
         (item) => item['book_id'] == bookId,
@@ -1275,6 +2269,14 @@ class LocalStore {
         _records,
         _assetDefinitions,
         _masterRecords,
+        _monthlyCategoryBudgets,
+        _transactionImportRules,
+        _transferLinks,
+        _importReviewSessions,
+        _importReviewDrafts,
+        _assetMarketPrices,
+        _syncOutbox,
+        _syncConflicts,
       ];
       for (var index = 0; index < collections.length; index++) {
         collections[index]
@@ -1288,6 +2290,55 @@ class LocalStore {
         ..clear()
         ..addAll(masterSnapshot);
       rethrow;
+    }
+  }
+
+  void _validateActiveTransferLinks(String bookId) {
+    final transactions = {
+      for (final row in _records.where((row) => row['book_id'] == bookId))
+        row['id']: row,
+    };
+    final accounts = {
+      for (final row in _accounts.where((row) => row['book_id'] == bookId))
+        row['id']: row,
+    };
+    final legIds = <Object?>{};
+    for (final link in _transferLinks.where(
+      (row) => row['book_id'] == bookId && row['deleted_at'] == null,
+    )) {
+      final outgoing = transactions[link['outgoing_transaction_id']];
+      final incoming = transactions[link['incoming_transaction_id']];
+      final source = accounts[link['source_account_id']];
+      final destination = accounts[link['destination_account_id']];
+      final amount = (link['amount'] as num?)?.toInt();
+      final validIdentity =
+          legIds.add(link['outgoing_transaction_id']) &&
+          legIds.add(link['incoming_transaction_id']);
+      if (outgoing == null ||
+          incoming == null ||
+          source == null ||
+          destination == null ||
+          outgoing['deleted_at'] != null ||
+          incoming['deleted_at'] != null ||
+          source['deleted_at'] != null ||
+          destination['deleted_at'] != null ||
+          outgoing['transaction_type'] != 'expense' ||
+          incoming['transaction_type'] != 'income' ||
+          amount == null ||
+          amount <= 0 ||
+          outgoing['amount'] != amount ||
+          incoming['amount'] != amount ||
+          outgoing['account'] != source['name'] ||
+          incoming['account'] != destination['name'] ||
+          source['currency_code'] != destination['currency_code'] ||
+          source['currency_code'] != link['currency_code'] ||
+          link['source_account_id'] == link['destination_account_id'] ||
+          link['outgoing_transaction_id'] == link['incoming_transaction_id'] ||
+          !validIdentity) {
+        throw StateError(
+          'Remote internal transfer ${link['id']} is invalid or incomplete.',
+        );
+      }
     }
   }
 
@@ -1325,6 +2376,11 @@ class LocalStore {
         'categories' || 'projects' => _masterRecords,
         'transactions' => _records,
         'asset_definitions' => _assetDefinitions,
+        'monthly_category_budgets' => _monthlyCategoryBudgets,
+        'transaction_import_rules' => _transactionImportRules,
+        'transfer_links' => _transferLinks,
+        'import_review_sessions' => _importReviewSessions,
+        'import_review_drafts' => _importReviewDrafts,
         _ => throw ArgumentError.value(entityType, 'entityType'),
       };
 

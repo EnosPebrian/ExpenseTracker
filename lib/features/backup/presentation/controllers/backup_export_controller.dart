@@ -124,6 +124,34 @@ class BackupExportController extends ChangeNotifier {
   Future<void> chooseBackupDestination() =>
       _chooseDestination(PortableDestinationKind.backup);
 
+  Future<PortableSaveResult?> createReconnectSafetyBackup(
+    String password,
+  ) async {
+    if (password.length < 8) {
+      throw const BackupValidationException(
+        'Use at least 8 characters for the safety-backup password.',
+      );
+    }
+    final destination = _backupDestination;
+    if (destination == null || !destination.isValid) {
+      throw const BackupValidationException(
+        'Choose a backup folder before reconnecting.',
+      );
+    }
+    final backup = await backupService.create(
+      bookId: _requiredBookId(),
+      password: password,
+    );
+    return fileService.save(
+      kind: PortableDestinationKind.backup,
+      destination: destination,
+      suggestedName: 'pilgrim-tracker-pre-reconnect-${_stamp(_now())}.ptbackup',
+      bytes: backup.bytes,
+      extension: 'ptbackup',
+      dialogTitle: 'Save required pre-reconnect safety backup',
+    );
+  }
+
   Future<void> chooseCsvDestination() =>
       _chooseDestination(PortableDestinationKind.csv);
 

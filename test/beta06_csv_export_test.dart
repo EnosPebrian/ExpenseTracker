@@ -31,6 +31,7 @@ void main() {
         'categories.csv',
         'projects.csv',
         'asset_definitions.csv',
+        'budgets.csv',
         'transactions.csv',
         'asset_activity.csv',
         'summary.csv',
@@ -41,6 +42,40 @@ void main() {
     expect(files['transactions.csv'], contains("'=SUM(A1:A2)"));
     expect(files['transactions.csv'], contains('2500000'));
     expect(files['README.txt'], contains('not a full application backup'));
+  });
+
+  test('CSV ZIP includes monthly category budget records', () {
+    final snapshot = beta06Snapshot();
+    snapshot['budgets'] = [
+      {
+        'id': 'budget-food',
+        'book_id': 'book-beta06',
+        'category_id': 'category-expense',
+        'month_start': '2026-07-01',
+        'limit_minor': 750000,
+        'currency_code': 'IDR',
+        'note': '=Household groceries',
+        'created_at': 1767225600000,
+        'updated_at': 1767225600000,
+        'deleted_at': null,
+        'version': 1,
+      },
+    ];
+
+    final archive = ZipDecoder().decodeBytes(
+      service.create(snapshot, const CsvExportFilter()).bytes,
+      verify: true,
+    );
+    final csv = utf8.decode(
+      archive.files
+          .singleWhere((file) => file.name == 'budgets.csv')
+          .readBytes()!,
+    );
+
+    expect(csv, contains('budget-food'));
+    expect(csv, contains('2026-07-01'));
+    expect(csv, contains('750000'));
+    expect(csv, contains("'=Household groceries"));
   });
 
   test('CSV filters date, type, project, member, account and category', () {

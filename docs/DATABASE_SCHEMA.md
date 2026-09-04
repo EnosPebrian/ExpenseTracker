@@ -2,7 +2,20 @@
 
 Fresh schema creation inserts no user financial rows.
 
-Current SQLite schema version: **20**. Version 20 changes
+Current SQLite schema version: **25**. Version 25 rebuilds only
+`import_review_drafts` so `deterministic_transaction_id` can be null before
+account selection, adds `deterministic_transaction_account_id`, and persists
+the canonical `source_row_key`. Version 22 additively creates
+`transaction_import_rules` with stable household identity, deterministic
+matching fields, soft deletion, lifecycle/sync metadata, reference indexes, and
+an active semantic uniqueness constraint. It inserts no rules and changes no
+existing transaction or master-data row.
+
+Version 21 additively creates
+`monthly_category_budgets` for exact household/category/month limits. It does
+not create default budgets, modify transactions, or enqueue existing records.
+
+Version 20 changes
 `asset_market_prices` identity from global `asset_key` to the household-scoped
 composite primary key `(book_id, asset_key)`. Existing rows and values are
 preserved. This permits restored households to retain identical asset keys
@@ -31,9 +44,9 @@ Version 16 additively extends
 `sync_conflicts` with classification, changed fields, resolution lifecycle, and
 resolution operation identity. Supabase adds `resolve_sync_conflict`.
 
-**Snapshot date:** 2026-07-26
+**Snapshot date:** 2026-08-02
 
-**Native database version:** 20
+**Native database version:** 21
 
 **Native engine:** SQLite through `sqflite_common_ffi`
 
@@ -142,6 +155,15 @@ within one book. The Auth-user mapping does not replace local member identity.
 tables do not represent online or secure authentication. A local member is a
 household person, not an authenticated application user.
 
+### `monthly_category_budgets`
+
+Stores a stable UUID, `book_id`, expense `category_id`, date-only
+`month_start` (`YYYY-MM-01`), positive integer `limit_minor`, book-base
+`currency_code`, optional 120-character note, timestamps/tombstone, version,
+device, and sync status. A partial unique index permits only one active row per
+`book_id, category_id, month_start`; a safe re-add reuses a matching tombstone.
+Indexes cover book/month, book/category, update time, and sync status.
+
 ### Sync protocol tables
 
 `sync_outbox` durably stores stable operation IDs, book/entity identity,
@@ -186,6 +208,10 @@ same index set.
 - Version 15: expanded durable initialization state/progress metadata and
   `initial_sync_staging` for consistent primary snapshots and isolated
   secondary downloads. The v14 cursor and server sequence are preserved.
+- Versions 16-20: conflict-resolution metadata, deterministic built-in asset
+  IDs, project-reference repair, initial-sync diagnostics, and household-scoped
+  market-price identity.
+- Version 21: monthly household category budgets and supporting indexes.
 
 ## Web fallback
 
@@ -193,7 +219,7 @@ same index set.
 local-profile, and session record maps in memory. Fee, relation, and
 execution-reference fields round-trip through the shared entity mapping. Its
 managed fee change set snapshots and restores the record list on failure.
-Transaction and definition soft deletion update the same deletion, update,
+Transaction, definition, and budget soft deletion update the same deletion, update,
 version, and sync metadata as native storage. Browser reload may reset this
 preview data.
 
@@ -223,6 +249,12 @@ exchange. BETA-04B adds initialization claims/sessions/items plus secured,
 bounded upload/download RPCs. The server enforces owner-only empty-remote
 upload and authorized stable download before incremental transfer is enabled.
 
+## BETA-08A schema impact
+
+Selective recovery adds no table or column. SQLite remains version 21 and no
+Supabase SQL change is required. Sessions and candidate plans are transient;
+accepted records use existing entity tables and durable outbox rows.
+
 ## Deferred persistence
 
 - historical bid/ask spread and quote-history modeling
@@ -230,3 +262,55 @@ upload and authorized stable download before incremental transfer is enabled.
 - price history
 - ledger entries and transaction revisions
 - conflict-resolution workflow
+
+## BETA-08E import-rule schema
+
+`transaction_import_rules` stores one household-scoped expense/income rule.
+Category and optional account references must share `book_id`; category type
+must match transaction type. Native and web stores enforce the same enums,
+normalized `pattern_key`, active semantic uniqueness, and mutation/outbox
+boundary. The new Supabase table mirrors canonical fields under RLS and joins
+the existing initial snapshot, manifest, change-feed, push/pull, and conflict
+functions. No default or inferred rules are seeded.
+
+## BETA-08F0 transfer-link schema
+
+SQLite schema 23 adds `transfer_links`: stable ID, household, outgoing/incoming
+transaction IDs, source/destination account IDs, currency, integer amount,
+timestamps/tombstone, version, device, and local sync status. Partial unique
+indexes prevent either leg from joining multiple active pairs. The 22-to-23
+migration is additive and creates no links for legacy transfers. Supabase
+mirrors canonical fields with foreign keys, RLS, validation trigger, active-leg
+uniqueness, change capture, and initial-sync enforcement.
+
+## BETA-08G import-review schema
+
+SQLite schema 24 additively creates `import_review_sessions` and
+`import_review_drafts`. Sessions carry household, source, title, safe summary,
+account, lifecycle, attribution, version, device, and sync state. Drafts carry
+stable session/draft/source-row/final-transaction identity plus normalized
+financial review fields, category provenance, explicit edit fields, warnings,
+inclusion, lifecycle, version, device, and sync state. Indexed household,
+state/session, transaction identity, update, and sync columns support inbox and
+5,000-row statement use. Foreign account, category, member, and session
+references are rejected. Supabase mirrors these constraints and RLS in the
+undeployed `202608210001_beta08g_import_review_inbox.sql` migration.
+
+## BETA-08G1 deferred identity schema
+
+SQLite schema 25 preserves every v24 row and existing final UUID. The paired
+constraint requires final ID and identity-account binding to be both null or
+both non-null. The binding references `accounts`; repository validation also
+requires the account to be active in the draft household and equal the session
+destination. Nullable unique indexes permit many unresolved rows while
+retaining non-null idempotency protection. Backup remains v4 because inbox
+workflow rows remain outside backup snapshots.
+
+## BETA-08H server-only entities
+
+Migration `202608230001_beta08h_telegram_ingestion.sql` adds server-only
+`telegram_connections`, `telegram_pairing_tokens`, and
+`telegram_ingestion_events`. They are not SQLite or backup entities. Tokens are
+SHA-256 byte digests, update IDs are unique, RLS exposes only authorized
+connection status, and privileged RPCs revalidate membership and insert
+existing unresolved Inbox rows. SQLite remains 25; backup remains v4.

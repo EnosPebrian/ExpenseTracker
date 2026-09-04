@@ -5,3 +5,12 @@ enabled = true
 
 [functions.create-book-invitation]
 verify_jwt = true
+
+[functions.extract-financial-document]
+verify_jwt = true
+
+[functions.telegram-connection]
+verify_jwt = true
+
+[functions.telegram-webhook]
+verify_jwt = false

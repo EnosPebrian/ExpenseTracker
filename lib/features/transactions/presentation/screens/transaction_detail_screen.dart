@@ -64,8 +64,13 @@ class _TransactionDetailDialog extends StatefulWidget {
 
 class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
   bool deleting = false;
+  bool unpairing = false;
   bool confirmingDelete = false;
   String? error;
+
+  bool get isCanonicalTransfer =>
+      widget.controller.transferLinkForTransaction(currentTransaction.id) !=
+      null;
 
   @override
   void initState() {
@@ -99,7 +104,7 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
   }
 
   Transaction get currentTransaction {
-    for (final transaction in widget.controller.transactions) {
+    for (final transaction in widget.controller.displayTransactions) {
       if (transaction.id == widget.transaction.id) {
         return transaction;
       }
@@ -113,6 +118,9 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
       return;
     }
     final transaction = currentTransaction;
+    final transfer = widget.controller.transferLinkForTransaction(
+      transaction.id,
+    );
 
     setState(() {
       confirmingDelete = true;
@@ -122,12 +130,16 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
       context: context,
       builder: (confirmationContext) {
         return AlertDialog(
-          title: Text('Delete “${transaction.title}”?'),
+          title: Text(
+            transfer == null
+                ? 'Delete “${transaction.title}”?'
+                : 'Delete transfer “${transaction.title}”?',
+          ),
           content: Text(
             'Rp ${money(transaction.amount)} · '
             '${transaction.account}\n\n'
-            'This transaction will be removed from '
-            'your active ledger.',
+            '${transfer == null ? 'This transaction' : 'Both transfer legs'} '
+            'will be removed from your active ledger.',
           ),
           actions: [
             TextButton(
@@ -144,7 +156,9 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
               onPressed: () {
                 Navigator.pop(confirmationContext, true);
               },
-              child: const Text('Delete transaction'),
+              child: Text(
+                transfer == null ? 'Delete transaction' : 'Delete transfer',
+              ),
             ),
           ],
         );
@@ -193,6 +207,43 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
     }
   }
 
+  Future<void> _unpair() async {
+    if (unpairing || deleting) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (confirmationContext) => AlertDialog(
+        title: const Text('Unpair internal transfer?'),
+        content: const Text(
+          'Both transaction rows will remain. They will return to ordinary '
+          'expense and income classification.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(confirmationContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(confirmationContext, true),
+            child: const Text('Unpair'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      unpairing = true;
+      error = null;
+    });
+    try {
+      await widget.controller.unpairTransaction(currentTransaction);
+      if (mounted) Navigator.pop(context);
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString());
+    } finally {
+      if (mounted) setState(() => unpairing = false);
+    }
+  }
+
   void _edit() {
     final onEdit = widget.onEdit;
 
@@ -207,6 +258,15 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
   @override
   Widget build(BuildContext context) {
     final transaction = currentTransaction;
+    final transfer = widget.controller.transferLinkForTransaction(
+      transaction.id,
+    );
+    final outgoing = transfer == null
+        ? null
+        : widget.controller.transactionById(transfer.outgoingTransactionId);
+    final incoming = transfer == null
+        ? null
+        : widget.controller.transactionById(transfer.incomingTransactionId);
     final isManagedFeeExpense =
         transaction.relationType == TransactionRelationType.assetFeeExpense;
 
@@ -222,7 +282,7 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${transaction.type.name.toUpperCase()} / POSTED',
+                  '${transfer == null ? transaction.type.name.toUpperCase() : 'INTERNAL TRANSFER'} / POSTED',
                   style: const TextStyle(
                     color: muted,
                     fontSize: 9,
@@ -238,8 +298,19 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
                   ),
                 ),
                 const SizedBox(height: 22),
-                _DetailLine(label: 'Account', value: transaction.account),
-                _DetailLine(label: 'Category', value: transaction.category),
+                if (transfer != null) ...[
+                  _DetailLine(
+                    label: 'From',
+                    value: outgoing?.account ?? transaction.account,
+                  ),
+                  _DetailLine(
+                    label: 'To',
+                    value: incoming?.account ?? transaction.account,
+                  ),
+                ] else ...[
+                  _DetailLine(label: 'Account', value: transaction.account),
+                  _DetailLine(label: 'Category', value: transaction.category),
+                ],
                 _DetailLine(
                   label: 'Project',
                   value: transaction.projectId ?? 'No project',
@@ -375,6 +446,11 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
                   },
             child: const Text('Close'),
           ),
+          if (isCanonicalTransfer)
+            TextButton(
+              onPressed: deleting || unpairing ? null : _unpair,
+              child: Text(unpairing ? 'Unpairing...' : 'Unpair'),
+            ),
           TextButton(
             onPressed: isManagedFeeExpense || deleting || confirmingDelete
                 ? null
@@ -391,7 +467,9 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
             onPressed: isManagedFeeExpense || widget.onEdit == null || deleting
                 ? null
                 : _edit,
-            child: const Text('Edit transaction'),
+            child: Text(
+              isCanonicalTransfer ? 'Edit transfer' : 'Edit transaction',
+            ),
           ),
         ],
       ),

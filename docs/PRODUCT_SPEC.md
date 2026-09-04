@@ -396,3 +396,133 @@ CSV export is a separate filtered, human-readable ZIP with exact integer money,
 stable columns, ISO dates, and formula-injection protection. It is not a full
 application backup. Normal connected device changes use sign-in and cloud
 download; encrypted backup is for offline, emergency, or historical recovery.
+
+## 14. BETA-07A/B monthly category budgets
+
+One active household budget may be set for an expense category and local
+calendar month. Limits are positive exact integers in the book base currency.
+Qualifying active expense transactions count regardless of owner or entered-by
+member; income, transfers, opening balances, asset conversions, deletions, and
+other months do not. Existing separate fee-expense rows count as expenses.
+
+Per-category results show spent, remaining, overspent, percentage, and an
+accessible status. Monthly totals show total budgeted, budgeted-category spend,
+remaining, overspent, and qualifying unbudgeted spend. BETA-07A deliberately
+does not include rollover, weekly/yearly/member/account budgets, suggestions,
+forecasting, goals, debt plans, notifications, or scheduled jobs.
+
+## 15. BETA-08A selective recovery
+
+Backup & Export exposes `Recover missing records` separately from replacement
+restore. It accepts only the active canonical household, previews already
+present, recoverable, duplicate, conflicting, remote-deleted, blocked, and
+unsupported records, includes safe dependencies, and commits the selected plan
+without deleting current data. Linked recovery requires hosted verification and
+synchronizes through the normal durable outbox.
+
+## 16. BETA-08A1 restore lifecycle
+
+`Restore entire backup` is an advanced disaster-recovery action and starts
+local-only. The resulting household can stay local, reconnect to authoritative
+existing hosted data, or create a separate shared household. New sharing uses a
+fresh-identity local clone and normal protected initial upload, preserving both
+the original restored snapshot and any existing initialized hosted household.
+
+BETA-07B lets a user explicitly copy budget definitions from one month into a
+different currently selected month. Preview classifies plans as Will be added,
+Already present, or Category unavailable and shows the expected target total.
+Only active, missing target-category plans are added; existing target plans are
+never overwritten, and archived/missing categories are skipped safely. The
+operation copies category, limit, currency, and note—not spending or derived
+progress—and does not implement rollover, carryover, or automatic monthly copy.
+# CSV transaction entry (BETA-08B)
+
+Windows and Android users can import canonical or mapped bank CSV files from
+Transactions. Nothing is saved before review and final confirmation. Stable
+source identities make exact-file re-import idempotent; semantic duplicates and
+possible deleted matches remain excluded for user review. See `CSV_IMPORT.md`.
+# Reviewed receipt and statement ingestion
+
+Pilgrim supports reviewed receipt/invoice images and bank-statement PDF/page
+images. Extraction never creates a transaction automatically. The user must
+confirm destination account, category, edits, duplicate decisions, and final
+atomic import. Sensitive source files are not persisted or made public.
+
+## 17. BETA-08E deterministic import rules
+
+Household members can explicitly create expense or income rules that match a
+description, reference, merchant hint, or description-or-reference and suggest
+a compatible category during import review. Manual choices and valid explicit
+source categories outrank rules. Ambiguous highest-priority matches require a
+choice. Rules never create transactions, learn silently, recategorize saved
+records, or use AI. See `IMPORT_RULES.md`.
+
+## 18. Canonical internal transfers
+
+All new manual internal transfers are one logical movement backed by a stable
+outgoing leg, stable incoming leg, and stable directional link. Users edit the
+movement coherently, may Unpair while retaining both rows, or Delete to
+tombstone the link and both rows. Active pairs affect account balances but are
+not household income, expense, budget spending, or tithe income. Legacy
+single-row transfers remain readable and are not automatically migrated.
+
+## 19. Reviewed transfer suggestions
+
+Pilgrim may suggest exact-value movements between owned accounts when they are
+same-household, same-currency, opposite-direction ordinary entries posted no
+more than two local calendar days apart. Suggestions are explainable and never
+automatic. Equal-quality alternatives require manual counterpart selection.
+
+## 20. Import Review Inbox
+
+CSV, receipt, invoice, and bank-statement results may be saved as normalized
+pending imports, resumed after restart, renamed, reviewed, discarded, or
+committed in the existing editor. Pending and recent-completed views expose
+safe counts and source labels; the UI states that original files are not
+stored. Linked households synchronize inbox state between devices, but merely
+receiving a session never creates transactions. Account/category loss,
+conflicts, invalid selected rows, or stale versions block commit for review.
+
+## Telegram ingestion
+
+An authorized member may link one private Telegram identity and send supported
+attachments to Import Inbox. Telegram is ingestion-only: it cannot answer
+financial queries, select an account, approve a duplicate or transfer, or
+create/edit/delete finance. Canonical CSV, receipt images, and unlocked bank
+statement PDF/images are normalized for later explicit in-app review.
+
+## Monthly and annual financial statements
+
+Reports provides Monthly and Annual statements for the household or one
+account. Household statements separate currencies and show opening/closing,
+income, expenses, net cash flow, tithe, transfers, accounts, categories,
+budgets, and period activity. Account statements show native-currency opening,
+inflow/outflow, transfer movements, running balances, and closing balance.
+
+Users may preview and export an A4 PDF locally. Large annual account histories
+may use an explicit month-by-month ledger summary; monthly statements retain
+transaction-level detail. Historical year-end net worth is omitted until a
+reliable as-of valuation engine exists. Linked households with pending local
+state receive a device-data warning.
+
+## Data & Sync Health Check
+
+Users can explicitly run a read-only Health Check covering SQLite version,
+household and transaction references, account reconciliation, canonical
+transfers, Import Inbox/deferred identity, rules and budgets, local sync/outbox
+and conflict state, and encrypted-backup capability. Results use Healthy,
+Attention needed, or Critical language with expandable plain-language detail.
+Pending imports are informational; cloud unavailability does not imply local
+financial corruption. A privacy-safe copied summary excludes finance, raw IDs,
+fingerprints, and secrets. There is no automatic repair.
+
+## Cloud durability and a new device
+
+A linked household uses local SQLite for immediate offline work and Supabase as
+its durable shared record copy. On a new installation, a signed-in active
+member can choose an existing household and download it through protected
+initial synchronization; copying a database or restoring a backup is not the
+normal device-migration workflow. If sync shows changes waiting, those changes
+remain recoverable only on that device until Pending returns to 0. Local-only
+households remain optional and depend on encrypted backups for device-loss
+recovery.

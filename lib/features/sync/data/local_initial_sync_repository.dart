@@ -17,6 +17,9 @@ class LocalInitialSyncRepository implements InitialSyncRepository {
   Future<SyncCursor?> getCursor(String bookId) =>
       syncRepository.getCursor(bookId);
   @override
+  Future<bool> isIncrementallySyncReady(String bookId) =>
+      store.isIncrementallySyncReady(bookId);
+  @override
   Future<void> prepareSecondary(String bookId) =>
       syncRepository.setInitializationState(
         bookId,
@@ -62,14 +65,16 @@ class LocalInitialSyncRepository implements InitialSyncRepository {
   Future<void> completeUpload(String bookId, int finalSequence) =>
       store.completeUpload(bookId, finalSequence);
   @override
-  Future<void> activateDownload({
+  Future<bool> activateDownload({
     required String bookId,
     required InitialSyncManifest manifest,
     required String? authUserId,
+    bool replaceExisting = false,
   }) => store.activateDownload(
     bookId: bookId,
     manifest: manifest,
     authUserId: authUserId,
+    replaceExisting: replaceExisting,
   );
   @override
   Future<InitialSyncDiagnosticSummary> getDiagnosticSummary(String bookId) =>

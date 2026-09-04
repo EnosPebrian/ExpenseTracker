@@ -4,10 +4,15 @@ const initialSyncEntityOrder = <String>[
   'books',
   'household_members',
   'categories',
+  'monthly_category_budgets',
   'projects',
   'accounts',
+  'transaction_import_rules',
+  'import_review_sessions',
+  'import_review_drafts',
   'asset_definitions',
   'transactions',
+  'transfer_links',
 ];
 
 class InitialSyncManifest {

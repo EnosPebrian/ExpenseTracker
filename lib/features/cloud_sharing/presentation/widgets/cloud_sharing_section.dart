@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../backup/presentation/controllers/backup_export_controller.dart';
+import '../../../backup/domain/restore_lifecycle_service.dart';
+import '../../../backup/presentation/controllers/restore_lifecycle_controller.dart';
+import '../../../backup/presentation/widgets/restore_lifecycle_panel.dart';
 import '../../../master_data/domain/entities/financial_book.dart';
 import '../../../master_data/domain/entities/household_member.dart';
 import '../../../sync/presentation/controllers/sync_controller.dart';
@@ -17,6 +21,9 @@ class CloudSharingSection extends StatelessWidget {
     required this.activeMemberId,
     this.syncController,
     this.initialSyncController,
+    this.backupExportController,
+    this.restoreLifecycleController,
+    this.onOpenRecovery,
     this.onReviewConflicts,
   });
 
@@ -26,6 +33,9 @@ class CloudSharingSection extends StatelessWidget {
   final String? activeMemberId;
   final SyncController? syncController;
   final InitialSyncController? initialSyncController;
+  final BackupExportController? backupExportController;
+  final RestoreLifecycleController? restoreLifecycleController;
+  final VoidCallback? onOpenRecovery;
   final VoidCallback? onReviewConflicts;
 
   HouseholdMember? get _activeMember {
@@ -72,7 +82,11 @@ class CloudSharingSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: controller,
+      animation: Listenable.merge([
+        controller,
+        ?initialSyncController,
+        ?restoreLifecycleController,
+      ]),
       builder: (context, _) {
         final user = controller.user;
         final linked =
@@ -96,6 +110,17 @@ class CloudSharingSection extends StatelessWidget {
             }
           }
         }
+        final reconnectAvailable =
+            !configurationUnavailable &&
+            user != null &&
+            mappedMember != null &&
+            initialSyncController?.canReconnect == true &&
+            backupExportController != null;
+        final restoreLifecycleVisible =
+            restoreLifecycleController?.preview?.sourceBookId == book.id;
+        final restoredLocalOnly = RestoreLifecycleService.isRestoredLocalOnly(
+          book,
+        );
         return Card(
           key: const Key('cloud-sharing-section'),
           child: Padding(
@@ -184,6 +209,7 @@ class CloudSharingSection extends StatelessWidget {
                     runSpacing: 8,
                     children: [
                       if (!linked &&
+                          !restoredLocalOnly &&
                           controller.memberships.isEmpty &&
                           controller.invitations.isEmpty)
                         FilledButton(
@@ -204,12 +230,34 @@ class CloudSharingSection extends StatelessWidget {
                               : () => _invite(context),
                           child: const Text('Invite local member'),
                         ),
+                      if (reconnectAvailable && !restoreLifecycleVisible)
+                        FilledButton(
+                          key: const Key('cloud-reconnect-household'),
+                          onPressed:
+                              controller.busy || initialSyncController!.busy
+                              ? null
+                              : () => _ReconnectDialog.show(
+                                  context,
+                                  activeBook: book,
+                                  cloudController: controller,
+                                  initialSyncController: initialSyncController!,
+                                  backupController: backupExportController!,
+                                ),
+                          child: const Text('Reconnect cloud sharing'),
+                        ),
                       TextButton(
                         key: const Key('cloud-sign-out'),
                         onPressed: controller.busy ? null : controller.signOut,
                         child: const Text('Sign out'),
                       ),
                     ],
+                  ),
+                ],
+                if (reconnectAvailable) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'The hosted household is authoritative. Create an encrypted safety backup, then download it to reconnect this device without uploading local-only changes.',
+                    key: Key('cloud-reconnect-guidance'),
                   ),
                 ],
                 for (final invitation in controller.invitations) ...[
@@ -234,10 +282,29 @@ class CloudSharingSection extends StatelessWidget {
                           ),
                   ),
                 ],
+                if (restoreLifecycleVisible) ...[
+                  const SizedBox(height: 12),
+                  RestoreLifecyclePanel(
+                    controller: restoreLifecycleController!,
+                    bookId: book.id,
+                    authenticatedEmail: user?.email,
+                    onReconnect: reconnectAvailable
+                        ? () => _ReconnectDialog.show(
+                            context,
+                            activeBook: book,
+                            cloudController: controller,
+                            initialSyncController: initialSyncController!,
+                            backupController: backupExportController!,
+                          )
+                        : null,
+                    onRecoverMissing: onOpenRecovery,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 if (syncController != null) ...[
                   SyncStatusSection(
                     controller: syncController!,
+                    cloudDecision: initialSyncController?.decision,
                     onReviewConflicts: onReviewConflicts,
                   ),
                   const SizedBox(height: 12),
@@ -316,6 +383,234 @@ class CloudSharingSection extends StatelessWidget {
         ? 'This household has a saved cloud link, but this app build was '
               'created without cloud configuration.'
         : 'This app build does not include cloud-sharing configuration.';
+  }
+}
+
+class _ReconnectDialog extends StatefulWidget {
+  const _ReconnectDialog({
+    required this.activeBook,
+    required this.cloudController,
+    required this.initialSyncController,
+    required this.backupController,
+  });
+
+  final FinancialBook activeBook;
+  final CloudSharingController cloudController;
+  final InitialSyncController initialSyncController;
+  final BackupExportController backupController;
+
+  static Future<void> show(
+    BuildContext context, {
+    required FinancialBook activeBook,
+    required CloudSharingController cloudController,
+    required InitialSyncController initialSyncController,
+    required BackupExportController backupController,
+  }) => showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _ReconnectDialog(
+      activeBook: activeBook,
+      cloudController: cloudController,
+      initialSyncController: initialSyncController,
+      backupController: backupController,
+    ),
+  );
+
+  @override
+  State<_ReconnectDialog> createState() => _ReconnectDialogState();
+}
+
+class _ReconnectDialogState extends State<_ReconnectDialog> {
+  final password = TextEditingController();
+  String? selectedBookId;
+  String? error;
+  bool busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final preferred = widget.initialSyncController.decision.targetBookId;
+    final ids = widget.initialSyncController.reconnectManifests.keys;
+    if (preferred != null && ids.contains(preferred)) {
+      selectedBookId = preferred;
+      return;
+    }
+    if (ids.isNotEmpty) selectedBookId = ids.first;
+  }
+
+  @override
+  void dispose() {
+    password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final bookId = selectedBookId;
+    if (bookId == null || busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final saved = await widget.backupController.createReconnectSafetyBackup(
+        password.text,
+      );
+      if (saved == null) {
+        throw StateError(
+          'Reconnect cancelled because the safety backup was not saved.',
+        );
+      }
+      await widget.initialSyncController.reconnect(bookId);
+      final failure = widget.initialSyncController.error;
+      if (failure != null) throw StateError(failure);
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.initialSyncController.lastResult?.message ??
+                'Cloud sharing reconnected successfully.',
+          ),
+        ),
+      );
+    } catch (caught) {
+      if (mounted) {
+        setState(() {
+          error = caught is StateError
+              ? caught.message.toString()
+              : caught.toString();
+          busy = false;
+        });
+      }
+    }
+  }
+
+  String _roleFor(String bookId) {
+    for (final membership in widget.cloudController.memberships) {
+      if (membership.bookId == bookId && membership.status == 'active') {
+        return membership.role.name;
+      }
+    }
+    return 'membership unavailable';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final manifests = widget.initialSyncController.reconnectManifests;
+    final selected = selectedBookId == null ? null : manifests[selectedBookId];
+    const synchronizedEntities = <String>{
+      'household',
+      'members',
+      'categories',
+      'budgets',
+      'projects',
+      'accounts',
+      'asset_definitions',
+      'transactions',
+    };
+    final localCount =
+        widget.backupController.snapshot?.entries
+            .where((entry) => synchronizedEntities.contains(entry.key))
+            .fold<int>(0, (total, entry) => total + entry.value.length) ??
+        0;
+    return AlertDialog(
+      key: const Key('cloud-reconnect-dialog'),
+      title: const Text('Reconnect cloud sharing'),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Downloading the existing shared household will replace this '
+                'restored local snapshot. Records found only in this restored '
+                'snapshot will not be uploaded automatically. Use Recover '
+                'missing records if you need to add records from a backup to '
+                'the shared household. A required encrypted safety backup is '
+                'created first.',
+              ),
+              const SizedBox(height: 12),
+              RadioGroup<String>(
+                groupValue: selectedBookId,
+                onChanged: (value) {
+                  if (!busy) setState(() => selectedBookId = value);
+                },
+                child: Column(
+                  children: [
+                    for (final entry in manifests.entries)
+                      RadioListTile<String>(
+                        key: Key(
+                          'hosted-household-${entry.key == widget.activeBook.id ? 'matching' : 'additional'}',
+                        ),
+                        value: entry.key,
+                        enabled: !busy,
+                        title: Text(entry.value.bookName),
+                        subtitle: Text(
+                          '${entry.value.baseCurrencyCode} \u00b7 '
+                          '${_roleFor(entry.key)} \u00b7 '
+                          '${entry.key == widget.activeBook.id ? 'Matches this local household' : 'Additional hosted household'}',
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (selected != null) ...[
+                const Divider(),
+                Text('Local records: $localCount'),
+                Text('Hosted records: ${selected.totalCount}'),
+                const Text(
+                  'Local-only, hosted-only, and differing records are validated during the protected download.',
+                ),
+                Text('Expected downloaded total: ${selected.totalCount}'),
+              ],
+              const SizedBox(height: 12),
+              Text(
+                widget.backupController.backupDestination?.displayValue ??
+                    'No safety-backup folder selected.',
+              ),
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : widget.backupController.chooseBackupDestination,
+                child: const Text('Choose safety-backup folder'),
+              ),
+              TextField(
+                key: const Key('cloud-reconnect-password'),
+                controller: password,
+                obscureText: true,
+                enabled: !busy,
+                decoration: const InputDecoration(
+                  labelText: 'Safety-backup password',
+                  helperText: 'Use at least 8 characters.',
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  error!,
+                  key: const Key('cloud-reconnect-error'),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+              if (busy) const LinearProgressIndicator(),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: busy ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('cloud-reconnect-download'),
+          onPressed: busy || selected == null ? null : _submit,
+          child: const Text('Back up and download'),
+        ),
+      ],
+    );
   }
 }
 

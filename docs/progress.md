@@ -1,5 +1,113 @@
 # Pilgrim Tracker Progress
 
+## BETA-08J Data Health & Sync Diagnostics — 2026-09-01
+
+Implemented a read-only Data & Sync Health Check over immutable local snapshots.
+It covers SQLite v25, household/transaction references, existing account
+reconciliation, canonical/legacy transfers, Import Inbox and G1 identity,
+rules/budgets/tithe, local outbox/conflicts/cloud status, and truthful encrypted
+backup v4 support. It adds stable codes, deterministic severity, expandable
+responsive UI, safe navigation, privacy-safe copy, and large-data tests without
+repair, persistence, SQL, cloud calls, or hosted changes. Owner acceptance is
+NOT RUN. Final gate results are recorded in `CHECKPOINT_BETA08J_COMPLETE.md`.
+
+Engineering PASS. The owner temporarily lifted feature freeze for the bounded
+BETA-08K through BETA-08N sequence; freeze resumes after BETA-08N.
+
+## BETA-08K Cloud Durability & New-Device Bootstrap — 2026-09-04
+
+Reused the existing local-first outbox/change-feed and protected initial-sync
+architecture for normal new-device recovery. Added explicit selection among
+all authorized initialized hosted households and retained selected
+membership/member context. Sync events that arrive during an active run now
+coalesce into one follow-up run. Empty-device download, populated-target
+rejection, interruption/restart/idempotency, membership isolation, health
+status, and a 5,000-transaction activation are covered without adding SQLite,
+backup, Supabase, hosted deployment, or background-service changes. Owner
+acceptance is NOT RUN. BETA-08L/M/N are not implemented.
+
+Engineering PASS: 82 focused tests and 832 full-suite tests passed; analyzer,
+web, Windows debug, and Android debug gates passed. The preserved BETA-08E
+500-rule/5,000-draft performance regression was made deterministic by
+normalizing each draft input once without changing rule matching behavior.
+
+## BETA-08H1 hosted deployment preflight blocked — 2026-08-31
+
+Read-only preflight confirmed the expected linked private Supabase project and
+the exact local E -> F0 -> G -> G1 -> H migration chain. The hosted project is
+inactive, its migration history could not be read, no recoverable hosted backup
+was listed, and the four required OpenAI/Telegram server secrets are missing.
+The mandatory safety gate stopped the run before any hosted mutation, function
+deployment, webhook call, artifact build, or owner action. Engineering PASS for
+BETA-08A1 through BETA-08H remains valid; Hosted Deployment and Consolidated
+Owner Runtime remain NOT RUN. See `CHECKPOINT_BETA08H1_DEPLOYMENT.md` and
+`CONSOLIDATED_OWNER_ACCEPTANCE_A1_TO_H.md`.
+
+## BETA-08C/D reviewed document ingestion implemented — 2026-08-19
+
+Receipt/invoice photos and bank-statement PDF/image sessions now enter the
+existing BETA-08B mapping, review, duplicate-detection, atomic commit, and
+ordinary outbox pipeline through an authenticated, non-retaining Supabase Edge
+Function gateway. Statement ingestion includes stable source and row identity,
+same-file idempotency, overlapping-period duplicate review, debit/credit
+normalization, page-completeness metadata, and exact balance reconciliation.
+SQLite remains version 21 and no Supabase SQL migration or sync protocol change
+was introduced.
+
+Final verification passed 48 focused BETA-08B/C/D tests, all 703 Flutter tests,
+and 7 local Edge Function contract/security tests without a paid API call.
+`flutter analyze` reported no issues; web, Windows debug, and Android debug
+builds succeeded. The Android build retained the known forward-looking
+`file_picker` Kotlin compatibility warning. Owner runtime acceptance for both
+milestones is deferred and NOT RUN.
+
+## BETA-08A1 restore lifecycle implemented — 2026-08-10
+
+Full Restore now has three explicit destinations: remain local, reconnect to an
+existing hosted household, or create a separate shared household. New sharing
+uses a fresh-identity clone with complete supported-entity reference remapping
+and the existing controlled initial-upload protocol. The original restored
+snapshot and every pre-existing hosted household remain protected. SQLite stays
+at version 21 with no Supabase SQL change. BETA-08A real-owner selective recovery
+is recorded PASS. Final verification passed 61 focused tests and all 655 Flutter
+tests; analysis found no issues; web, Windows debug, and Android debug builds
+succeeded. Android retained the known forward-looking `file_picker` Kotlin
+compatibility warning.
+
+## BETA-07C deployment complete; owner acceptance open — 2026-08-03
+
+The monthly-budget Supabase migration is deployed to the linked private
+project, local and remote migration histories agree, and local verification
+passed 81 pgTAP assertions. Configured Windows, owner-signed APK, and
+owner-signed AAB releases were rebuilt; the APK verifies with the expected Enos
+certificate and is not debug signed. Required existing-database, CRUD,
+calculation, navigation, copy, two-device/offline/conflict, backup/restore, CSV,
+and category-lifecycle owner checks remain NOT RUN. BETA-07C is therefore FAIL
+at the acceptance gate, and BETA-07A/B remain unreleased. Historical D14 status
+is unchanged.
+
+## BETA-07B implemented, unreleased — 2026-08-03
+
+Explicit monthly budget copying now previews a selected source month against
+the displayed target month, adds only missing active-category plans, skips
+already-present or unavailable categories safely, and never copies spending.
+Linked SQLite writes and ordinary budget outbox operations are atomic;
+local-only and web-preview paths remain supported. The Budgets page now shows a
+compact planning summary and immediate understandable success/no-op results.
+Engineering validation is recorded in `CHECKPOINT_BETA07B_COMPLETE.md`.
+BETA-07A/B remain unreleased pending owner acceptance; D14 remains the
+historical private-deployment baseline.
+
+## BETA-07A implemented, unreleased — 2026-08-02
+
+Monthly household expense-category budgets are implemented across SQLite v21,
+the web preview, Windows/Android-responsive UI, existing Supabase sync and
+conflict resolution, encrypted backup format v2 with v1 compatibility, restore,
+and CSV export. Engineering validation is recorded in
+`CHECKPOINT_BETA07A_COMPLETE.md`. Owner acceptance is still required before
+this milestone is released. The completed D14 private-deployment checkpoint
+below remains the historical baseline.
+
 ## D14 closed — 2026-08-02
 
 **D14 PASS — Ready for controlled private deployment by Enos and Grace.**
@@ -249,6 +357,29 @@ Final verification: 20 focused BETA-02/accounting tests and 442 full-suite
 tests passed; Flutter analysis reported no issues; the web build and WebAssembly
 dry run succeeded.
 
+## 2026-08-09 — BETA-07 closed and BETA-08A implemented
+
+BETA-07A PASS, BETA-07B PASS, BETA-07C PASS, BETA-07C1 superseded by C2,
+and BETA-07C2 PASS on owner Windows/Android devices for controlled private
+deployment by Enos and Grace. D14 history remains unchanged.
+
+BETA-08A adds same-household selective encrypted-backup recovery, hosted
+read-only verification, stable-ID and semantic duplicate classification,
+dependency-aware preview, and atomic normal-mutation/outbox commit. SQLite
+remains v21 and no Supabase SQL changed. Owner acceptance follows
+`BETA08A_OWNER_ACCEPTANCE.md`.
+
+## BETA-07C1 — hosted household reconnect recovery
+
+Implemented an explicit recovery path for a signed-in mapped member whose
+active household became local-only after safe replacement restore. Discovery
+uses active hosted memberships and protected manifests only. Same-ID recovery
+requires an encrypted safety backup and atomically installs the authoritative
+hosted snapshot with its cursor; different-ID recovery preserves the current
+book and uses secondary download. No automatic merge, local upload, outbox
+generation, SQL migration, or financial-rule change was introduced. Owner
+Windows/Android retesting remains required, so BETA-07C is not closed.
+
 ## Historical D14 Final owner-acceptance pass — 2026-07-30
 
 The owner Android certificate identity passed preflight. Exactly one signed APK
@@ -361,3 +492,89 @@ authored but not executed because Supabase CLI is unavailable locally.
 Final verification: 20 focused BETA-02/accounting tests and 442 full-suite
 tests passed; Flutter analysis reported no issues; the web build and WebAssembly
 dry run succeeded.
+# 2026-08-19 — BETA-08B
+
+Implemented the CSV transaction ingestion pipeline: scoped picking, strict
+parsing/mapping, exact dates and money, deterministic UUIDv5 identities, shared
+duplicate detection, review controls, atomic transaction/outbox persistence,
+and ordinary local-first synchronization. SQLite remains v21 and no Supabase
+change was required. BETA-08A1 owner acceptance remains deferred.
+
+# 2026-08-19 — BETA-08C/D
+
+Implemented one authenticated, server-secret document extraction gateway plus
+receipt/invoice and bank-statement ingestion. Both normalize into BETA-08B's
+review, duplicate, atomic commit, and ordinary sync path. Added source hashing,
+exact reconciliation, page completeness, safe overlap handling, cancellation,
+retry, and privacy controls. SQLite remains v21; owner acceptance is deferred.
+
+# 2026-08-19 — BETA-08E engineering
+
+Implemented persisted household merchant/category import rules across the
+shared CSV, receipt, and statement draft pipeline. Added deterministic
+normalization/operators/priority/ambiguity, explicit provenance and rule
+confirmation UI, SQLite v22/web parity, ordinary sync/conflicts/RLS, encrypted
+backup v3, selective recovery, and restore/new-household remapping. No AI,
+automatic transaction creation, retroactive recategorization, or transfer
+matching was added. Owner acceptance for BETA-08A1/B/C/D/08E remains deferred.
+
+# 2026-08-20 — BETA-08F0 engineering
+
+Implemented the canonical internal-transfer foundation as two stable ordinary
+transaction legs plus one explicit directional relation. Added SQLite v23/web
+parity, atomic lifecycle operations, reporting/budget/tithe exclusions,
+logical transaction UI, existing sync/conflict/initial-sync integration,
+Supabase RLS and validation, encrypted backup v4, recovery/clone handling, and
+coherent CSV context. Legacy one-row transfers are unchanged. Automatic
+matching and owner runtime acceptance remain deferred.
+
+# 2026-08-21 — BETA-08F1 engineering
+
+Implemented deterministic indexed internal-transfer matching for
+draft-to-existing, existing-to-existing, and draft-to-draft records, with
+explainable ambiguity-safe review and stale-checked pair-atomic conversion.
+SQLite remains v23, backup remains v4, no Supabase migration was added, and
+owner acceptance is deferred.
+
+# 2026-08-29 — BETA-08G engineering
+
+Phase 0 Windows and Android debug builds passed, closing BETA-08F1 and
+consolidated BETA-08F as Engineering PASS while owner acceptance remains not
+run. Implemented the persistent Import Review Inbox for CSV, receipt, invoice,
+and bank-statement normalized drafts with SQLite v24, native/web parity,
+ordinary cross-device sync and initial snapshots, provenance-safe current-state
+reanalysis, workflow-only discard, deterministic commit/reconciliation safety,
+and one undeployed Supabase migration. Backup remains v4 and source files are
+not retained. Telegram remains future documentation only.
+
+# 2026-08-30 — BETA-08G1 deferred import identity
+
+Implemented the narrow prerequisite requested after BETA-08H's safety stop.
+Import-review workflow/source identities now exist independently of nullable
+account-dependent final transaction identity. Added canonical UUIDv5
+finalization, explicit account binding, account-change invalidation, commit and
+conflict guards, SQLite v25 migration, web/sync parity, an undeployed Supabase
+migration, pgTAP coverage, and focused restart/sync/reconciliation tests. Backup
+remains v4. Owner acceptance is deferred. No Telegram code was implemented as
+part of BETA-08G1 itself.
+
+## BETA-08H — Secure Telegram ingestion (engineering)
+
+Implemented one undeployed server migration, private pairing and connection
+management, authenticated/idempotent webhook processing, transient secure file
+handling, canonical CSV plus reused document extraction, atomic unresolved
+Inbox delivery, Integrations UI, SQL/Edge/Flutter tests, and deployment/owner
+guides. SQLite stays 25 and backup stays v4. Hosted deployment and owner
+acceptance remain deferred.
+
+# 2026-08-31 — BETA-08I financial statements
+
+Implemented local Monthly/Annual Household and Account statements using a pure
+generator over existing balance, report, transfer, tithe, and budget semantics.
+Added responsive preview and local A4 PDF export through the existing portable
+file service, currency separation, deterministic running balances, explicit
+year-end net-worth omission, and focused financial/UI/PDF fixtures including a
+5,000-transaction annual case. SQLite remains 25, backup remains v4, and no
+Supabase/SQL or BETA-08H1 hosted change was made. Final verification passed 13
+focused tests, 810 full-suite tests, analyzer, web, Windows debug, and Android
+debug gates. Owner acceptance remains NOT RUN.

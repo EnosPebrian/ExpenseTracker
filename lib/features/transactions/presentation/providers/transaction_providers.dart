@@ -1,6 +1,7 @@
 import '../../../../core/database/local_store.dart';
 import '../../data/repositories/local_transaction_repository.dart';
 import '../../domain/usecases/transaction_usecases.dart';
+import '../../domain/usecases/internal_transfer_usecases.dart';
 import '../controllers/transaction_controller.dart';
 
 /// Transitional dependency factory until Riverpod is introduced.
@@ -26,6 +27,7 @@ class TransactionProviders {
         repository,
         assetDefinitionResolver: assetDefinitionResolver,
       ),
+      internalTransfers: InternalTransferService(repository),
       afterMutation: afterMutation,
     );
   }

@@ -36,6 +36,7 @@ class CloudSharingController extends ChangeNotifier {
   String? pendingEmail;
   String? error;
   bool busy = false;
+  bool remoteStateLoaded = false;
   StreamSubscription<CloudAuthUser?>? _authSubscription;
 
   CloudConfigurationDiagnostics get diagnostics => repository.diagnostics;
@@ -56,6 +57,7 @@ class CloudSharingController extends ChangeNotifier {
   Future<void> initialize() async {
     final diagnostics = repository.diagnostics;
     if (!diagnostics.isConfigured) {
+      remoteStateLoaded = true;
       status = switch (diagnostics.configuration) {
         CloudConfigurationState.invalid =>
           CloudSharingStatus.invalidConfiguration,
@@ -67,6 +69,7 @@ class CloudSharingController extends ChangeNotifier {
       return;
     }
     status = CloudSharingStatus.restoringSession;
+    remoteStateLoaded = false;
     notifyListeners();
     _authSubscription = repository.authChanges.listen((changedUser) {
       user = changedUser;
@@ -74,6 +77,7 @@ class CloudSharingController extends ChangeNotifier {
         memberships = const [];
         invitations = const [];
         status = CloudSharingStatus.signedOut;
+        remoteStateLoaded = true;
         notifyListeners();
       } else {
         unawaited(refreshRemoteState());
@@ -89,6 +93,7 @@ class CloudSharingController extends ChangeNotifier {
     user = repository.currentUser;
     if (user == null) {
       status = CloudSharingStatus.signedOut;
+      remoteStateLoaded = true;
       notifyListeners();
       return;
     }
@@ -131,10 +136,15 @@ class CloudSharingController extends ChangeNotifier {
       invitations = const [];
       pendingEmail = null;
       status = CloudSharingStatus.signedOut;
+      remoteStateLoaded = true;
     });
   }
 
-  Future<void> refreshRemoteState() => _run(_loadRemoteState);
+  Future<void> refreshRemoteState() async {
+    remoteStateLoaded = false;
+    notifyListeners();
+    await _run(_loadRemoteState);
+  }
 
   Future<void> linkHousehold({
     required FinancialBook book,
@@ -148,6 +158,7 @@ class CloudSharingController extends ChangeNotifier {
       await onLinked?.call(result);
       memberships = await repository.listMemberships();
       status = CloudSharingStatus.householdLinked;
+      remoteStateLoaded = true;
     });
   }
 
@@ -187,6 +198,7 @@ class CloudSharingController extends ChangeNotifier {
           .where((item) => item.id != invitation.id)
           .toList();
       status = CloudSharingStatus.membershipActive;
+      remoteStateLoaded = true;
     });
   }
 
@@ -208,6 +220,7 @@ class CloudSharingController extends ChangeNotifier {
         : memberships.isNotEmpty
         ? CloudSharingStatus.membershipActive
         : CloudSharingStatus.signedInUnlinked;
+    remoteStateLoaded = true;
   }
 
   Future<void> _run(Future<void> Function() operation) async {
@@ -218,10 +231,12 @@ class CloudSharingController extends ChangeNotifier {
       await operation();
     } on CloudSharingException catch (exception) {
       await _handleFailure(exception);
+      remoteStateLoaded = true;
     } catch (_) {
       error =
           'Cloud sharing is temporarily unavailable. Local finance remains usable.';
       status = CloudSharingStatus.error;
+      remoteStateLoaded = true;
     } finally {
       busy = false;
       notifyListeners();

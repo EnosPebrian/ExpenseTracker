@@ -8,6 +8,18 @@ class InitialSyncStoreAdapter {
   InitialSyncStoreAdapter(this.store);
 
   final LocalStore store;
+
+  Future<bool> isIncrementallySyncReady(String bookId) async {
+    final books = await store.getFinancialBooks();
+    final linked = books.any(
+      (book) => book['id'] == bookId && book['remote_linked_at'] != null,
+    );
+    if (!linked) return false;
+    final cursor = await store.getSyncCursor(bookId);
+    return cursor?['initialization_state'] ==
+        SyncInitializationState.ready.name;
+  }
+
   static final Map<String, Map<String, Map<String, Object?>>> _staging = {};
 
   String _scope(String bookId, InitialSyncDirection direction) =>
@@ -216,12 +228,13 @@ class InitialSyncStoreAdapter {
     _staging.remove(_scope(bookId, InitialSyncDirection.upload));
   }
 
-  Future<void> activateDownload({
+  Future<bool> activateDownload({
     required String bookId,
     required InitialSyncManifest manifest,
     required String? authUserId,
+    bool replaceExisting = false,
   }) async {
-    if (await targetHasFinancialData(bookId)) {
+    if (!replaceExisting && await targetHasFinancialData(bookId)) {
       throw const InitialSyncException(
         InitialSyncErrorCode.localTargetPopulated,
         'This device already contains independent data for that household.',
@@ -263,10 +276,13 @@ class InitialSyncStoreAdapter {
         });
       }
     }
+    _validateTransferLinks(rows);
+    _validateImportReviewRows(rows);
     await store.applyRemoteSyncBatch(
       bookId,
       changes: rows,
       finalSequence: manifest.snapshotSequence,
+      replaceExisting: replaceExisting,
     );
     var diagnostic = await getDiagnosticSummary(bookId);
     for (final entityType in initialSyncEntityOrder) {
@@ -309,6 +325,93 @@ class InitialSyncStoreAdapter {
     );
     store.setActiveBookId(bookId);
     _staging.remove(_scope(bookId, InitialSyncDirection.download));
+    return false;
+  }
+
+  static void _validateTransferLinks(List<Map<String, Object?>> rows) {
+    final payloadsByType = <String, List<Map<String, Object?>>>{
+      for (final entityType in initialSyncEntityOrder) entityType: [],
+    };
+    for (final row in rows) {
+      final entityType = row['entity_type'] as String;
+      payloadsByType[entityType]!.add(
+        (row['payload'] as Map).cast<String, Object?>(),
+      );
+    }
+    final transactionsById = {
+      for (final row in payloadsByType['transactions']!) row['id']: row,
+    };
+    final accountsById = {
+      for (final row in payloadsByType['accounts']!) row['id']: row,
+    };
+    final activeLegIds = <Object?>{};
+    for (final link in payloadsByType['transfer_links']!) {
+      final outgoing = transactionsById[link['outgoing_transaction_id']];
+      final incoming = transactionsById[link['incoming_transaction_id']];
+      final source = accountsById[link['source_account_id']];
+      final destination = accountsById[link['destination_account_id']];
+      final isActive = link['deleted_at'] == null;
+      final amount = (link['amount'] as num?)?.toInt();
+      final validActiveIdentity =
+          !isActive ||
+          (activeLegIds.add(link['outgoing_transaction_id']) &&
+              activeLegIds.add(link['incoming_transaction_id']));
+      if (outgoing == null ||
+          incoming == null ||
+          source == null ||
+          destination == null ||
+          link['outgoing_transaction_id'] == link['incoming_transaction_id'] ||
+          link['source_account_id'] == link['destination_account_id'] ||
+          amount == null ||
+          amount <= 0 ||
+          outgoing['transaction_type'] != 'expense' ||
+          incoming['transaction_type'] != 'income' ||
+          outgoing['amount'] != amount ||
+          incoming['amount'] != amount ||
+          outgoing['account'] != source['name'] ||
+          incoming['account'] != destination['name'] ||
+          source['currency_code'] != destination['currency_code'] ||
+          source['currency_code'] != link['currency_code'] ||
+          !validActiveIdentity) {
+        throw InitialSyncException(
+          InitialSyncErrorCode.validation,
+          'An internal transfer relation is invalid or incomplete.',
+          entityType: 'transfer_links',
+          recordId: link['id'] as String?,
+          phase: 'validate',
+          committedRecords: 0,
+        );
+      }
+    }
+  }
+
+  static void _validateImportReviewRows(List<Map<String, Object?>> rows) {
+    final payloadsByType = <String, List<Map<String, Object?>>>{
+      for (final entityType in initialSyncEntityOrder) entityType: [],
+    };
+    for (final row in rows) {
+      payloadsByType[row['entity_type'] as String]!.add(
+        (row['payload'] as Map).cast<String, Object?>(),
+      );
+    }
+    final sessionIds = payloadsByType['import_review_sessions']!
+        .map((row) => row['id'])
+        .toSet();
+    final identities = <String>{};
+    for (final draft in payloadsByType['import_review_drafts']!) {
+      final identity = '${draft['session_id']}:${draft['source_row_identity']}';
+      if (!sessionIds.contains(draft['session_id']) ||
+          !identities.add(identity)) {
+        throw InitialSyncException(
+          InitialSyncErrorCode.validation,
+          'An import review draft is invalid or belongs to another session.',
+          entityType: 'import_review_drafts',
+          recordId: draft['id'] as String?,
+          phase: 'validate',
+          committedRecords: 0,
+        );
+      }
+    }
   }
 
   Future<InitialSyncDiagnosticSummary> getDiagnosticSummary(

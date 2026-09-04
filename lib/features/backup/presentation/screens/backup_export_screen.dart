@@ -3,12 +3,27 @@ import 'package:flutter/material.dart';
 import '../../../../core/design/app_colors.dart';
 import '../../domain/backup_models.dart';
 import '../controllers/backup_export_controller.dart';
+import '../controllers/backup_recovery_controller.dart';
+import '../controllers/restore_lifecycle_controller.dart';
 import '../widgets/backup_destination_widgets.dart';
+import '../widgets/backup_recovery_panel.dart';
+import '../widgets/restore_lifecycle_panel.dart';
 
 class BackupExportScreen extends StatefulWidget {
-  const BackupExportScreen({super.key, required this.controller});
+  const BackupExportScreen({
+    super.key,
+    required this.controller,
+    this.recoveryController,
+    this.restoreLifecycleController,
+    this.authenticatedEmail,
+    this.onOpenHousehold,
+  });
 
   final BackupExportController controller;
+  final BackupRecoveryController? recoveryController;
+  final RestoreLifecycleController? restoreLifecycleController;
+  final String? authenticatedEmail;
+  final VoidCallback? onOpenHousehold;
 
   @override
   State<BackupExportScreen> createState() => _BackupExportScreenState();
@@ -128,6 +143,10 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                 },
               ),
               const SizedBox(height: 20),
+              if (widget.recoveryController case final recovery?) ...[
+                BackupRecoveryPanel(controller: recovery),
+                const SizedBox(height: 20),
+              ],
               _csvCard(),
             ],
           ),
@@ -249,9 +268,16 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
             remapOnCollision: _remapCollision,
           );
     return _SectionCard(
-      title: 'Restore backup',
-      subtitle: 'Validates integrity before changing local data.',
+      title: 'Restore entire backup',
+      subtitle:
+          'Replace this device\u2019s household with an exact backup snapshot. '
+          'Intended for disaster recovery. Restored households start local-only.',
       children: [
+        const Text(
+          'Advanced / Disaster recovery',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 10),
         OutlinedButton.icon(
           onPressed: widget.controller.busy
               ? null
@@ -388,6 +414,15 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
           if (widget.controller.restoreResult case final result?) ...[
             const SizedBox(height: 12),
             RestoreCompletionPanel(result: result),
+            if (widget.restoreLifecycleController case final lifecycle?) ...[
+              const SizedBox(height: 12),
+              RestoreLifecyclePanel(
+                controller: lifecycle,
+                bookId: result.bookId,
+                authenticatedEmail: widget.authenticatedEmail,
+                onReconnect: widget.onOpenHousehold,
+              ),
+            ],
           ],
         ],
       ],

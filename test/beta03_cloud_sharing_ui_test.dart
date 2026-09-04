@@ -5,9 +5,18 @@ import 'package:pilgrim_tracker/features/cloud_sharing/domain/cloud_models.dart'
 import 'package:pilgrim_tracker/features/cloud_sharing/domain/cloud_sharing_repository.dart';
 import 'package:pilgrim_tracker/features/cloud_sharing/presentation/controllers/cloud_sharing_controller.dart';
 import 'package:pilgrim_tracker/features/cloud_sharing/presentation/widgets/cloud_sharing_section.dart';
+import 'package:pilgrim_tracker/features/backup/data/portable_file_service.dart';
+import 'package:pilgrim_tracker/features/backup/domain/household_backup_service.dart';
+import 'package:pilgrim_tracker/features/backup/presentation/controllers/backup_export_controller.dart';
 import 'package:pilgrim_tracker/features/master_data/domain/entities/financial_book.dart';
 import 'package:pilgrim_tracker/features/master_data/domain/entities/household_member.dart';
 import 'package:pilgrim_tracker/features/master_data/presentation/screens/household_settings_page.dart';
+import 'package:pilgrim_tracker/features/sync/domain/initial_sync_coordinator.dart';
+import 'package:pilgrim_tracker/features/sync/domain/cloud_sync_state_classifier.dart';
+import 'package:pilgrim_tracker/features/sync/domain/initial_sync_models.dart';
+import 'package:pilgrim_tracker/features/sync/domain/initial_sync_repository.dart';
+import 'package:pilgrim_tracker/features/sync/domain/initial_sync_transport.dart';
+import 'package:pilgrim_tracker/features/sync/presentation/controllers/initial_sync_controller.dart';
 
 void main() {
   final book = FinancialBook(id: 'book', name: 'My Household');
@@ -282,6 +291,93 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('signed-in local-only household exposes safe reconnect action', (
+    tester,
+  ) async {
+    final repository = _WidgetCloudRepository(
+      user: const CloudAuthUser(id: 'auth-enos', email: 'enos@example.test'),
+      memberships: const [
+        CloudBookMembership(
+          id: 'membership-secret-id',
+          bookId: 'book',
+          householdMemberId: 'enos',
+          role: CloudMembershipRole.owner,
+          status: 'active',
+        ),
+      ],
+    );
+    final cloud = CloudSharingController(repository: repository);
+    addTearDown(cloud.dispose);
+    await cloud.initialize();
+    final initial =
+        InitialSyncController(
+            coordinator: InitialSyncCoordinator(
+              repository: _NoopInitialSyncRepository(),
+              transport: const UnavailableInitialSyncTransport(
+                configured: true,
+              ),
+            ),
+          )
+          ..primaryBook = book
+          ..authUserId = 'auth-enos'
+          ..decision = const CloudSyncDecision(
+            CloudSyncClassification.reconnectSameHostedHousehold,
+            reason: 'widget-test',
+            targetBookId: 'book',
+          )
+          ..hostedManifests['book'] = const InitialSyncManifest(
+            bookId: 'book',
+            bookName: 'Hosted Household',
+            baseCurrencyCode: 'IDR',
+            counts: {'books': 1},
+            snapshotSequence: 7,
+            memberRole: 'owner',
+            householdMemberId: 'enos',
+            remoteInitializationComplete: true,
+          );
+    addTearDown(initial.dispose);
+    final backup = BackupExportController(
+      backupService: HouseholdBackupService(_NoopBackupStore()),
+      fileService: const PortableFileService(),
+    );
+    addTearDown(backup.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CloudSharingSection(
+            controller: cloud,
+            book: book,
+            members: [enos],
+            activeMemberId: enos.id,
+            initialSyncController: initial,
+            backupExportController: backup,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('cloud-reconnect-household')), findsOneWidget);
+    expect(
+      find.textContaining('hosted household is authoritative'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('membership-secret-id'), findsNothing);
+  });
+}
+
+class _NoopInitialSyncRepository implements InitialSyncRepository {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoopBackupStore implements HouseholdBackupStore {
+  @override
+  int get schemaVersion => 1;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _WidgetCloudRepository implements CloudSharingRepository {

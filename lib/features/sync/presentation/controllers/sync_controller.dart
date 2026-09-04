@@ -16,6 +16,7 @@ class SyncController extends ChangeNotifier {
   SyncRunResult result = const SyncRunResult(status: SyncStatus.localOnly);
   bool busy = false;
   Timer? _debounce;
+  bool _rerunRequested = false;
   bool realtimeConnected = false;
   DateTime? lastSuccessfulSyncAt;
 
@@ -43,6 +44,12 @@ class SyncController extends ChangeNotifier {
     realtimeConnected = false;
     _book = book;
     result = await coordinator.inspect(book);
+    final cursor = book == null
+        ? null
+        : await coordinator.repository.getCursor(book.id);
+    lastSuccessfulSyncAt = _showsSuccessfulHistory(result.status)
+        ? cursor?.updatedAt
+        : null;
     if (book != null &&
         result.status != SyncStatus.signedOut &&
         canSync &&
@@ -60,35 +67,53 @@ class SyncController extends ChangeNotifier {
 
   Future<void> refresh() async {
     result = await coordinator.inspect(_book);
+    final book = _book;
+    final cursor = book == null
+        ? null
+        : await coordinator.repository.getCursor(book.id);
+    lastSuccessfulSyncAt = _showsSuccessfulHistory(result.status)
+        ? cursor?.updatedAt
+        : null;
     notifyListeners();
   }
 
   Future<void> syncNow() async {
-    if (busy || !canSync) return;
-    busy = true;
-    result = SyncRunResult(
-      status: SyncStatus.syncing,
-      pendingCount: result.pendingCount,
-    );
-    notifyListeners();
-    try {
-      result = await coordinator.synchronize(_book);
-      if (result.pulledCount > 0) {
-        await onRemoteDataApplied?.call();
-      }
-      if (result.status == SyncStatus.synced ||
-          result.status == SyncStatus.conflict) {
-        lastSuccessfulSyncAt = DateTime.now();
-      }
-    } finally {
-      busy = false;
-      notifyListeners();
+    if (!canSync) return;
+    if (busy) {
+      _rerunRequested = true;
+      return;
     }
+    do {
+      _rerunRequested = false;
+      busy = true;
+      result = SyncRunResult(
+        status: SyncStatus.syncing,
+        pendingCount: result.pendingCount,
+      );
+      notifyListeners();
+      try {
+        result = await coordinator.synchronize(_book);
+        if (result.pulledCount > 0) {
+          await onRemoteDataApplied?.call();
+        }
+        if (result.status == SyncStatus.synced ||
+            result.status == SyncStatus.conflict) {
+          lastSuccessfulSyncAt = DateTime.now();
+        }
+      } finally {
+        busy = false;
+        notifyListeners();
+      }
+    } while (_rerunRequested && canSync);
   }
 
   void scheduleSync() {
     _debounce?.cancel();
     _debounce = Timer(const Duration(seconds: 2), () async {
+      if (busy) {
+        _rerunRequested = true;
+        return;
+      }
       await refresh();
       if (canSync) await syncNow();
     });
@@ -97,6 +122,16 @@ class SyncController extends ChangeNotifier {
   void onResume() {
     if (canSync) scheduleSync();
   }
+
+  static bool _showsSuccessfulHistory(SyncStatus status) => switch (status) {
+    SyncStatus.synced ||
+    SyncStatus.pending ||
+    SyncStatus.syncing ||
+    SyncStatus.offline ||
+    SyncStatus.retryScheduled ||
+    SyncStatus.conflict => true,
+    _ => false,
+  };
 
   @override
   void dispose() {

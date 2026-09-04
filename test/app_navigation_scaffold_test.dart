@@ -50,9 +50,12 @@ void main() {
     expect(find.text('Projects'), findsOneWidget);
     expect(find.text('Tithe'), findsOneWidget);
     expect(find.text('Reports'), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(find.text('Data & Sync'), findsOneWidget);
   });
 
-  testWidgets('Selecting Reports from More returns destination index 8', (
+  testWidgets('Selecting Reports from More returns destination index 9', (
     tester,
   ) async {
     int? selectedIndex;
@@ -70,7 +73,7 @@ void main() {
     await tester.tap(find.text('Reports'));
     await tester.pumpAndSettle();
 
-    expect(selectedIndex, 8);
+    expect(selectedIndex, 9);
     expect(find.text('Reports'), findsNothing);
   });
 

@@ -16,6 +16,7 @@ import 'package:pilgrim_tracker/features/sync/data/initial_sync_store_native.dar
 import 'package:pilgrim_tracker/features/sync/data/local_initial_sync_repository.dart';
 import 'package:pilgrim_tracker/features/sync/data/local_sync_repository.dart';
 import 'package:pilgrim_tracker/features/sync/data/supabase_sync_transport.dart';
+import 'package:pilgrim_tracker/features/sync/domain/cloud_sync_state_classifier.dart';
 import 'package:pilgrim_tracker/features/sync/domain/initial_sync_coordinator.dart';
 import 'package:pilgrim_tracker/features/sync/domain/initial_sync_models.dart';
 import 'package:pilgrim_tracker/features/sync/domain/initial_sync_repository.dart';
@@ -432,6 +433,222 @@ void main() {
   );
 
   test(
+    'new-device staging activates 5000 transactions without duplication',
+    () async {
+      final fixture = await _localFixture('download-5000');
+      addTearDown(fixture.dispose);
+      const bookId = 'remote-5000';
+      final adapter = InitialSyncStoreAdapter(fixture.store);
+      final now = DateTime(2026, 7, 26).millisecondsSinceEpoch;
+      Map<String, Object?> syncedRecord(String id) => {
+        'id': id,
+        'book_id': bookId,
+        'created_at': now,
+        'updated_at': now,
+        'version': 1,
+        'device_id': 'remote',
+        'sync_status': 'synced',
+      };
+      final categories = <Map<String, Object?>>[
+        {
+          ...syncedRecord('category'),
+          'name': 'Food',
+          'category_type': 'expense',
+        },
+        for (var index = 0; index < 200; index++)
+          {
+            ...syncedRecord('category-$index'),
+            'name': 'Category $index',
+            'category_type': 'expense',
+          },
+      ];
+      final accounts = <Map<String, Object?>>[
+        _accountRecord(bookId),
+        {..._accountRecord(bookId), 'id': 'account-2', 'name': 'Cash'},
+      ];
+      final transactions = <Map<String, Object?>>[
+        _transaction(
+          bookId,
+          'transfer-out',
+        ).copyWith(account: 'Bank').toRecord(),
+        _transaction(
+          bookId,
+          'transfer-in',
+        ).copyWith(account: 'Cash', type: TransactionType.income).toRecord(),
+        for (var index = 2; index < 5000; index++)
+          _transaction(bookId, 'bulk-$index').toRecord(),
+      ];
+      final rowsByEntity = <String, List<Map<String, Object?>>>{
+        'books': [_bookRecord(bookId, 'Large shared household')],
+        'household_members': [
+          {
+            ...syncedRecord('remote-member'),
+            'display_name': 'Grace',
+            'role': 'member',
+          },
+        ],
+        'categories': categories,
+        'monthly_category_budgets': [
+          for (var index = 0; index < 200; index++)
+            {
+              ...syncedRecord('budget-$index'),
+              'category_id': 'category-$index',
+              'month_start': '2026-07-01',
+              'limit_minor': 100000 + index,
+              'currency_code': 'IDR',
+              'note': null,
+            },
+        ],
+        'accounts': accounts,
+        'transaction_import_rules': [
+          for (var index = 0; index < 200; index++)
+            {
+              ...syncedRecord('rule-$index'),
+              'name': 'Rule $index',
+              'enabled': 1,
+              'priority': index,
+              'transaction_type': 'expense',
+              'match_field': 'description',
+              'match_operator': 'contains',
+              'pattern': 'merchant $index',
+              'pattern_key': 'merchant $index',
+              'account_id': null,
+              'category_id': 'category-$index',
+            },
+        ],
+        'import_review_sessions': [
+          {
+            ...syncedRecord('session-1'),
+            'source_type': 'csv',
+            'title': 'Pending CSV',
+            'source_fingerprint': 'source-fingerprint',
+            'destination_account_id': 'account',
+            'state': 'pendingReview',
+            'created_by_member_id': 'remote-member',
+            'summary_json': '{"row_count":10}',
+            'completed_at': null,
+          },
+        ],
+        'import_review_drafts': [
+          for (var index = 0; index < 10; index++)
+            {
+              ...syncedRecord('draft-$index'),
+              'session_id': 'session-1',
+              'source_row_identity': 'source-row-$index',
+              'source_row_key': '$index',
+              'deterministic_transaction_id': null,
+              'deterministic_transaction_account_id': null,
+              'source_index': index,
+              'transaction_date': now,
+              'description': 'Draft $index',
+              'amount_minor': 1000 + index,
+              'currency_code': 'IDR',
+              'transaction_type': 'expense',
+              'category_name': '',
+              'category_id': null,
+              'category_provenance': 'unresolved',
+              'reference_text': '',
+              'note_text': '',
+              'merchant_hint': '',
+              'included': 1,
+              'user_edited_fields_json': '[]',
+              'warnings_json': '[]',
+            },
+        ],
+        'transactions': transactions,
+        'transfer_links': [
+          {
+            ...syncedRecord('transfer-link'),
+            'outgoing_transaction_id': 'transfer-out',
+            'incoming_transaction_id': 'transfer-in',
+            'source_account_id': 'account',
+            'destination_account_id': 'account-2',
+            'currency_code': 'IDR',
+            'amount': 100000,
+          },
+        ],
+      };
+      final manifest = InitialSyncManifest(
+        bookId: bookId,
+        bookName: 'Large shared household',
+        baseCurrencyCode: 'IDR',
+        counts: {
+          for (final entityType in initialSyncEntityOrder)
+            entityType: rowsByEntity[entityType]?.length ?? 0,
+        },
+        snapshotSequence: 5000,
+        memberRole: 'member',
+        householdMemberId: 'remote-member',
+        remoteInitializationComplete: true,
+        remoteRecordCount: rowsByEntity.values.fold(
+          0,
+          (total, rows) => total + rows.length,
+        ),
+      );
+      await fixture.store.setSyncInitializationState(
+        bookId,
+        SyncInitializationState.secondaryDownloadRequired.name,
+      );
+      await adapter.startInitialization(
+        bookId: bookId,
+        direction: InitialSyncDirection.download,
+        sessionId: 'download-5000-session',
+        manifest: manifest,
+      );
+      for (final entityType in initialSyncEntityOrder) {
+        final entityRows =
+            rowsByEntity[entityType] ?? const <Map<String, Object?>>[];
+        if (entityRows.isEmpty) {
+          await adapter.stageDownloadBatch(
+            bookId,
+            InitialSyncBatch(
+              entityType: entityType,
+              rows: const [],
+              nextCursor: null,
+              complete: true,
+            ),
+          );
+          continue;
+        }
+        for (var offset = 0; offset < entityRows.length; offset += 100) {
+          final rows = entityRows.skip(offset).take(100).toList();
+          await adapter.stageDownloadBatch(
+            bookId,
+            InitialSyncBatch(
+              entityType: entityType,
+              rows: rows,
+              nextCursor: rows.last['id'] as String,
+              complete: offset + rows.length == entityRows.length,
+            ),
+          );
+        }
+      }
+
+      await adapter.activateDownload(
+        bookId: bookId,
+        manifest: manifest,
+        authUserId: 'auth-user',
+      );
+
+      expect(await fixture.store.getTransactions(), hasLength(5000));
+      expect(await fixture.store.getMasterNames('categories'), hasLength(201));
+      expect(await fixture.store.getMonthlyCategoryBudgets(), hasLength(200));
+      expect(await fixture.store.getTransactionImportRules(), hasLength(200));
+      expect(await fixture.store.getImportReviewSessions(), hasLength(1));
+      expect(
+        await fixture.store.getAllImportReviewDrafts(bookId: bookId),
+        hasLength(10),
+      );
+      expect(await fixture.store.getTransferLinks(), hasLength(1));
+      expect(await fixture.store.getPendingSyncCount(bookId), 0);
+      expect(
+        (await fixture.store.getSyncCursor(bookId))!['initialization_state'],
+        SyncInitializationState.ready.name,
+      );
+    },
+  );
+
+  test(
     'resume keeps the last committed cursor and never double-counts staging',
     () async {
       final fixture = await _localFixture('idempotent-download');
@@ -526,7 +743,7 @@ void main() {
       expect(cursor['downloaded_count'], 0);
       expect(cursor['last_error_message'], 'Existing safe error');
       expect(cursor['initial_sync_diagnostic_json'], isNull);
-      expect(await reopened.db.getVersion(), 20);
+      expect(await reopened.db.getVersion(), LocalStore.schemaVersion);
     },
   );
 
@@ -561,7 +778,7 @@ void main() {
           InitialSyncBatch(
             entityType: entityType,
             rows: typed,
-            nextCursor: typed.last['id'] as String,
+            nextCursor: typed.isEmpty ? null : typed.last['id'] as String,
             complete: true,
           ),
         );
@@ -583,7 +800,7 @@ void main() {
           InitialSyncBatch(
             entityType: entityType,
             rows: typed,
-            nextCursor: typed.last['id'] as String,
+            nextCursor: typed.isEmpty ? null : typed.last['id'] as String,
             complete: true,
           ),
         );
@@ -682,7 +899,7 @@ void main() {
           InitialSyncBatch(
             entityType: entityType,
             rows: typed,
-            nextCursor: typed.last['id'] as String,
+            nextCursor: typed.isEmpty ? null : typed.last['id'] as String,
             complete: true,
           ),
         );
@@ -891,6 +1108,164 @@ void main() {
     );
   });
 
+  test(
+    'same-ID reconnect replaces local data and restores a ready cursor',
+    () async {
+      final fixture = await _localFixture('same-id-reconnect');
+      addTearDown(fixture.dispose);
+      final bookId = fixture.book.id;
+      final repository = _repository(fixture.store);
+      final transport = _FakeInitialTransport()..downloadBookId = bookId;
+      final coordinator = InitialSyncCoordinator(
+        repository: repository,
+        transport: transport,
+      );
+      await coordinator.prepareReconnect(bookId);
+
+      final result = await coordinator.download(
+        bookId: bookId,
+        authUserId: 'auth-grace',
+        replaceExisting: true,
+      );
+
+      expect(result.success, isTrue);
+      final transactions = await fixture.store.db.query(
+        'transactions',
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+      );
+      expect(
+        transactions.map((row) => row['id']),
+        containsAll(['asset-parent', 'fee', 'deleted']),
+      );
+      expect(
+        transactions.map((row) => row['id']),
+        isNot(contains('local-record')),
+      );
+      expect(await fixture.store.getPendingSyncCount(bookId), 0);
+      final cursor = await fixture.store.getSyncCursor(bookId);
+      expect(
+        cursor?['initialization_state'],
+        SyncInitializationState.ready.name,
+      );
+      expect(cursor?['last_server_sequence'], 1854);
+      final restoredBook = (await fixture.store.getFinancialBooks())
+          .singleWhere((row) => row['id'] == bookId);
+      expect(restoredBook['remote_linked_at'], isNotNull);
+      final mapped = (await fixture.store.getHouseholdMembers(
+        bookId: bookId,
+      )).singleWhere((row) => row['id'] == 'remote-member');
+      expect(mapped['auth_user_id'], 'auth-grace');
+    },
+  );
+
+  test('failed same-ID activation keeps original financial rows', () async {
+    final fixture = await _localFixture('same-id-invalid');
+    addTearDown(fixture.dispose);
+    final bookId = fixture.book.id;
+    final adapter = InitialSyncStoreAdapter(fixture.store);
+    final manifest = _downloadManifest(bookId);
+    await fixture.store.setSyncInitializationState(
+      bookId,
+      SyncInitializationState.secondaryDownloadRequired.name,
+    );
+    await adapter.startInitialization(
+      bookId: bookId,
+      direction: InitialSyncDirection.download,
+      sessionId: 'invalid-reconnect',
+      manifest: manifest,
+    );
+    final rows = _downloadRows(bookId);
+    (rows.last['payload'] as Map<String, Object?>)['entered_by_member_id'] =
+        'foreign-member';
+    for (final entityType in initialSyncEntityOrder) {
+      final typed = rows
+          .where((row) => row['entity_type'] == entityType)
+          .map((row) => row['payload'] as Map<String, Object?>)
+          .toList();
+      await adapter.stageDownloadBatch(
+        bookId,
+        InitialSyncBatch(
+          entityType: entityType,
+          rows: typed,
+          nextCursor: typed.isEmpty ? null : typed.last['id'] as String,
+          complete: true,
+        ),
+      );
+    }
+
+    await expectLater(
+      adapter.activateDownload(
+        bookId: bookId,
+        manifest: manifest,
+        authUserId: 'auth-grace',
+        replaceExisting: true,
+      ),
+      throwsA(isA<InitialSyncException>()),
+    );
+    final transactions = await fixture.store.db.query(
+      'transactions',
+      where: 'book_id = ?',
+      whereArgs: [bookId],
+    );
+    expect(transactions.map((row) => row['id']), contains('local-record'));
+  });
+
+  test(
+    'exact hosted snapshot reattaches without rewriting financial rows',
+    () async {
+      final fixture = await _localFixture('exact-reconnect');
+      addTearDown(fixture.dispose);
+      final bookId = fixture.book.id;
+      final repository = _repository(fixture.store);
+      final coordinator = InitialSyncCoordinator(
+        repository: repository,
+        transport: _FakeInitialTransport()..downloadBookId = bookId,
+      );
+      await repository.prepareSecondary(bookId);
+      expect(
+        (await coordinator.download(
+          bookId: bookId,
+          authUserId: 'auth-grace',
+          replaceExisting: true,
+        )).success,
+        isTrue,
+      );
+      final before = await fixture.store.db.query(
+        'transactions',
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+        orderBy: 'id',
+      );
+      await fixture.store.db.update(
+        'books',
+        {'remote_linked_at': null},
+        where: 'id = ?',
+        whereArgs: [bookId],
+      );
+      await coordinator.prepareReconnect(bookId);
+
+      final result = await coordinator.download(
+        bookId: bookId,
+        authUserId: 'auth-grace',
+        replaceExisting: true,
+      );
+
+      expect(result.success, isTrue);
+      expect(result.message, contains('already matched'));
+      expect(
+        await fixture.store.db.query(
+          'transactions',
+          where: 'book_id = ?',
+          whereArgs: [bookId],
+          orderBy: 'id',
+        ),
+        before,
+      );
+      expect(await fixture.store.getPendingSyncCount(bookId), 0);
+    },
+  );
+
   testWidgets(
     'initial-sync UI requires upload confirmation and warns against merge',
     (tester) async {
@@ -917,6 +1292,11 @@ void main() {
               updatedAt: DateTime(2026, 7, 26),
             )
             ..primaryRemoteManifest = transport.remoteManifest(book.id)
+            ..decision = CloudSyncDecision(
+              CloudSyncClassification.genuinePrimaryUploadRequired,
+              reason: 'widget-test',
+              targetBookId: book.id,
+            )
             ..secondaryBookId = 'remote-secondary'
             ..secondaryRole = 'member'
             ..secondaryRemoteManifest = _downloadManifest('remote-secondary');
@@ -934,10 +1314,6 @@ void main() {
         find.byKey(const Key('initial-upload-button')),
       );
       expect(upload.onPressed, isNull);
-      expect(
-        find.byKey(const Key('initial-download-non-merge-warning')),
-        findsOneWidget,
-      );
       await tester.tap(find.byKey(const Key('initial-upload-confirmation')));
       await tester.pump();
       expect(
@@ -948,13 +1324,90 @@ void main() {
             .onPressed,
         isNotNull,
       );
+      controller.decision = const CloudSyncDecision(
+        CloudSyncClassification.downloadAdditionalHostedHousehold,
+        reason: 'widget-test-secondary',
+        targetBookId: 'remote-secondary',
+      );
+      controller.notifyListeners();
+      await tester.pump();
+      expect(
+        find.byKey(const Key('initial-download-non-merge-warning')),
+        findsOneWidget,
+      );
       await tester.pumpWidget(const SizedBox.shrink());
       controller.dispose();
     },
   );
+
+  testWidgets('new device explicitly selects among hosted households', (
+    tester,
+  ) async {
+    InitialSyncManifest manifest(String id, String name) => InitialSyncManifest(
+      bookId: id,
+      bookName: name,
+      baseCurrencyCode: 'IDR',
+      counts: const {'transactions': 2},
+      snapshotSequence: 2,
+      memberRole: 'member',
+      remoteInitializationComplete: true,
+      remoteRecordCount: 2,
+    );
+
+    final controller =
+        InitialSyncController(
+            coordinator: InitialSyncCoordinator(
+              repository: _NoopInitialSyncRepository(),
+              transport: _FakeInitialTransport(),
+            ),
+          )
+          ..primaryBook = FinancialBook(id: 'local', name: 'Local')
+          ..authUserId = 'auth-user'
+          ..remoteStateLoaded = true
+          ..hostedBookIds = const ['hosted-a', 'hosted-b']
+          ..hostedRoles = const {'hosted-a': 'owner', 'hosted-b': 'member'}
+          ..secondaryBookId = 'hosted-a'
+          ..secondaryRole = 'owner'
+          ..secondaryRemoteManifest = manifest('hosted-a', 'Family A')
+          ..hostedManifests.addAll({
+            'hosted-a': manifest('hosted-a', 'Family A'),
+            'hosted-b': manifest('hosted-b', 'Family B'),
+          })
+          ..decision = const CloudSyncDecision(
+            CloudSyncClassification.downloadAdditionalHostedHousehold,
+            reason: 'new-device-selection',
+            targetBookId: 'hosted-a',
+          );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: InitialSyncSection(controller: controller),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Choose a household'), findsOneWidget);
+    expect(find.text('Family A'), findsWidgets);
+    expect(find.text('Family B'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('initial-download-household-hosted-b')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.secondaryBookId, 'hosted-b');
+    expect(controller.secondaryRole, 'member');
+    expect(controller.decision.targetBookId, 'hosted-b');
+    expect(controller.canDownload, isTrue);
+  });
 }
 
 class _NoopInitialSyncRepository implements InitialSyncRepository {
+  @override
+  Future<SyncCursor?> getCursor(String bookId) async => null;
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -1159,6 +1612,7 @@ InitialSyncManifest _twentyTwoManifest(String bookId) => InitialSyncManifest(
     'books': 1,
     'household_members': 2,
     'categories': 4,
+    'monthly_category_budgets': 0,
     'projects': 2,
     'accounts': 3,
     'asset_definitions': 2,
@@ -1316,6 +1770,7 @@ class _FakeInitialTransport implements InitialSyncTransport {
   bool failedOnce = false;
   bool failedDownloadOnce = false;
   String downloadBookId = 'remote-book';
+  final Map<String, List<Map<String, Object?>>> _downloadRowsByBook = {};
   final uploadedKeys = <String>{};
   final uploadAttempts = <String>[];
 
@@ -1397,7 +1852,8 @@ class _FakeInitialTransport implements InitialSyncTransport {
         'Temporary download failure.',
       );
     }
-    final rows = _downloadRows(downloadBookId)
+    final rows = _downloadRowsByBook
+        .putIfAbsent(downloadBookId, () => _downloadRows(downloadBookId))
         .where((row) => row['entity_type'] == entityType)
         .map((row) => row['payload'] as Map<String, Object?>)
         .toList();

@@ -15,6 +15,8 @@ Future<void> main() async {
       cloudSharingRepository: cloudServices.sharingRepository,
       syncTransport: cloudServices.syncTransport,
       initialSyncTransport: cloudServices.initialSyncTransport,
+      telegramIntegrationRepository:
+          cloudServices.telegramIntegrationRepository,
     ),
   );
 }

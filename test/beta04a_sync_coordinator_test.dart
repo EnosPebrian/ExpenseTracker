@@ -247,6 +247,63 @@ void main() {
     },
   );
 
+  test(
+    'controller coalesces a trigger during sync into one follow-up run',
+    () async {
+      final gate = Completer<void>();
+      final transport = _FakeTransport(pushGate: gate);
+      final controller = SyncController(
+        SyncCoordinator(
+          repository: _FakeSyncRepository(
+            state: SyncInitializationState.ready,
+            operations: [_operation()],
+          ),
+          transport: transport,
+        ),
+      );
+      addTearDown(controller.dispose);
+      await controller.setBook(linkedBook, runWhenReady: false);
+
+      final first = controller.syncNow();
+      while (transport.pushCalls == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      await controller.syncNow();
+      await controller.syncNow();
+      gate.complete();
+      await first;
+
+      expect(transport.pushCalls, 1);
+      expect(transport.pullCalls, 2);
+      expect(controller.status, SyncStatus.synced);
+    },
+  );
+
+  testWidgets('startup, foreground, and mutation triggers stay coalesced', (
+    tester,
+  ) async {
+    final transport = _FakeTransport();
+    final controller = SyncController(
+      SyncCoordinator(
+        repository: _FakeSyncRepository(state: SyncInitializationState.ready),
+        transport: transport,
+      ),
+    );
+    addTearDown(controller.dispose);
+
+    await controller.setBook(linkedBook);
+    expect(transport.pullCalls, 1);
+
+    controller.scheduleSync();
+    controller.scheduleSync();
+    controller.onResume();
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+
+    expect(transport.pullCalls, 2);
+    expect(controller.status, SyncStatus.synced);
+  });
+
   testWidgets('initial upload warning disables Sync now', (tester) async {
     final controller = SyncController(
       SyncCoordinator(

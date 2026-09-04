@@ -8,12 +8,27 @@ class AccountBalanceCalculator {
   static int calculate({
     required Account account,
     required Iterable<Transaction> transactions,
+  }) => calculateAsOf(account: account, transactions: transactions);
+
+  /// Calculates the account balance immediately before [endExclusive].
+  ///
+  /// A null boundary preserves the existing current-balance behavior.
+  static int calculateAsOf({
+    required Account account,
+    required Iterable<Transaction> transactions,
+    DateTime? endExclusive,
   }) {
-    var balance = account.hasOpeningBalance ? account.openingBalance : 0;
+    final openingDate = account.openingBalanceDate;
+    final includeOpening =
+        openingDate != null &&
+        (endExclusive == null ||
+            _localDate(openingDate).isBefore(_localDate(endExclusive)));
+    var balance = includeOpening ? account.openingBalance : 0;
 
     for (final transaction in transactions) {
-      if (!_belongsTo(account, transaction) ||
+      if (!belongsToAccount(account, transaction) ||
           transaction.deletedAt != null ||
+          (endExclusive != null && !transaction.date.isBefore(endExclusive)) ||
           !_isOnOrAfterOpeningDate(account, transaction.date)) {
         continue;
       }
@@ -73,12 +88,12 @@ class AccountBalanceCalculator {
     return transactions.any(
       (transaction) =>
           transaction.deletedAt == null &&
-          _belongsTo(account, transaction) &&
+          belongsToAccount(account, transaction) &&
           _localDate(transaction.date).isBefore(localStart),
     );
   }
 
-  static bool _belongsTo(Account account, Transaction transaction) {
+  static bool belongsToAccount(Account account, Transaction transaction) {
     final recordedAccount = transaction.account.trim();
     var cashAccount = recordedAccount;
     if (transaction.type == TransactionType.assetConversion) {

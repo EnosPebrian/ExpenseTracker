@@ -8,6 +8,7 @@ import '../../master_data/domain/entities/account.dart';
 import '../../master_data/domain/services/account_balance_calculator.dart';
 import '../../tithe/domain/tithe_policy.dart';
 import '../../transactions/domain/entities/transaction.dart';
+import '../../transactions/domain/entities/internal_transfer_link.dart';
 import 'backup_models.dart';
 
 class HouseholdBackupIntegrity {
@@ -54,7 +55,11 @@ class HouseholdBackupIntegrity {
     final household = households.single;
     final bookId = _requiredString(household, 'id', 'household');
     _requiredString(household, 'name', 'household');
-    _requiredString(household, 'base_currency_code', 'household');
+    final baseCurrency = _requiredString(
+      household,
+      'base_currency_code',
+      'household',
+    );
 
     for (final key in portableBackupEntityKeys.skip(1)) {
       final ids = <String>{};
@@ -100,8 +105,106 @@ class HouseholdBackupIntegrity {
     }
 
     final categories = snapshot['categories'] ?? const [];
+    final categoryIds = _ids(categories);
+    final categoryTypes = <String, String>{};
     for (final category in categories) {
       _requiredString(category, 'name', 'categories');
+      categoryTypes[category['id'] as String] =
+          category['category_type'] as String? ?? '';
+    }
+    final activeBudgetKeys = <String>{};
+    for (final budget in snapshot['budgets'] ?? const []) {
+      final id = _requiredString(budget, 'id', 'budgets');
+      final categoryId = _requiredString(budget, 'category_id', 'budgets');
+      if (!categoryIds.contains(categoryId)) {
+        throw BackupValidationException(
+          'Budget $id references a missing category.',
+        );
+      }
+      if (categoryTypes[categoryId] != 'expense') {
+        throw BackupValidationException(
+          'Budget $id must reference an expense category.',
+        );
+      }
+      final monthStart = _requiredString(budget, 'month_start', 'budgets');
+      final parsedMonth = DateTime.tryParse(monthStart);
+      final note = budget['note'];
+      if (!RegExp(r'^\d{4}-\d{2}-01$').hasMatch(monthStart) ||
+          parsedMonth == null ||
+          parsedMonth.day != 1 ||
+          budget['limit_minor'] is! int ||
+          (budget['limit_minor'] as int) <= 0 ||
+          budget['currency_code'] != baseCurrency ||
+          (note != null && (note is! String || note.length > 120))) {
+        throw BackupValidationException('Budget $id is invalid.');
+      }
+      if (budget['deleted_at'] == null &&
+          !activeBudgetKeys.add('$categoryId:$monthStart')) {
+        throw const BackupValidationException(
+          'Budgets contain duplicate active category-month records.',
+        );
+      }
+    }
+    final accountIds = _ids(accounts);
+    final activeRuleKeys = <String>{};
+    for (final rule in snapshot['transaction_import_rules'] ?? const []) {
+      final id = _requiredString(rule, 'id', 'transaction_import_rules');
+      final type = _requiredString(
+        rule,
+        'transaction_type',
+        'transaction_import_rules',
+      );
+      final categoryId = _requiredString(
+        rule,
+        'category_id',
+        'transaction_import_rules',
+      );
+      final accountId = rule['account_id'] as String?;
+      final pattern = _requiredString(
+        rule,
+        'pattern_key',
+        'transaction_import_rules',
+      );
+      if (!categoryIds.contains(categoryId) ||
+          categoryTypes[categoryId] != type) {
+        throw BackupValidationException(
+          'Import rule $id references a missing or incompatible category.',
+        );
+      }
+      if (accountId != null && !accountIds.contains(accountId)) {
+        throw BackupValidationException(
+          'Import rule $id references a missing account.',
+        );
+      }
+      if (!const {'expense', 'income'}.contains(type) ||
+          !const {
+            'description',
+            'reference',
+            'merchantHint',
+            'descriptionOrReference',
+          }.contains(rule['match_field']) ||
+          !const {
+            'contains',
+            'equals',
+            'startsWith',
+          }.contains(rule['match_operator']) ||
+          rule['enabled'] is! int ||
+          rule['priority'] is! int ||
+          pattern.length > 160) {
+        throw BackupValidationException('Import rule $id is invalid.');
+      }
+      final semanticKey = [
+        type,
+        rule['match_field'],
+        rule['match_operator'],
+        pattern,
+        accountId ?? '',
+      ].join('|');
+      if (rule['deleted_at'] == null && !activeRuleKeys.add(semanticKey)) {
+        throw const BackupValidationException(
+          'Import rules contain duplicate active match definitions.',
+        );
+      }
     }
     final projectIds = _ids(snapshot['projects'] ?? const []);
     final assetDefinitionIds = _ids(snapshot['asset_definitions'] ?? const []);
@@ -171,6 +274,67 @@ class HouseholdBackupIntegrity {
             'Asset transaction $id references a missing cash account.',
           );
         }
+      }
+    }
+
+    final transactionsById = {
+      for (final record in transactions) record['id'] as String: record,
+    };
+    final accountsById = {
+      for (final record in accounts) record['id'] as String: record,
+    };
+    final activeLegIds = <String>{};
+    for (final link in snapshot['transfer_links'] ?? const []) {
+      final id = _requiredString(link, 'id', 'transfer_links');
+      final outgoingId = _requiredString(
+        link,
+        'outgoing_transaction_id',
+        'transfer_links',
+      );
+      final incomingId = _requiredString(
+        link,
+        'incoming_transaction_id',
+        'transfer_links',
+      );
+      final sourceId = _requiredString(
+        link,
+        'source_account_id',
+        'transfer_links',
+      );
+      final destinationId = _requiredString(
+        link,
+        'destination_account_id',
+        'transfer_links',
+      );
+      final outgoing = transactionsById[outgoingId];
+      final incoming = transactionsById[incomingId];
+      final sourceAccount = accountsById[sourceId];
+      final destinationAccount = accountsById[destinationId];
+      final amount = link['amount'];
+      final active = link['deleted_at'] == null;
+      if (outgoingId == incomingId ||
+          sourceId == destinationId ||
+          outgoing == null ||
+          incoming == null ||
+          sourceAccount == null ||
+          destinationAccount == null ||
+          amount is! int ||
+          amount <= 0 ||
+          outgoing['transaction_type'] != 'expense' ||
+          incoming['transaction_type'] != 'income' ||
+          outgoing['amount'] != amount ||
+          incoming['amount'] != amount ||
+          outgoing['account'] != sourceAccount['name'] ||
+          incoming['account'] != destinationAccount['name'] ||
+          sourceAccount['currency_code'] !=
+              destinationAccount['currency_code'] ||
+          sourceAccount['currency_code'] != link['currency_code'] ||
+          (active &&
+              (!activeLegIds.add(outgoingId) ||
+                  !activeLegIds.add(incomingId)))) {
+        throw BackupValidationException(
+          'Internal transfer $id is invalid or incomplete.',
+        );
       }
     }
 
@@ -300,6 +464,9 @@ class HouseholdBackupIntegrity {
       periodStart: DateTime(1900),
       periodEndExclusive: DateTime(3000),
       tithePolicy: TithePolicy.defaultPolicy,
+      transferLinks: (snapshot['transfer_links'] ?? const []).map(
+        InternalTransferLink.fromRecord,
+      ),
     );
     final portfolio = AssetPortfolioCalculator.calculate(
       transactions: activeTransactions,
@@ -398,7 +565,10 @@ class HouseholdBackupIntegrity {
     final categoryIds = ids('categories');
     final projectIds = ids('projects');
     final transactionIds = ids('transactions');
+    final transferLinkIds = ids('transfer_links');
     final definitionIds = ids('asset_definitions');
+    final budgetIds = ids('budgets');
+    final ruleIds = ids('transaction_import_rules');
 
     List<Map<String, Object?>> remap(
       String key,
@@ -439,9 +609,55 @@ class HouseholdBackupIntegrity {
       'categories': remap('categories', categoryIds),
       'projects': remap('projects', projectIds),
       'transactions': remap('transactions', transactionIds),
+      'transfer_links': (source['transfer_links'] ?? const [])
+          .map(
+            (record) => <String, Object?>{
+              ...record,
+              'id': transferLinkIds[record['id']],
+              'book_id': newBookId,
+              'outgoing_transaction_id':
+                  transactionIds[record['outgoing_transaction_id']],
+              'incoming_transaction_id':
+                  transactionIds[record['incoming_transaction_id']],
+              'source_account_id': accountIds[record['source_account_id']],
+              'destination_account_id':
+                  accountIds[record['destination_account_id']],
+            },
+          )
+          .toList(growable: false),
       'asset_definitions': remap('asset_definitions', definitionIds),
+      'budgets': (source['budgets'] ?? const [])
+          .map(
+            (record) => <String, Object?>{
+              ...record,
+              'id': budgetIds[record['id']],
+              'book_id': newBookId,
+              'category_id': categoryIds[record['category_id']],
+            },
+          )
+          .toList(growable: false),
+      'transaction_import_rules':
+          (source['transaction_import_rules'] ?? const [])
+              .map(
+                (record) => <String, Object?>{
+                  ...record,
+                  'id': ruleIds[record['id']],
+                  'book_id': newBookId,
+                  'category_id': categoryIds[record['category_id']],
+                  if (record['account_id'] != null)
+                    'account_id': accountIds[record['account_id']],
+                },
+              )
+              .toList(growable: false),
       'manual_market_prices': (source['manual_market_prices'] ?? const [])
-          .map((record) => {...record, 'book_id': newBookId})
+          .map(
+            (record) => <String, Object?>{
+              ...record,
+              'book_id': newBookId,
+              'asset_key':
+                  definitionIds[record['asset_key']] ?? record['asset_key'],
+            },
+          )
           .toList(growable: false),
     };
   }

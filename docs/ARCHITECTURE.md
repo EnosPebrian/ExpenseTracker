@@ -423,3 +423,144 @@ transaction. Restore serializers are domain-oriented rather than tied to raw
 SQLite column order. Web mirrors validation with collection snapshot rollback.
 Restore bypasses public mutation/upsert paths, creates no outbox work, and does
 not carry authentication, device, or sync-protocol state across the boundary.
+
+## 20. Monthly category budgets
+
+BETA-07A adds a feature-first budget slice. `MonthlyBudgetController` owns
+month/editor state, `LocalMonthlyBudgetRepository` adapts native/web stores,
+and the pure `MonthlyBudgetCalculator` derives all totals from active local
+transactions. Widgets contain no SQL or accounting rules. Budgets use the
+existing local-first atomic record/outbox path and the existing sync/conflict,
+initial-sync, encrypted-backup, restore, and CSV pipelines.
+
+BETA-07B keeps copy classification and candidate creation in the pure
+`MonthlyBudgetCopyService`. The repository gathers scoped source/target records
+and category lifecycle data; native/web stores apply eligible rows atomically.
+Native SQLite inserts copied budgets and ordinary budget outbox operations in
+one transaction, while local-only and web-preview paths retain equivalent
+add-missing/idempotent behavior. No derived planning totals are persisted and
+no bulk remote copy protocol is introduced.
+
+## 21. Selective backup recovery
+
+BETA-08A composes the encrypted backup reader with a focused recovery service,
+a source-neutral transaction duplicate detector, and native/web atomic store
+adapters. Recovery is additive and identity-aware; replacement restore remains
+separate. Linked preflight reads authoritative hosted rows through the existing
+authenticated transport and RLS without opening a sync session or writing
+remote state. Safe records then enter the unchanged mutation/outbox protocol.
+Candidate and recovery-session state remains transient.
+
+## 22. Restore lifecycle bootstrap
+
+`RestoreLifecycleService` owns validation and the non-destructive snapshot clone
+and reference remap. `RestoreLifecycleController` coordinates the user-selected
+destination and cloud bootstrap callback. `AppShell` only composes activation,
+existing cloud linking, and existing initial upload. SQLite activation remains
+atomic, the source restored household is preserved, and no new persistence or
+Supabase schema is introduced.
+# BETA-08B shared ingestion boundary
+
+CSV is the first source adapter for the normalized transaction-ingestion
+pipeline: source bytes → parsed rows → mapped drafts → validation/duplicate
+classification → review → atomic transaction repository batch → ordinary
+outbox. Widgets do not parse CSV and controllers do not write SQL. Future
+receipt/PDF/Telegram adapters must stop at the same draft boundary.
+# Reviewed document ingestion (BETA-08C/D)
+
+The presentation layer selects sensitive document bytes; a source-specific
+controller coordinates an abstract `DocumentExtractionProvider`; the Supabase
+data implementation invokes one authenticated Edge Function; and pure domain
+normalizers produce the existing canonical import source/drafts. Provider JSON
+and HTTP remain outside widgets, validation/reconciliation remain in domain
+services, and final persistence remains the existing transaction use case.
+There is no receipt/statement SQLite table or separate sync architecture.
+
+## 23. Deterministic import rules
+
+BETA-08E inserts one pure, source-neutral rule evaluation step between draft
+normalization/category resolution and duplicate review. CSV, receipt, and
+statement adapters all use the same immutable draft model and matcher. Rules
+only annotate review suggestions; the existing atomic transaction commit and
+ordinary outbox remain unchanged. Household rule configuration is persisted in
+SQLite v22 and synchronized through the existing entity protocol. See
+`IMPORT_RULES.md`.
+
+## 24. Canonical linked-pair internal transfers
+
+BETA-08F0 adds a narrow `transfer_links` aggregate rather than overloading the
+asset-fee parent relation. Two ordinary directional transaction legs retain
+their IDs; one stable relation names outgoing and incoming explicitly. A pure
+integrity validator and atomic repository operation protect the aggregate.
+Reporting receives active paired IDs as classification context while account
+balance mathematics remains unchanged. See `CANONICAL_INTERNAL_TRANSFERS.md`.
+
+## 25. Deterministic internal-transfer review
+
+BETA-08F1 adds a pure, source-neutral matcher above import and transaction
+review. It indexes candidates by currency, integer amount, direction, and local
+date bucket; it does not mutate storage. Controllers coordinate explicit
+review, while canonical services perform stale-checked pair-atomic conversion.
+There is no matcher persistence or new sync entity.
+
+## 26. Persistent import review inbox
+
+BETA-08G persists household-scoped `import_review_sessions` and normalized
+`import_review_drafts` between extraction and the existing review/commit
+pipeline. They are ordinary local-first entities in the outbox, change feed,
+conflict, and initial-sync manifest. Opening a session re-runs validation,
+rules, duplicates, and transfer matching against current device state while
+preserving explicit edits and stable transaction IDs. Source bytes are never
+stored. Financial rows are created only by explicit commit; deterministic IDs
+and completion reconciliation make interrupted or concurrent commit retry safe.
+
+## BETA-08G1 deferred final import identity
+
+SQLite v25 separates durable review identity from account-dependent financial
+identity. `ImportReviewDraft.id` and source identity exist from ingestion;
+`deterministic_transaction_id` and its account binding may both be null until a
+destination account is selected. Finalization calls the single extracted
+BETA-08B UUIDv5 implementation. Account changes invalidate pending analysis,
+while completed transaction IDs remain immutable. Web mirrors this domain
+model. At the G1 checkpoint, no Telegram component had yet been introduced.
+
+## BETA-08H Telegram boundary
+
+Telegram is a server transport into existing BETA-08G/G1 Inbox entities, not a
+financial subsystem. The authenticated connection function manages pairing;
+the externally callable webhook authenticates with its dedicated Telegram
+secret and uses service authority only after resolving an active connection.
+Exact bytes are transient. Existing sync delivers normalized unresolved drafts
+to devices, and only the Dart review/commit architecture may create finance.
+
+## BETA-08I derived financial statements
+
+Statements follow a one-way derived-data boundary:
+
+`financial repositories/services -> FinancialStatementGenerator -> immutable FinancialStatement -> controller/screen -> FinancialStatementPdfRenderer`.
+
+The generator reuses account balance, report summary, budget, tithe, and
+canonical-transfer primitives. Widgets and the PDF renderer do not query
+repositories or redefine accounting rules. Statements are generated on demand
+and introduce no SQLite table, sync entity, backup payload, or Supabase object.
+The renderer is local/offline and uses the existing portable save abstraction.
+
+## BETA-08J read-only data health
+
+Health Check follows `local stores → read-only snapshot → HealthCheckService →
+immutable report → controller → screen`. The service reuses established
+balance and canonical-transfer domain semantics; widgets contain neither SQL
+nor financial validation rules. Diagnostic runs are transient and never sync,
+repair, retry, resolve, reconnect, or persist. Local structural health remains
+separate from cloud availability. SQLite stays v25, backup stays v4, and no
+Supabase object is added. See `DATA_HEALTH_DIAGNOSTICS.md`.
+
+## BETA-08K cloud durability and bootstrap
+
+Native SQLite remains the working replica and Supabase remains the durable
+shared record copy for linked households. New devices reuse active-membership
+discovery and the BETA-04B stable-snapshot/staging/atomic-activation protocol;
+they never copy a database file or create a second sync channel. The
+presentation controller selects among authorized hosted manifests, while the
+existing coordinator retains single-flight, cursor, outbox, retry, and
+conflict authority. See `CLOUD_DURABILITY_AND_DEVICE_BOOTSTRAP.md`.

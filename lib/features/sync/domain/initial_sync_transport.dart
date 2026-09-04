@@ -22,6 +22,14 @@ abstract interface class InitialSyncTransport {
   Future<void> cancel(String sessionId);
 }
 
+/// Optional capability for consumers that must inspect the authoritative
+/// household without creating an initial-sync session or writing remote state.
+abstract interface class ReadOnlyHouseholdSnapshotTransport {
+  Future<Map<String, List<Map<String, Object?>>>> readHouseholdSnapshot(
+    String bookId,
+  );
+}
+
 class UnavailableInitialSyncTransport implements InitialSyncTransport {
   const UnavailableInitialSyncTransport({this.configured = false});
 

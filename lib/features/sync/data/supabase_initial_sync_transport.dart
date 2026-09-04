@@ -4,7 +4,8 @@ import '../domain/initial_sync_models.dart';
 import '../domain/initial_sync_transport.dart';
 import 'supabase_sync_transport.dart';
 
-class SupabaseInitialSyncTransport implements InitialSyncTransport {
+class SupabaseInitialSyncTransport
+    implements InitialSyncTransport, ReadOnlyHouseholdSnapshotTransport {
   SupabaseInitialSyncTransport(this._client);
 
   final SupabaseClient _client;
@@ -21,6 +22,26 @@ class SupabaseInitialSyncTransport implements InitialSyncTransport {
           _client.rpc('get_initial_sync_status', params: {'p_book_id': bookId}),
     );
     return InitialSyncManifest.fromJson(_map(response));
+  }
+
+  @override
+  Future<Map<String, List<Map<String, Object?>>>> readHouseholdSnapshot(
+    String bookId,
+  ) async {
+    final result = <String, List<Map<String, Object?>>>{};
+    for (final entityType in initialSyncEntityOrder) {
+      final rows = await _guard(() {
+        final query = _client.from(entityType).select();
+        return entityType == 'books'
+            ? query.eq('id', bookId)
+            : query.eq('book_id', bookId);
+      });
+      result[entityType] = [
+        for (final row in _maps(rows))
+          SupabaseSyncTransport.toLocalPayload(entityType, row),
+      ];
+    }
+    return result;
   }
 
   @override
@@ -153,6 +174,19 @@ class SupabaseInitialSyncTransport implements InitialSyncTransport {
       InitialSyncErrorCode.validation,
       'The cloud service returned an invalid initialization response.',
     );
+  }
+
+  static List<Map<String, Object?>> _maps(Object? value) {
+    if (value is! List) {
+      throw const InitialSyncException(
+        InitialSyncErrorCode.validation,
+        'The cloud service returned an invalid household snapshot.',
+      );
+    }
+    return value
+        .whereType<Map>()
+        .map((row) => row.cast<String, Object?>())
+        .toList();
   }
 
   static Future<T> _guard<T>(Future<T> Function() operation) async {

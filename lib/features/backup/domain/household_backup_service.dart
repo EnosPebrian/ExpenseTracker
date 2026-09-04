@@ -55,10 +55,15 @@ class HouseholdBackupService {
     );
     final remapAsCopy =
         mode == RestoreMode.newHousehold && remapOnCollision && collision;
+    final compatibleSnapshot = await _withPreservedLegacyEntities(
+      backup,
+      mode: mode,
+      activeBookId: activeBookId,
+    );
     Map<String, List<Map<String, Object?>>> prepared;
     try {
       prepared = HouseholdBackupIntegrity.prepareForRestore(
-        backup.snapshot,
+        compatibleSnapshot,
         remapAsCopy: remapAsCopy,
       );
     } catch (_) {
@@ -75,7 +80,7 @@ class HouseholdBackupService {
     var result = RestoreClassifier.classify(
       incoming: remapAsCopy
           ? prepared
-          : HouseholdBackupIntegrity.sanitize(backup.snapshot),
+          : HouseholdBackupIntegrity.sanitize(compatibleSnapshot),
       existing: existing,
       mode: mode,
     );
@@ -105,6 +110,33 @@ class HouseholdBackupService {
       );
     } else {
       result = _copyPreview(result, blockingErrors: blockingErrors);
+    }
+    if (backup.manifest.formatVersion < 2) {
+      result = _copyPreview(
+        result,
+        details: [
+          ...result.details,
+          'This backup was created before monthly budgets were supported.',
+        ],
+      );
+    }
+    if (backup.manifest.formatVersion < 3) {
+      result = _copyPreview(
+        result,
+        details: [
+          ...result.details,
+          'This backup was created before transaction import rules were supported.',
+        ],
+      );
+    }
+    if (backup.manifest.formatVersion < 4) {
+      result = _copyPreview(
+        result,
+        details: [
+          ...result.details,
+          'This backup was created before canonical internal transfers were supported.',
+        ],
+      );
     }
     if (result.invalidRecords == 0) {
       String? integrityError;
@@ -158,7 +190,11 @@ class HouseholdBackupService {
         );
       }
       final prepared = HouseholdBackupIntegrity.prepareForRestore(
-        backup.snapshot,
+        await _withPreservedLegacyEntities(
+          backup,
+          mode: mode,
+          activeBookId: activeBookId,
+        ),
       );
       await store.activate(prepared, replaceBookId: activeBookId);
       return backup.manifest.bookId;
@@ -215,5 +251,27 @@ class HouseholdBackupService {
         .expand((entry) => entry.value)
         .where((record) => record['book_id'] != bookId)
         .length;
+  }
+
+  Future<Map<String, List<Map<String, Object?>>>> _withPreservedLegacyEntities(
+    DecodedBackup backup, {
+    required RestoreMode mode,
+    required String activeBookId,
+  }) async {
+    if (backup.manifest.formatVersion >= 4 ||
+        mode != RestoreMode.replaceMatchingHousehold ||
+        backup.manifest.bookId != activeBookId) {
+      return backup.snapshot;
+    }
+    final existing = await store.snapshot(activeBookId);
+    return {
+      ...backup.snapshot,
+      if (backup.manifest.formatVersion < 2)
+        'budgets': existing['budgets'] ?? const [],
+      if (backup.manifest.formatVersion < 3)
+        'transaction_import_rules':
+            existing['transaction_import_rules'] ?? const [],
+      'transfer_links': existing['transfer_links'] ?? const [],
+    };
   }
 }

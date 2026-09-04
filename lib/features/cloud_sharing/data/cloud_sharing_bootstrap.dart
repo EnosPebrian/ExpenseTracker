@@ -9,6 +9,8 @@ import '../../sync/domain/initial_sync_transport.dart';
 import '../../sync/domain/sync_transport.dart';
 import 'supabase_cloud_sharing_repository.dart';
 import 'unconfigured_cloud_sharing_repository.dart';
+import '../../telegram_integration/data/supabase_telegram_integration_repository.dart';
+import '../../telegram_integration/domain/telegram_integration_repository.dart';
 
 class CloudSharingBootstrap {
   const CloudSharingBootstrap._();
@@ -30,6 +32,8 @@ class CloudSharingBootstrap {
         ),
         syncTransport: UnavailableSyncTransport(),
         initialSyncTransport: UnavailableInitialSyncTransport(),
+        telegramIntegrationRepository:
+            const UnavailableTelegramIntegrationRepository(),
       );
     }
     try {
@@ -42,6 +46,9 @@ class CloudSharingBootstrap {
         sharingRepository: SupabaseCloudSharingRepository(client),
         syncTransport: SupabaseSyncTransport(client),
         initialSyncTransport: SupabaseInitialSyncTransport(client),
+        telegramIntegrationRepository: SupabaseTelegramIntegrationRepository(
+          client,
+        ),
       );
     } catch (_) {
       return CloudServices(
@@ -54,6 +61,8 @@ class CloudSharingBootstrap {
         ),
         syncTransport: UnavailableSyncTransport(configured: true),
         initialSyncTransport: UnavailableInitialSyncTransport(configured: true),
+        telegramIntegrationRepository:
+            const UnavailableTelegramIntegrationRepository(),
       );
     }
   }
@@ -64,9 +73,11 @@ class CloudServices {
     required this.sharingRepository,
     required this.syncTransport,
     required this.initialSyncTransport,
+    required this.telegramIntegrationRepository,
   });
 
   final CloudSharingRepository sharingRepository;
   final SyncTransport syncTransport;
   final InitialSyncTransport initialSyncTransport;
+  final TelegramIntegrationRepository telegramIntegrationRepository;
 }

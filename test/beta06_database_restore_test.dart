@@ -29,7 +29,7 @@ void main() {
       final store = LocalStore(databasePath: fixture.path);
       await store.initialize();
       addTearDown(store.close);
-      expect(await store.db.getVersion(), 20);
+      expect(await store.db.getVersion(), LocalStore.schemaVersion);
       expect(
         (await store.db.query('asset_market_prices')).single['price_minor'],
         1000000,
