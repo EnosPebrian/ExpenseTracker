@@ -216,6 +216,7 @@ class InternalTransferService {
     final draftAccount = _account(accounts, draftAccountId);
     final existingAccount = _account(accounts, existingAccountId);
     final preparedDraft = draft.copyWith(
+      categoryId: null,
       version: 1,
       updatedAt: draft.createdAt,
       syncStatus: 'pending',
@@ -265,11 +266,13 @@ class InternalTransferService {
     final firstAccount = _account(accounts, firstAccountId);
     final secondAccount = _account(accounts, secondAccountId);
     final firstPrepared = first.copyWith(
+      categoryId: null,
       version: 1,
       updatedAt: first.createdAt,
       syncStatus: 'pending',
     );
     final secondPrepared = second.copyWith(
+      categoryId: null,
       version: 1,
       updatedAt: second.createdAt,
       syncStatus: 'pending',
@@ -366,6 +369,7 @@ class InternalTransferService {
     final outgoing = state.outgoing.copyWith(
       title: title,
       category: 'Transfer',
+      categoryId: null,
       account: source.name,
       date: date,
       amount: amount,
@@ -377,6 +381,7 @@ class InternalTransferService {
     final incoming = state.incoming.copyWith(
       title: title,
       category: 'Transfer',
+      categoryId: null,
       account: destination.name,
       date: date,
       amount: amount,

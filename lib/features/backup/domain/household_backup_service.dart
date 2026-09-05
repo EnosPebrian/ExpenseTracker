@@ -138,6 +138,15 @@ class HouseholdBackupService {
         ],
       );
     }
+    if (backup.manifest.formatVersion < 5) {
+      result = _copyPreview(
+        result,
+        details: [
+          ...result.details,
+          'This backup predates explicit transaction category identity; only unambiguous historical category names were linked.',
+        ],
+      );
+    }
     if (result.invalidRecords == 0) {
       String? integrityError;
       try {

@@ -807,7 +807,13 @@ class InitialSyncStoreAdapter {
       final asset = transaction['asset_definition_id'];
       final validLegacyAsset =
           transaction['asset_name'] != null && transaction['unit'] != null;
+      final categoryId = transaction['category_id'];
+      final validCategory =
+          categoryId == null ||
+          (categoryIds.contains(categoryId) &&
+              categoryTypes[categoryId] == transaction['transaction_type']);
       if (transaction['amount'] is! num ||
+          !validCategory ||
           (member != null && !memberIds.contains(member)) ||
           (project != null && !projectIds.contains(project)) ||
           (related != null && !transactionIds.contains(related)) ||

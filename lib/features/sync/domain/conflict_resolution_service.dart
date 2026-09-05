@@ -42,6 +42,10 @@ class ConflictResolutionService {
         conflict.entityType == 'import_review_drafts') {
       _validateImportReviewDraftMerge(conflict, mergedPayload);
     }
+    if (type == ConflictResolutionType.manualMerge &&
+        conflict.entityType == 'transactions') {
+      _validateTransactionMerge(conflict, mergedPayload);
+    }
     final operationId = const Uuid().v4();
     if (!await repository.beginResolution(conflict.id, operationId)) {
       throw StateError('This conflict has already been resolved.');
@@ -118,6 +122,25 @@ class ConflictResolutionService {
     if (const {'completed', 'discarded'}.contains(shared['state']) &&
         mergedPayload['state'] != shared['state']) {
       throw StateError('A terminal import session cannot be reopened.');
+    }
+  }
+
+  static void _validateTransactionMerge(
+    SyncConflict conflict,
+    Map<String, Object?>? mergedPayload,
+  ) {
+    final shared = conflict.serverPayload;
+    final local = conflict.localPayload;
+    if (mergedPayload == null || shared == null || local == null) {
+      throw StateError('A deleted transaction cannot be merged field by field.');
+    }
+    final mergedPair = (mergedPayload['category'], mergedPayload['category_id']);
+    final localPair = (local['category'], local['category_id']);
+    final serverPair = (shared['category'], shared['category_id']);
+    if (mergedPair != localPair && mergedPair != serverPair) {
+      throw StateError(
+        'Resolve the transaction category name and identity as one state.',
+      );
     }
   }
 

@@ -422,6 +422,29 @@ class BackupRecoveryService {
         require('categories', candidate.record['category_id']);
         require('accounts', candidate.record['account_id']);
       } else if (candidate.entityType == 'transactions') {
+        final categoryId = candidate.record['category_id'] as String?;
+        if (categoryId != null && !current['categories']!.contains(categoryId)) {
+          final type = candidate.record['transaction_type'];
+          final name = (candidate.record['category'] as String? ?? '')
+              .trim()
+              .toLowerCase();
+          final matches = [
+            ...local['categories'] ?? const [],
+            ...?remote?['categories'],
+          ].where(
+            (category) =>
+                category['deleted_at'] == null &&
+                category['category_type'] == type &&
+                (category['name'] as String? ?? '').trim().toLowerCase() ==
+                    name,
+          );
+          if (matches.length == 1) {
+            candidate.record['category_id'] = matches.single['id'];
+          } else if (byKey['categories::$categoryId']?.selectable != true) {
+            candidate.record['category_id'] = null;
+          }
+        }
+        require('categories', candidate.record['category_id']);
         final account = (candidate.record['account'] as String? ?? '')
             .trim()
             .toLowerCase();

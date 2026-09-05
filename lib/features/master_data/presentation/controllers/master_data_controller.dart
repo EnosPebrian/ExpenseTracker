@@ -13,22 +13,28 @@ typedef MasterDataPersist =
 
 typedef AccountPersist = Future<void> Function(Account account);
 typedef ProjectRecordsLoader = Future<List<FinancialProject>> Function();
+typedef CategoryRecordsLoader =
+    Future<List<Map<String, Object?>>> Function();
 
 class MasterDataController extends ChangeNotifier {
   MasterDataController({
     required this.persist,
     this.persistAccount,
     this.loadProjectRecords,
+    this.loadCategoryRecords,
   });
 
   final MasterDataPersist persist;
   final AccountPersist? persistAccount;
   final ProjectRecordsLoader? loadProjectRecords;
+  final CategoryRecordsLoader? loadCategoryRecords;
 
   final _accounts = <String>[];
   final _accountRecords = <Account>[];
   final _expenseCategories = <String>[];
   final _incomeCategories = <String>[];
+  final _expenseCategoryIdsByName = <String, String>{};
+  final _incomeCategoryIdsByName = <String, String>{};
   final _projects = <String>[];
   final _projectIdsByName = <String, String>{};
 
@@ -41,6 +47,10 @@ class MasterDataController extends ChangeNotifier {
 
   List<String> get incomeCategories =>
       List<String>.unmodifiable(_incomeCategories);
+  Map<String, String> get expenseCategoryIdsByName =>
+      Map<String, String>.unmodifiable(_expenseCategoryIdsByName);
+  Map<String, String> get incomeCategoryIdsByName =>
+      Map<String, String>.unmodifiable(_incomeCategoryIdsByName);
 
   List<String> get projects => List<String>.unmodifiable(_projects);
   Map<String, String> get projectIdsByName =>
@@ -51,6 +61,8 @@ class MasterDataController extends ChangeNotifier {
     Iterable<Account>? accountRecords,
     required Iterable<String> expenseCategories,
     required Iterable<String> incomeCategories,
+    Map<String, String> expenseCategoryIdsByName = const {},
+    Map<String, String> incomeCategoryIdsByName = const {},
     required Iterable<String> projects,
     Iterable<FinancialProject>? projectRecords,
   }) {
@@ -69,6 +81,12 @@ class MasterDataController extends ChangeNotifier {
     _incomeCategories
       ..clear()
       ..addAll(incomeCategories);
+    _expenseCategoryIdsByName
+      ..clear()
+      ..addAll(expenseCategoryIdsByName);
+    _incomeCategoryIdsByName
+      ..clear()
+      ..addAll(incomeCategoryIdsByName);
 
     _projects
       ..clear()
@@ -134,6 +152,12 @@ class MasterDataController extends ChangeNotifier {
       categoryType: categoryType,
     );
 
+    if (entity == 'categories' && loadCategoryRecords != null) {
+      _replaceCategoryRecords(await loadCategoryRecords!());
+      notifyListeners();
+      return;
+    }
+
     if (entity == 'projects' && loadProjectRecords != null) {
       final records = await loadProjectRecords!();
       _projects
@@ -159,6 +183,42 @@ class MasterDataController extends ChangeNotifier {
     _projectIdsByName
       ..clear()
       ..addEntries(records.map((record) => MapEntry(record.name, record.id)));
+  }
+
+  void _replaceCategoryRecords(Iterable<Map<String, Object?>> records) {
+    final active = records.where((record) => record['deleted_at'] == null);
+    final expenses = active.where(
+      (record) => record['category_type'] == 'expense',
+    );
+    final incomes = active.where(
+      (record) => record['category_type'] == 'income',
+    );
+    _expenseCategories
+      ..clear()
+      ..addAll(expenses.map((record) => record['name'] as String));
+    _incomeCategories
+      ..clear()
+      ..addAll(incomes.map((record) => record['name'] as String));
+    _expenseCategoryIdsByName
+      ..clear()
+      ..addEntries(
+        expenses.map(
+          (record) => MapEntry(
+            record['name'] as String,
+            record['id'] as String,
+          ),
+        ),
+      );
+    _incomeCategoryIdsByName
+      ..clear()
+      ..addEntries(
+        incomes.map(
+          (record) => MapEntry(
+            record['name'] as String,
+            record['id'] as String,
+          ),
+        ),
+      );
   }
 
   Future<void> saveAccount(Account account) async {

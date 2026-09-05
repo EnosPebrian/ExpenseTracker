@@ -258,6 +258,7 @@ class TransactionController extends ChangeNotifier {
     Transaction incoming,
   ) => outgoing.copyWith(
     category: 'Transfer',
+    categoryId: null,
     account: '${outgoing.account} -> ${incoming.account}',
     amount: link.amount,
     type: TransactionType.transfer,

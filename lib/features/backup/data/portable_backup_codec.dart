@@ -42,11 +42,23 @@ class PortableBackupCodec {
       1 => portableBackupV1EntityKeys,
       2 => portableBackupV2EntityKeys,
       3 => portableBackupV3EntityKeys,
+      4 => portableBackupV4EntityKeys,
       _ => portableBackupEntityKeys,
     };
     final encodedSnapshot = <String, List<Map<String, Object?>>>{
       for (final key in portableBackupEntityKeys)
-        key: encodedKeys.contains(key) ? clean[key]! : const [],
+        key: encodedKeys.contains(key)
+            ? (key == 'transactions' && formatVersion < 5
+                  ? clean[key]!
+                        .map(
+                          (record) => <String, Object?>{
+                            ...record,
+                            'category_id': null,
+                          },
+                        )
+                        .toList(growable: false)
+                  : clean[key]!)
+            : const [],
     };
     final salt = _randomBytes(16);
     final nonce = _randomBytes(12);
@@ -60,7 +72,9 @@ class PortableBackupCodec {
 
     final contentFiles = <String, Uint8List>{};
     for (final key in encodedKeys) {
-      final jsonValue = key == 'household' ? clean[key]!.single : clean[key]!;
+      final jsonValue = key == 'household'
+          ? encodedSnapshot[key]!.single
+          : encodedSnapshot[key]!;
       contentFiles['$key.json'] = _jsonBytes(jsonValue);
     }
     final checksums = <String, String>{};
@@ -198,6 +212,7 @@ class PortableBackupCodec {
         1 => portableBackupV1EntityKeys,
         2 => portableBackupV2EntityKeys,
         3 => portableBackupV3EntityKeys,
+        4 => portableBackupV4EntityKeys,
         _ => portableBackupEntityKeys,
       };
       for (final key in encodedKeys) {
@@ -212,6 +227,11 @@ class PortableBackupCodec {
       snapshot.putIfAbsent('budgets', () => const []);
       snapshot.putIfAbsent('transaction_import_rules', () => const []);
       snapshot.putIfAbsent('transfer_links', () => const []);
+      if (manifest.formatVersion < 5) {
+        HouseholdBackupIntegrity.reconcileLegacyTransactionCategoryIds(
+          snapshot,
+        );
+      }
       HouseholdBackupIntegrity.validate(snapshot);
       for (final key in encodedKeys) {
         if (manifest.entityCounts[key] != snapshot[key]!.length) {

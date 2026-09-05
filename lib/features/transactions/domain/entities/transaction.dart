@@ -24,6 +24,7 @@ class Transaction {
     this.projectId,
     required this.title,
     required this.category,
+    this.categoryId,
     required this.account,
     required this.date,
     required this.amount,
@@ -61,6 +62,11 @@ class Transaction {
   final String? projectId;
 
   final String title;
+  /// Stable master-category identity when one is known.
+  ///
+  /// [category] remains the immutable display-name snapshot used by historical
+  /// and legacy records.
+  final String? categoryId;
   final String category;
   final String account;
 
@@ -147,6 +153,7 @@ class Transaction {
     Object? enteredByMemberId = _unset,
     Object? projectId = _unset,
     String? title,
+    Object? categoryId = _unset,
     String? category,
     String? account,
     DateTime? date,
@@ -185,6 +192,9 @@ class Transaction {
           ? this.projectId
           : projectId as String?,
       title: title ?? this.title,
+      categoryId: identical(categoryId, _unset)
+          ? this.categoryId
+          : categoryId as String?,
       category: category ?? this.category,
       account: account ?? this.account,
       date: date ?? this.date,
@@ -253,6 +263,7 @@ class Transaction {
       'entered_by_member_id': enteredByMemberId,
       'project_id': projectId,
       'title': title,
+      'category_id': categoryId,
       'category': category,
       'account': account,
       'transaction_date': date.millisecondsSinceEpoch,
@@ -294,6 +305,7 @@ class Transaction {
       enteredByMemberId: record['entered_by_member_id'] as String?,
       projectId: record['project_id'] as String?,
       title: record['title'] as String,
+      categoryId: record['category_id'] as String?,
       category: record['category'] as String,
       account: record['account'] as String,
       date: DateTime.fromMillisecondsSinceEpoch(

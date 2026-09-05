@@ -5,7 +5,7 @@ import 'package:uuid/uuid.dart';
 class LocalStore {
   LocalStore({String? databasePath});
 
-  static const schemaVersion = 25;
+  static const schemaVersion = 26;
   static final List<Map<String, Object?>> _records = [];
   static final List<Map<String, Object?>> _assetMarketPrices = [];
   static final List<Map<String, Object?>> _assetDefinitions = [];
@@ -60,6 +60,7 @@ class LocalStore {
     bool enqueueSync = true,
   }) async {
     final prepared = _withActiveBook(record);
+    _validateTransactionCategory(prepared);
     _records.removeWhere((item) => item['id'] == record['id']);
     _records.add(prepared);
     if (enqueueSync) {
@@ -82,6 +83,7 @@ class LocalStore {
           throw StateError('A transaction with this stable identity exists.');
         }
         final prepared = _withActiveBook(record);
+        _validateTransactionCategory(prepared);
         _records.add(prepared);
         _enqueueSyncOperation('transactions', prepared);
       }
@@ -2240,6 +2242,13 @@ class LocalStore {
         final existing = index < 0
             ? const <String, Object?>{}
             : collection.removeAt(index);
+        if (entityType == 'transactions' &&
+            !payload.containsKey('category_id') &&
+            existing.isNotEmpty &&
+            payload.containsKey('category') &&
+            payload['category'] != existing['category']) {
+          payload['category_id'] = null;
+        }
         collection.add({
           ...existing,
           ...payload,
@@ -2250,6 +2259,11 @@ class LocalStore {
         if (entityType == 'categories' || entityType == 'projects') {
           _rebuildMasterValues(entityType, payload['category_type'] as String?);
         }
+      }
+      for (final transaction in _records.where(
+        (record) => record['book_id'] == bookId,
+      )) {
+        _validateTransactionCategory(transaction);
       }
       _validateActiveTransferLinks(bookId);
       await setSyncInitializationState(bookId, 'ready');
@@ -2290,6 +2304,28 @@ class LocalStore {
         ..clear()
         ..addAll(masterSnapshot);
       rethrow;
+    }
+  }
+
+  void _validateTransactionCategory(Map<String, Object?> transaction) {
+    final categoryId = transaction['category_id'] as String?;
+    if (categoryId == null) return;
+    final bookId = transaction['book_id'] as String?;
+    final type = transaction['transaction_type'] as String?;
+    if (bookId == null || (type != 'expense' && type != 'income')) {
+      throw StateError('The transaction category is invalid.');
+    }
+    final valid = _masterRecords.any(
+      (category) =>
+          category['_entity_type'] == 'categories' &&
+          category['id'] == categoryId &&
+          category['book_id'] == bookId &&
+          category['category_type'] == type,
+    );
+    if (!valid) {
+      throw StateError(
+        'The transaction category belongs to another household or type.',
+      );
     }
   }
 

@@ -11,6 +11,8 @@ class QuickAddConfig {
     required this.accounts,
     required this.expenseCategories,
     required this.incomeCategories,
+    this.expenseCategoryIdsByName = const {},
+    this.incomeCategoryIdsByName = const {},
     required this.projects,
     this.projectIdsByName = const {},
     required this.assetDefinitions,
@@ -28,6 +30,8 @@ class QuickAddConfig {
   final List<String> accounts;
   final List<String> expenseCategories;
   final List<String> incomeCategories;
+  final Map<String, String> expenseCategoryIdsByName;
+  final Map<String, String> incomeCategoryIdsByName;
   final List<String> projects;
   final Map<String, String> projectIdsByName;
 
@@ -293,6 +297,11 @@ class QuickAddController extends ChangeNotifier {
           ? 'New transaction'
           : description.trim(),
       category: type == TransactionType.transfer ? 'Transfer' : category,
+      categoryId: switch (type) {
+        TransactionType.expense => config.expenseCategoryIdsByName[category],
+        TransactionType.income => config.incomeCategoryIdsByName[category],
+        _ => null,
+      },
       account: type == TransactionType.transfer
           ? '$account -> $toAccount'
           : account,

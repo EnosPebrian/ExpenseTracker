@@ -247,6 +247,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     loadProjectRecords: () async => (await store.getProjectRecords())
         .map(FinancialProject.fromRecord)
         .toList(),
+    loadCategoryRecords: () => store.getCategoryRecords(includeDeleted: true),
     persist:
         ({
           required String entity,
@@ -334,11 +335,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       }
 
       await assetPriceController.load();
-      final categoryRows = await store.getCategoryRecords(
+      final allCategoryRows = await store.getCategoryRecords(
         includeDeleted: true,
-        categoryType: 'expense',
         bookId: result.financialBook?.id,
       );
+      final categoryRows = allCategoryRows
+          .where((row) => row['category_type'] == 'expense')
+          .toList(growable: false);
       await monthlyBudgetController.load(
         bookId: result.financialBook?.id,
         categoryNames: {
@@ -369,6 +372,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           accountRecords: result.accountRecords,
           expenseCategories: result.expenseCategories,
           incomeCategories: result.incomeCategories,
+          expenseCategoryIdsByName: _categoryIdsByName(
+            allCategoryRows,
+            'expense',
+          ),
+          incomeCategoryIdsByName: _categoryIdsByName(
+            allCategoryRows,
+            'income',
+          ),
           projects: result.projects,
           projectRecords: result.projectRecords,
         );
@@ -407,11 +418,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Future<void> _refreshSyncedData({bool reloadBackup = true}) async {
     final result = await bootstrapService.load(requireProfile: true);
     await assetDefinitionController.reload();
-    final categoryRows = await store.getCategoryRecords(
+    final allCategoryRows = await store.getCategoryRecords(
       includeDeleted: true,
-      categoryType: 'expense',
       bookId: result.financialBook?.id,
     );
+    final categoryRows = allCategoryRows
+        .where((row) => row['category_type'] == 'expense')
+        .toList(growable: false);
     await monthlyBudgetController.load(
       bookId: result.financialBook?.id,
       categoryNames: {
@@ -444,6 +457,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         accountRecords: result.accountRecords,
         expenseCategories: result.expenseCategories,
         incomeCategories: result.incomeCategories,
+        expenseCategoryIdsByName: _categoryIdsByName(
+          allCategoryRows,
+          'expense',
+        ),
+        incomeCategoryIdsByName: _categoryIdsByName(
+          allCategoryRows,
+          'income',
+        ),
         projects: result.projects,
         projectRecords: result.projectRecords,
       );
@@ -691,6 +712,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       accounts: accounts,
       expenseCategories: expenses,
       incomeCategories: incomes,
+      expenseCategoryIdsByName:
+          masterDataController.expenseCategoryIdsByName,
+      incomeCategoryIdsByName: masterDataController.incomeCategoryIdsByName,
       projects: masterDataController.projects,
       projectIdsByName: masterDataController.projectIdsByName,
       assetDefinitions: assetDefinitionController.definitions,
@@ -707,12 +731,24 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       accounts: masterDataController.accounts,
       expenseCategories: masterDataController.expenseCategories,
       incomeCategories: masterDataController.incomeCategories,
+      expenseCategoryIdsByName:
+          masterDataController.expenseCategoryIdsByName,
+      incomeCategoryIdsByName: masterDataController.incomeCategoryIdsByName,
       projects: masterDataController.projects,
       projectIdsByName: masterDataController.projectIdsByName,
       assetDefinitions: assetDefinitionController.definitions,
       assetMarketPrices: assetPriceController.prices,
     );
   }
+
+  static Map<String, String> _categoryIdsByName(
+    Iterable<Map<String, Object?>> rows,
+    String type,
+  ) => {
+    for (final row in rows)
+      if (row['deleted_at'] == null && row['category_type'] == type)
+        row['name'] as String: row['id'] as String,
+  };
 
   Future<void> openQuickAdd(BuildContext context) {
     return QuickAddScreen.show(

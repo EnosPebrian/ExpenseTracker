@@ -327,6 +327,7 @@ class DuplicateTransaction {
       projectId: original.projectId,
       title: original.title,
       category: original.category,
+      categoryId: original.categoryId,
       account: original.account,
       date: DateTime.now(),
       amount: withoutAmount ? 0 : original.amount,

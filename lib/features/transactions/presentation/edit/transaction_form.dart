@@ -14,6 +14,8 @@ class TransactionFormOptions {
     required this.accounts,
     required this.expenseCategories,
     required this.incomeCategories,
+    this.expenseCategoryIdsByName = const {},
+    this.incomeCategoryIdsByName = const {},
     required this.projects,
     this.projectIdsByName = const {},
     this.assetDefinitions = const [],
@@ -23,6 +25,8 @@ class TransactionFormOptions {
   final List<String> accounts;
   final List<String> expenseCategories;
   final List<String> incomeCategories;
+  final Map<String, String> expenseCategoryIdsByName;
+  final Map<String, String> incomeCategoryIdsByName;
   final List<String> projects;
   final Map<String, String> projectIdsByName;
   final List<AssetDefinition> assetDefinitions;
@@ -201,6 +205,7 @@ class _TransactionFormState extends State<TransactionForm> {
               : type == TransactionType.assetConversion
               ? 'Asset conversion'
               : category,
+          categoryId: _selectedCategoryId(original),
           account:
               type == TransactionType.transfer ||
                   type == TransactionType.assetConversion
@@ -355,6 +360,18 @@ class _TransactionFormState extends State<TransactionForm> {
         ],
       ),
     );
+  }
+
+  String? _selectedCategoryId(Transaction original) {
+    if (type != TransactionType.expense && type != TransactionType.income) {
+      return null;
+    }
+    if (type == original.type && category == original.category) {
+      return original.categoryId;
+    }
+    return type == TransactionType.expense
+        ? widget.options.expenseCategoryIdsByName[category]
+        : widget.options.incomeCategoryIdsByName[category];
   }
 
   static List<String> _withCurrent(List<String> values, String current) => [

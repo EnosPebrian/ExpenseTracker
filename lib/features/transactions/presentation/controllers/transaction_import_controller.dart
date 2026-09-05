@@ -562,6 +562,7 @@ class TransactionImportController extends ChangeNotifier {
               enteredByMemberId: activeMemberId,
               title: draft.description,
               category: draft.category,
+              categoryId: _persistedCategoryIds[draft.transactionId],
               account: account.name,
               date: draft.date,
               amount: draft.amount,

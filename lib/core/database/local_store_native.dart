@@ -12,11 +12,12 @@ import 'budget_schema_native.dart';
 import 'native_database_path.dart';
 import 'sync_schema_native.dart';
 import 'transaction_import_rule_schema_native.dart';
+import 'transaction_category_identity_schema_native.dart';
 import 'transfer_link_schema_native.dart';
 
 class LocalStore {
   LocalStore({this.databasePath});
-  static const schemaVersion = 25;
+  static const schemaVersion = 26;
   static bool _ffiInitialized = false;
 
   final String? databasePath;
@@ -49,6 +50,7 @@ class LocalStore {
             project_id TEXT,
             title TEXT NOT NULL,
             category TEXT NOT NULL,
+            category_id TEXT,
             account TEXT NOT NULL,
             transaction_date INTEGER NOT NULL,
             amount INTEGER NOT NULL,
@@ -99,6 +101,7 @@ asset_symbol TEXT,
           'CREATE INDEX idx_transactions_relation '
           'ON transactions(related_transaction_id, relation_type)',
         );
+        await TransactionCategoryIdentitySchemaNative.create(db);
         await db.execute(
           '''CREATE TABLE IF NOT EXISTS books (
           id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL,
@@ -434,6 +437,9 @@ asset_symbol TEXT,
         if (oldVersion < 25) {
           await ImportReviewSchemaNative.upgradeToV25(db);
         }
+        if (oldVersion < 26) {
+          await TransactionCategoryIdentitySchemaNative.upgradeToV26(db);
+        }
       },
     );
   }
@@ -556,6 +562,7 @@ asset_symbol TEXT,
   }) async {
     final prepared = _withActiveBook(record);
     await db.transaction((txn) async {
+      await _validateTransactionCategory(txn, prepared);
       await txn.insert(
         'transactions',
         prepared,
@@ -575,6 +582,7 @@ asset_symbol TEXT,
     await db.transaction((transaction) async {
       for (final record in records) {
         final prepared = _withActiveBook(record);
+        await _validateTransactionCategory(transaction, prepared);
         await transaction.insert(
           'transactions',
           prepared,
@@ -1983,6 +1991,13 @@ asset_symbol TEXT,
           whereArgs: [payload['id']],
           limit: 1,
         );
+        if (entityType == 'transactions' &&
+            !payload.containsKey('category_id') &&
+            existing.isNotEmpty &&
+            payload.containsKey('category') &&
+            payload['category'] != existing.first['category']) {
+          payload['category_id'] = null;
+        }
         final saved = <String, Object?>{
           if (existing.isNotEmpty) ...existing.first,
           ...payload,
@@ -2012,6 +2027,7 @@ asset_symbol TEXT,
           );
         }
       }
+      await _validateTransactionCategoriesInBook(txn, bookId);
       await _validateInternalTransfersInDatabase(txn, bookId);
       final now = DateTime.now().millisecondsSinceEpoch;
       await txn.rawInsert(
@@ -2089,6 +2105,51 @@ asset_symbol TEXT,
           'Remote internal transfer ${link['id']} is invalid or incomplete.',
         );
       }
+    }
+  }
+
+  Future<void> _validateTransactionCategory(
+    DatabaseExecutor executor,
+    Map<String, Object?> transaction,
+  ) async {
+    final categoryId = transaction['category_id'] as String?;
+    if (categoryId == null) return;
+    final bookId = transaction['book_id'] as String?;
+    final type = transaction['transaction_type'] as String?;
+    if (bookId == null || (type != 'expense' && type != 'income')) {
+      throw StateError('The transaction category is invalid.');
+    }
+    final category = await executor.query(
+      'categories',
+      columns: const ['id'],
+      where: 'id = ? AND book_id = ? AND category_type = ?',
+      whereArgs: [categoryId, bookId, type],
+      limit: 1,
+    );
+    if (category.isEmpty) {
+      throw StateError(
+        'The transaction category belongs to another household or type.',
+      );
+    }
+  }
+
+  Future<void> _validateTransactionCategoriesInBook(
+    DatabaseExecutor executor,
+    String bookId,
+  ) async {
+    final invalid = await executor.rawQuery(
+      '''SELECT t.id FROM transactions t
+         LEFT JOIN categories c ON c.id = t.category_id
+         WHERE t.book_id = ? AND t.category_id IS NOT NULL
+           AND (c.id IS NULL OR c.book_id <> t.book_id
+                OR c.category_type <> t.transaction_type)
+         LIMIT 1''',
+      [bookId],
+    );
+    if (invalid.isNotEmpty) {
+      throw StateError(
+        'A transaction category belongs to another household or type.',
+      );
     }
   }
 
