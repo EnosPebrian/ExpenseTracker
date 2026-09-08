@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
+import '../master_data/system_category.dart';
+
 class LocalStore {
   LocalStore({String? databasePath});
 
@@ -1584,6 +1586,7 @@ class LocalStore {
     String name, {
     String? previousName,
     String? categoryType,
+    String? recordId,
   }) async {
     if (entity == 'accounts') {
       final records = await getAccounts();
@@ -1636,13 +1639,26 @@ class LocalStore {
       values[index] = name;
       final recordIndex = _masterRecords.indexWhere(
         (record) =>
-            record['book_id'] == _activeBookId &&
-            record['name'] == previousName &&
+            (recordId == null
+                ? record['book_id'] == _activeBookId &&
+                      record['name'] == previousName
+                : record['id'] == recordId) &&
             (entity != 'categories' || record['category_type'] == categoryType),
       );
       final existing = recordIndex < 0
           ? <String, Object?>{}
           : _masterRecords.removeAt(recordIndex);
+      if (entity == 'categories' && existing.isNotEmpty) {
+        final bookId = existing['book_id'] as String?;
+        final id = existing['id'] as String?;
+        if (bookId != null && id != null) {
+          SystemCategoryProtection.rejectMutation(
+            bookId: bookId,
+            categoryId: id,
+            mutation: SystemCategoryMutation.rename,
+          );
+        }
+      }
       final now = DateTime.now().millisecondsSinceEpoch;
       saved = {
         ...existing,
@@ -1680,6 +1696,45 @@ class LocalStore {
     _masterRecords.add(saved);
     _enqueueSyncOperation(entity, _withoutInternalFields(saved));
     onSyncMutation?.call();
+  }
+
+  Future<bool> ensureSystemCategories(String bookId) async {
+    var created = false;
+    for (final definition in SystemCategoryDefinition.values) {
+      final id = definition.idFor(bookId);
+      final existing = _masterRecords.where(
+        (record) =>
+            record['_entity_type'] == 'categories' && record['id'] == id,
+      );
+      if (existing.isNotEmpty) {
+        if (!definition.isValidRecord(existing.single, bookId)) {
+          throw SystemCategoryIntegrityException(
+            'The canonical ${definition.name} category is malformed.',
+          );
+        }
+        continue;
+      }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final record = <String, Object?>{
+        'id': id,
+        'book_id': bookId,
+        'name': definition.name,
+        'category_type': definition.categoryType,
+        'created_at': now,
+        'updated_at': now,
+        'deleted_at': null,
+        'version': 1,
+        'device_id': 'web-device',
+        'sync_status': 'pending',
+        '_entity_type': 'categories',
+      };
+      _masterRecords.add(record);
+      _rebuildMasterValues('categories', definition.categoryType);
+      _enqueueSyncOperation('categories', _withoutInternalFields(record));
+      created = true;
+    }
+    if (created) onSyncMutation?.call();
+    return created;
   }
 
   Future<List<Map<String, Object?>>> getFinancialBooks({

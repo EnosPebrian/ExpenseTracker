@@ -62,6 +62,9 @@ class AppBootstrapService {
       activeMemberId: sessionRecord?['active_member_id'] as String?,
     );
     store.setActiveBookId(session.activeBookId);
+    if (session.activeBookId case final bookId?) {
+      await store.ensureSystemCategories(bookId);
+    }
     transactionController.setActiveContext(
       bookId: session.activeBookId,
       memberId: session.activeMemberId,

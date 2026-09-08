@@ -5,6 +5,7 @@ import '../../master_data/domain/entities/account.dart';
 import '../../master_data/domain/entities/financial_book.dart';
 import '../../master_data/domain/services/account_balance_calculator.dart';
 import '../../tithe/domain/tithe_policy.dart';
+import '../../tithe/domain/tithe_summary.dart';
 import '../../transactions/domain/entities/internal_transfer_link.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import 'financial_statement.dart';
@@ -116,6 +117,7 @@ class FinancialStatementGenerator {
             accountByName: accountByName,
             baseCurrency: book.baseCurrencyCode,
             transferLinks: activeLinks,
+            bookId: book.id,
           )
         : const <MonthlyStatementSummary>[];
     final currencySummaries = currencies
@@ -152,6 +154,19 @@ class FinancialStatementGenerator {
                     .where((month) => month.currencyCode == currency)
                     .fold<int>(0, (total, month) => total + month.tithe)
               : summary.periodTithe;
+          final tithePaid = type == FinancialStatementType.annual
+              ? monthlySummaries
+                    .where((month) => month.currencyCode == currency)
+                    .fold<int>(0, (total, month) => total + month.tithePaid)
+              : TitheSummaryCalculator()
+                    .forPeriod(
+                      bookId: book.id,
+                      transactions: currencyTransactions,
+                      transferLinks: activeLinks,
+                      start: period.start,
+                      endExclusive: period.endExclusive,
+                    )
+                    .paid;
           return CurrencyStatementSummary(
             currencyCode: currency,
             openingBalance: currencyAccounts.fold(
@@ -165,6 +180,7 @@ class FinancialStatementGenerator {
             income: summary.periodIncome,
             expense: summary.periodExpenses,
             tithe: annualTithe,
+            tithePaid: tithePaid,
             transfersIn: transferTotals.$1,
             transfersOut: transferTotals.$2,
           );
@@ -293,23 +309,36 @@ class FinancialStatementGenerator {
     required Map<String, Account> accountByName,
     required String baseCurrency,
     required List<InternalTransferLink> transferLinks,
+    required String bookId,
   }) {
     final result = <MonthlyStatementSummary>[];
     for (var month = 1; month <= 12; month++) {
       final start = DateTime(period.start.year, month);
       final end = DateTime(period.start.year, month + 1);
       for (final currency in currencies) {
+        final currencyTransactions = transactions
+            .where(
+              (transaction) =>
+                  _currencyFor(transaction, accountByName, baseCurrency) ==
+                  currency,
+            )
+            .toList(growable: false);
         final summary = FinancialSummary.forPeriod(
-          transactions: transactions.where(
-            (transaction) =>
-                _currencyFor(transaction, accountByName, baseCurrency) ==
-                currency,
-          ),
+          transactions: currencyTransactions,
           periodStart: start,
           periodEndExclusive: end,
           tithePolicy: tithePolicy ?? TithePolicy.defaultPolicy,
           transferLinks: transferLinks,
         );
+        final tithePaid = TitheSummaryCalculator()
+            .forPeriod(
+              bookId: bookId,
+              transactions: currencyTransactions,
+              transferLinks: transferLinks,
+              start: start,
+              endExclusive: end,
+            )
+            .paid;
         result.add(
           MonthlyStatementSummary(
             month: start,
@@ -317,6 +346,7 @@ class FinancialStatementGenerator {
             income: summary.periodIncome,
             expense: summary.periodExpenses,
             tithe: summary.periodTithe,
+            tithePaid: tithePaid,
           ),
         );
       }

@@ -67,6 +67,7 @@ class CurrencyStatementSummary {
     required this.income,
     required this.expense,
     required this.tithe,
+    this.tithePaid = 0,
     required this.transfersIn,
     required this.transfersOut,
   });
@@ -77,11 +78,14 @@ class CurrencyStatementSummary {
   final int income;
   final int expense;
   final int tithe;
+  final int tithePaid;
   final int transfersIn;
   final int transfersOut;
 
   int get netCashFlow => income - expense;
   int get transferNet => transfersIn - transfersOut;
+  int get titheDue => tithe;
+  int get titheBalance => titheDue - tithePaid;
 }
 
 class AccountStatementSummary {
@@ -157,6 +161,7 @@ class MonthlyStatementSummary {
     required this.income,
     required this.expense,
     required this.tithe,
+    this.tithePaid = 0,
   });
 
   final DateTime month;
@@ -164,8 +169,11 @@ class MonthlyStatementSummary {
   final int income;
   final int expense;
   final int tithe;
+  final int tithePaid;
 
   int get netCashFlow => income - expense;
+  int get titheDue => tithe;
+  int get titheBalance => titheDue - tithePaid;
 }
 
 class StatementTransactionRow {

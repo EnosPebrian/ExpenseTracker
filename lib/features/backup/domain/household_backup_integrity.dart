@@ -1,5 +1,7 @@
 import 'package:uuid/uuid.dart';
 
+import '../../../core/master_data/system_category.dart';
+
 import '../../analytics/domain/financial_summary.dart';
 import '../../assets/domain/entities/asset_definition.dart';
 import '../../assets/domain/entities/asset_market_price.dart';
@@ -570,7 +572,19 @@ class HouseholdBackupIntegrity {
 
     final memberIds = ids('members');
     final accountIds = ids('accounts');
-    final categoryIds = ids('categories');
+    final oldBookId = oldBook['id'] as String;
+    final categoryIds = {
+      for (final record in source['categories'] ?? const [])
+        record['id'] as String:
+            SystemCategoryIds.remapForHousehold(
+                  sourceBookId: oldBookId,
+                  destinationBookId: newBookId,
+                  categoryId: record['id'] as String,
+                ) ==
+                SystemCategoryIds.tithe(newBookId)
+            ? SystemCategoryIds.tithe(newBookId)
+            : uuid.v4(),
+    };
     final projectIds = ids('projects');
     final transactionIds = ids('transactions');
     final transferLinkIds = ids('transfer_links');

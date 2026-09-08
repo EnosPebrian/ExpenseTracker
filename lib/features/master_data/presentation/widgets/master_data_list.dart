@@ -10,6 +10,14 @@ typedef MasterDataSaveCallback =
       String? previousName,
       String? categoryType,
     });
+typedef MasterDataSaveByIdCallback =
+    Future<void> Function({
+      required String entity,
+      required String name,
+      required String previousId,
+      String? previousName,
+      String? categoryType,
+    });
 
 class MasterDataList extends StatefulWidget {
   const MasterDataList({
@@ -20,7 +28,10 @@ class MasterDataList extends StatefulWidget {
     required this.itemLabel,
     required this.entity,
     required this.onSave,
+    this.onSaveById,
     this.categoryType,
+    this.itemIds = const [],
+    this.protectedItemIds = const {},
   });
 
   final String title;
@@ -29,7 +40,10 @@ class MasterDataList extends StatefulWidget {
   final String entity;
   final String? categoryType;
   final List<String> items;
+  final List<String?> itemIds;
+  final Set<String> protectedItemIds;
   final MasterDataSaveCallback onSave;
+  final MasterDataSaveByIdCallback? onSaveById;
 
   @override
   State<MasterDataList> createState() => _MasterDataListState();
@@ -46,6 +60,11 @@ class _MasterDataListState extends State<MasterDataList> {
 
   Future<void> _editItem([int? index]) async {
     if (_saving) {
+      return;
+    }
+    if (index != null &&
+        index < widget.itemIds.length &&
+        widget.protectedItemIds.contains(widget.itemIds[index])) {
       return;
     }
 
@@ -125,12 +144,25 @@ class _MasterDataListState extends State<MasterDataList> {
     });
 
     try {
-      await widget.onSave(
-        entity: widget.entity,
-        name: normalizedName,
-        previousName: previousName,
-        categoryType: widget.categoryType,
-      );
+      final previousId = index == null || index >= widget.itemIds.length
+          ? null
+          : widget.itemIds[index];
+      if (previousId != null && widget.onSaveById != null) {
+        await widget.onSaveById!(
+          entity: widget.entity,
+          name: normalizedName,
+          previousName: previousName,
+          previousId: previousId,
+          categoryType: widget.categoryType,
+        );
+      } else {
+        await widget.onSave(
+          entity: widget.entity,
+          name: normalizedName,
+          previousName: previousName,
+          categoryType: widget.categoryType,
+        );
+      }
 
       if (!mounted) {
         return;
@@ -187,43 +219,89 @@ class _MasterDataListState extends State<MasterDataList> {
             ],
             const SizedBox(height: 16),
             for (var index = 0; index < widget.items.length; index++)
-              InkWell(
-                onTap: _saving
-                    ? null
-                    : () {
-                        _editItem(index);
-                      },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 9),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1EEFF),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.label_outline,
-                          color: violet,
-                          size: 15,
-                        ),
-                      ),
-                      const SizedBox(width: 11),
-                      Expanded(
-                        child: Text(
-                          widget.items[index],
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
+              Builder(
+                builder: (context) {
+                  final protected =
+                      index < widget.itemIds.length &&
+                      widget.protectedItemIds.contains(widget.itemIds[index]);
+                  return InkWell(
+                    onTap: _saving || protected
+                        ? null
+                        : () {
+                            _editItem(index);
+                          },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1EEFF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.label_outline,
+                              color: violet,
+                              size: 15,
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 11),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    widget.items[index],
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                if (protected) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    key: const Key('system-category-badge'),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 7,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF1EEFF),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: const Text(
+                                      'System',
+                                      style: TextStyle(
+                                        color: violet,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (!protected)
+                            const Icon(
+                              Icons.edit_outlined,
+                              color: muted,
+                              size: 16,
+                            )
+                          else
+                            const Icon(
+                              Icons.lock_outline,
+                              color: muted,
+                              size: 16,
+                            ),
+                        ],
                       ),
-                      const Icon(Icons.edit_outlined, color: muted, size: 16),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               ),
           ],
         ),

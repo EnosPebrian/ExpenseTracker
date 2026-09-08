@@ -9,12 +9,20 @@ class CategoriesPage extends StatelessWidget {
     required this.expenseCategories,
     required this.incomeCategories,
     required this.onSave,
+    this.onSaveById,
+    this.expenseCategoryIds = const [],
+    this.incomeCategoryIds = const [],
+    this.protectedCategoryIds = const {},
     this.onManageImportRules,
   });
 
   final List<String> expenseCategories;
   final List<String> incomeCategories;
+  final List<String?> expenseCategoryIds;
+  final List<String?> incomeCategoryIds;
+  final Set<String> protectedCategoryIds;
   final MasterDataSaveCallback onSave;
+  final MasterDataSaveByIdCallback? onSaveById;
   final VoidCallback? onManageImportRules;
 
   @override
@@ -43,19 +51,25 @@ class CategoriesPage extends StatelessWidget {
               title: 'Expense categories',
               subtitle: '${expenseCategories.length} default categories',
               items: expenseCategories,
+              itemIds: expenseCategoryIds,
+              protectedItemIds: protectedCategoryIds,
               itemLabel: 'expense category',
               entity: 'categories',
               categoryType: 'expense',
               onSave: onSave,
+              onSaveById: onSaveById,
             ),
             right: MasterDataList(
               title: 'Income categories',
               subtitle: '${incomeCategories.length} default categories',
               items: incomeCategories,
+              itemIds: incomeCategoryIds,
+              protectedItemIds: protectedCategoryIds,
               itemLabel: 'income category',
               entity: 'categories',
               categoryType: 'income',
               onSave: onSave,
+              onSaveById: onSaveById,
             ),
           ),
         ],

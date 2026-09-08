@@ -1,5 +1,16 @@
 # Cloud Durability and New-Device Bootstrap
 
+## BETA-08L System Tithe convergence
+
+Bootstrap ensures the deterministic System Tithe category after selecting the
+active household and before master-data loading. Local-only households require
+no login. In linked households a missing row follows ordinary category
+persistence/outbox sync; a fresh device that already downloaded it performs a
+no-op ensure with no duplicate outbox. Payments are ordinary transactions, so
+offline save, reconnect, cursor pull, conflict behavior, and new-device history
+use BETA-08K unchanged. Summaries recompute from the refreshed controller
+snapshot; there is no Tithe-specific sync protocol.
+
 ## BETA-08L0 category continuity
 
 Initial upload/download and transaction snapshots now retain nullable category

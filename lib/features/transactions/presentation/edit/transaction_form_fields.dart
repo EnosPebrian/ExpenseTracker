@@ -30,6 +30,8 @@ class TransactionFormFields extends StatelessWidget {
     required this.onProjectChanged,
     required this.onDateChanged,
     required this.onTimeChanged,
+    this.typeLocked = false,
+    this.categoryLocked = false,
   });
 
   final TransactionType type;
@@ -55,6 +57,8 @@ class TransactionFormFields extends StatelessWidget {
   final ValueChanged<String> onProjectChanged;
   final ValueChanged<DateTime> onDateChanged;
   final ValueChanged<TimeOfDay> onTimeChanged;
+  final bool typeLocked;
+  final bool categoryLocked;
 
   bool get _movesBetweenAccounts =>
       type == TransactionType.transfer ||
@@ -86,7 +90,9 @@ class TransactionFormFields extends StatelessWidget {
             ),
           ],
           selected: {type},
-          onSelectionChanged: (values) => onTypeChanged(values.first),
+          onSelectionChanged: typeLocked
+              ? null
+              : (values) => onTypeChanged(values.first),
         ),
         const SizedBox(height: 14),
         TextField(
@@ -117,12 +123,22 @@ class TransactionFormFields extends StatelessWidget {
         if (type == TransactionType.expense ||
             type == TransactionType.income) ...[
           const SizedBox(height: 12),
-          SearchableSelect(
-            label: 'Category',
-            value: category,
-            options: categoryOptions,
-            onChanged: onCategoryChanged,
-          ),
+          if (categoryLocked)
+            InputDecorator(
+              key: const Key('locked-tithe-category'),
+              decoration: const InputDecoration(
+                labelText: 'Category',
+                suffixIcon: Icon(Icons.lock_outline),
+              ),
+              child: Text(category),
+            )
+          else
+            SearchableSelect(
+              label: 'Category',
+              value: category,
+              options: categoryOptions,
+              onChanged: onCategoryChanged,
+            ),
         ],
         const SizedBox(height: 12),
         SearchableSelect(

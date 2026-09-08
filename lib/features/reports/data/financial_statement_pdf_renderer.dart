@@ -262,7 +262,13 @@ class FinancialStatementPdfRenderer {
             _metric('Income', summary.income, summary.currencyCode),
             _metric('Expense', summary.expense, summary.currencyCode),
             _metric('Net cash flow', summary.netCashFlow, summary.currencyCode),
-            _metric('Tithe', summary.tithe, summary.currencyCode),
+            _metric('Tithe due', summary.titheDue, summary.currencyCode),
+            _metric('Tithe paid', summary.tithePaid, summary.currencyCode),
+            _metric(
+              'Tithe balance',
+              summary.titheBalance,
+              summary.currencyCode,
+            ),
             _metric('Transfers in', summary.transfersIn, summary.currencyCode),
             _metric(
               'Transfers out',
@@ -326,7 +332,9 @@ class FinancialStatementPdfRenderer {
       'Income',
       'Expense',
       'Net cash flow',
-      'Tithe',
+      'Tithe due',
+      'Tithe paid',
+      'Tithe balance',
     ],
     rows: rows
         .map(
@@ -336,7 +344,9 @@ class FinancialStatementPdfRenderer {
             _number(row.income),
             _number(row.expense),
             _number(row.netCashFlow),
-            _number(row.tithe),
+            _number(row.titheDue),
+            _number(row.tithePaid),
+            _number(row.titheBalance),
           ],
         )
         .toList(),

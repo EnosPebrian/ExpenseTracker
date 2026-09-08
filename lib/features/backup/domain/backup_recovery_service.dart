@@ -1,4 +1,5 @@
 import '../../transactions/domain/services/transaction_duplicate_detector.dart';
+import '../../../core/master_data/system_category.dart';
 import 'backup_models.dart';
 import 'backup_recovery_models.dart';
 import 'household_backup_integrity.dart';
@@ -50,14 +51,7 @@ class BackupRecoveryService {
     required DecodedBackup backup,
     required String activeBookId,
   }) async {
-    if (backup.manifest.bookId != activeBookId) {
-      return _blocked(
-        backup,
-        const BackupRecoveryCloudState(linked: false, ready: false),
-        'This backup belongs to a different household. Use Restore as new household instead.',
-      );
-    }
-    final incoming = HouseholdBackupIntegrity.sanitize(backup.snapshot);
+    var incoming = HouseholdBackupIntegrity.sanitize(backup.snapshot);
     try {
       HouseholdBackupIntegrity.validate(incoming);
     } on BackupValidationException catch (error) {
@@ -70,6 +64,28 @@ class BackupRecoveryService {
     final local = HouseholdBackupIntegrity.sanitize(
       await store.recoverySnapshot(activeBookId),
     );
+    if (backup.manifest.bookId != activeBookId) {
+      try {
+        incoming = _projectCrossHouseholdSystemTitheRecovery(
+          incoming: incoming,
+          local: local,
+          sourceBookId: backup.manifest.bookId,
+          destinationBookId: activeBookId,
+        );
+      } on BackupValidationException catch (error) {
+        return _blocked(
+          backup,
+          const BackupRecoveryCloudState(linked: false, ready: false),
+          error.message,
+        );
+      } on FormatException {
+        return _blocked(
+          backup,
+          const BackupRecoveryCloudState(linked: false, ready: false),
+          'This backup belongs to a different household. Use Restore as new household instead.',
+        );
+      }
+    }
     final cloudState = await store.recoveryCloudState(activeBookId);
     Map<String, List<Map<String, Object?>>>? remote;
     String? remoteError;
@@ -109,6 +125,71 @@ class BackupRecoveryService {
       candidates: candidates,
       blockingErrors: [?remoteError],
     );
+  }
+
+  static Map<String, List<Map<String, Object?>>>
+  _projectCrossHouseholdSystemTitheRecovery({
+    required Map<String, List<Map<String, Object?>>> incoming,
+    required Map<String, List<Map<String, Object?>>> local,
+    required String sourceBookId,
+    required String destinationBookId,
+  }) {
+    final definition = SystemCategoryDefinition.tithe;
+    final sourceCategoryId = definition.idFor(sourceBookId);
+    final destinationCategoryId = definition.idFor(destinationBookId);
+    final sourceCategory = (incoming['categories'] ?? const [])
+        .where((row) => row['id'] == sourceCategoryId)
+        .firstOrNull;
+    final payments = (incoming['transactions'] ?? const [])
+        .where((row) => row['category_id'] == sourceCategoryId)
+        .toList(growable: false);
+    if (sourceCategory == null ||
+        !definition.isValidRecord(sourceCategory, sourceBookId)) {
+      throw const BackupValidationException(
+        'The source System Tithe category is missing or invalid.',
+      );
+    }
+    if (payments.isEmpty) {
+      throw const BackupValidationException(
+        'Cross-household selective recovery supports System Tithe payments only.',
+      );
+    }
+    final currentCategory = (local['categories'] ?? const [])
+        .where((row) => row['id'] == destinationCategoryId)
+        .firstOrNull;
+    if (currentCategory != null &&
+        !definition.isValidRecord(currentCategory, destinationBookId)) {
+      throw const BackupValidationException(
+        'The destination System Tithe category is invalid.',
+      );
+    }
+    return {
+      for (final key in portableBackupEntityKeys)
+        key: switch (key) {
+          'categories' => [
+            currentCategory ??
+                {
+                  ...sourceCategory,
+                  'id': destinationCategoryId,
+                  'book_id': destinationBookId,
+                  'name': definition.name,
+                  'category_type': definition.categoryType,
+                  'deleted_at': null,
+                },
+          ],
+          'transactions' => [
+            for (final payment in payments)
+              {
+                ...payment,
+                'book_id': destinationBookId,
+                'category_id': destinationCategoryId,
+                // A member identity cannot cross a household boundary.
+                'entered_by_member_id': null,
+              },
+          ],
+          _ => const <Map<String, Object?>>[],
+        },
+    };
   }
 
   BackupRecoveryPlan buildPlan(

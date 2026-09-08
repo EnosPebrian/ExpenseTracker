@@ -1,5 +1,14 @@
 # Data Health & Sync Diagnostics
 
+## BETA-08L System Tithe diagnostics
+
+Expected initialized households receive one additional read-only check. Missing
+canonical identity reports `system_category_tithe_missing`; wrong name, type,
+household, or live state at that identity reports
+`system_category_tithe_invalid`. Random-ID categories named Tithe are ordinary,
+not corruption. Health Check never creates, repairs, renames, or synchronizes a
+category. SQLite remains 26 and backup remains v5.
+
 ## BETA-08L0 category reference checks
 
 Null transaction category IDs are valid legacy/unresolved data, regardless of
@@ -87,5 +96,4 @@ owner acceptance. Compare local structural health separately from temporary
 cloud status. Any critical result should be preserved and investigated; this
 milestone intentionally provides no automatic repair.
 
-SQLite remains v25, backup remains v4, and BETA-08J adds no Supabase/SQL
-change.
+SQLite remains 26, backup remains v5, and BETA-08L adds no Supabase/SQL change.

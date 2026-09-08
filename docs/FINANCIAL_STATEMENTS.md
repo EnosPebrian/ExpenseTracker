@@ -1,5 +1,14 @@
 # Financial Statements
 
+## BETA-08L Tithe section
+
+Monthly and annual statement summaries show Tithe **Due**, **Paid**, and
+**Balance** per currency. Due still delegates to `TithePolicy`; Paid uses only
+the exact deterministic System Tithe `category_id`. The same payment remains a
+normal expense/account movement, so the informational Tithe section never adds
+Paid to total expenses a second time. Annual Paid is the sum of the
+currency-separated monthly values.
+
 Pilgrim generates financial statements on demand from the local household
 database. Statements are derived exports: they are not stored, synchronized,
 or added to encrypted backup payloads.
@@ -31,7 +40,8 @@ running balance is deterministic.
 - Legacy single-row transfers remain visible under the established legacy
   policy. Pilgrim does not invent a direction or migrate them while exporting.
 - Budget actuals use the existing monthly budget calculator.
-- Tithe uses the existing policy and period calculation.
+- Tithe Due uses the existing policy; Tithe Paid uses exact System Tithe
+  category identity.
 - Asset conversions use their existing cash effect and are not ordinary
   household income or expense.
 - Deleted records are excluded. Historical transaction category/account
@@ -69,4 +79,3 @@ Generation and PDF rendering require no network call. When a linked household
 has pending or incomplete local synchronization, the statement warns that it
 reflects the records currently available on this device. Pilgrim does not
 silently claim that such a statement is a complete cloud snapshot.
-

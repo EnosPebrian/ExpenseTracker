@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:uuid/uuid.dart';
 
+import '../master_data/system_category.dart';
 import 'household_schema_native.dart';
 import 'import_review_schema_native.dart';
 import 'backup_schema_native.dart';
@@ -3035,6 +3036,7 @@ asset_symbol TEXT,
     String name, {
     String? previousName,
     String? categoryType,
+    String? recordId,
   }) async {
     if (entity == 'accounts') {
       final existing = await getAccounts();
@@ -3084,22 +3086,38 @@ asset_symbol TEXT,
             'Category type is required when renaming a category.',
           );
         }
-        final where = isCategory
+        final where = recordId != null
+            ? 'id = ?'
+            : isCategory
             ? '${_activeBookId == null ? '' : 'book_id = ? AND '}'
                   'name = ? AND deleted_at IS NULL AND category_type = ?'
             : '${_activeBookId == null ? '' : 'book_id = ? AND '}'
                   'name = ? AND deleted_at IS NULL';
-        final whereArgs = <Object?>[
-          if (_activeBookId != null) _activeBookId,
-          previousName,
-          if (isCategory) categoryType,
-        ];
+        final whereArgs = recordId != null
+            ? <Object?>[recordId]
+            : <Object?>[
+                if (_activeBookId != null) _activeBookId,
+                previousName,
+                if (isCategory) categoryType,
+              ];
         final existingRows = await txn.query(
           table,
           where: where,
           whereArgs: whereArgs,
           limit: 1,
         );
+        if (isCategory && existingRows.isNotEmpty) {
+          final existing = existingRows.first;
+          final bookId = existing['book_id'] as String?;
+          final id = existing['id'] as String?;
+          if (bookId != null && id != null) {
+            SystemCategoryProtection.rejectMutation(
+              bookId: bookId,
+              categoryId: id,
+              mutation: SystemCategoryMutation.rename,
+            );
+          }
+        }
         await txn.rawUpdate(
           'UPDATE $table SET name = ?, updated_at = ?, '
           "version = version + 1, sync_status = 'pending' WHERE $where",
@@ -3138,6 +3156,47 @@ asset_symbol TEXT,
       if (saved != null) await _enqueueSyncOperation(txn, entity, saved);
     });
     onSyncMutation?.call();
+  }
+
+  Future<bool> ensureSystemCategories(String bookId) async {
+    var created = false;
+    await db.transaction((txn) async {
+      for (final definition in SystemCategoryDefinition.values) {
+        final id = definition.idFor(bookId);
+        final rows = await txn.query(
+          'categories',
+          where: 'id = ?',
+          whereArgs: [id],
+          limit: 1,
+        );
+        if (rows.isNotEmpty) {
+          if (!definition.isValidRecord(rows.single, bookId)) {
+            throw SystemCategoryIntegrityException(
+              'The canonical ${definition.name} category is malformed.',
+            );
+          }
+          continue;
+        }
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final record = <String, Object?>{
+          'id': id,
+          'book_id': bookId,
+          'name': definition.name,
+          'category_type': definition.categoryType,
+          'created_at': now,
+          'updated_at': now,
+          'deleted_at': null,
+          'version': 1,
+          'device_id': 'local-device',
+          'sync_status': 'pending',
+        };
+        await txn.insert('categories', record);
+        await _enqueueSyncOperation(txn, 'categories', record);
+        created = true;
+      }
+    });
+    if (created) onSyncMutation?.call();
+    return created;
   }
 
   Future<void> ensureMasterSeeds(

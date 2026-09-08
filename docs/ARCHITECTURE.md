@@ -1,5 +1,17 @@
 # Pilgrim Tracker Architecture
 
+## BETA-08L System Tithe and payment derivation
+
+`SystemCategoryDefinition` centralizes the deterministic
+`UUIDv5(book_id, "system-category:tithe")` identity, canonical semantic shape,
+and client mutation policy. Bootstrap performs an idempotent local ensure;
+linked creation uses the ordinary category outbox. `TitheSummaryCalculator` is
+a pure, bounded pass over transaction/controller snapshots. Due delegates to
+`TithePolicy`; Paid is derived only from live expense transactions with the
+exact canonical category ID. No widget owns financial math and no separate
+payment persistence exists. Base-currency page summaries do not mix foreign
+account currencies; statements remain currency-separated.
+
 ## BETA-08L0A System Tithe server invariant
 
 The hosted database freezes System Tithe identity as

@@ -1,5 +1,20 @@
 # Known Release Limitations
 
+## BETA-08L limitations
+
+- Owner runtime acceptance on physical Windows and Android devices is **NOT
+  RUN**.
+- The main Tithe summary follows the household base-currency model and excludes
+  foreign-currency accounts; there is no FX conversion or combined-currency
+  balance. Statements remain currency-separated.
+- Historical transactions with null category identity or only a Tithe text
+  snapshot do not count as Paid.
+- General merge restore between independently modified households remains
+  unsupported. Cross-household selective recovery is limited to canonical
+  System-Tithe payments with existing valid dependencies.
+- Health Check reports missing/invalid canonical state but intentionally does
+  not repair it.
+
 ## BETA-08L0A System Tithe guard
 
 The mixed-client server guard is deployed, but it deliberately creates no

@@ -1,5 +1,16 @@
 # Pilgrim Tracker Product Specification
 
+## BETA-08L Tithe tracking
+
+Tithe Due is an obligation calculated by the existing policy. Tithe Paid is
+actual cash movement: ordinary live expense transactions assigned to the exact
+household System Tithe category ID. The Tithe page shows current cumulative
+Outstanding/Fully paid/Advance status, month and year-to-date Due/Paid/Balance,
+recent payments, and a locked-category **Record Tithe Payment** flow. Custom
+same-name categories are preserved and do not count. Payments affect accounts,
+cash flow, budgets, imports, sync, backup, edit, and deletion exactly as normal
+expenses; they are never double-counted.
+
 ## Category identity foundation and future portable editing
 
 BETA-08L0 separates nullable authoritative transaction `categoryId` from historical

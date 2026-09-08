@@ -5,6 +5,7 @@ import 'package:pilgrim_tracker/features/dashboard/presentation/screens/dashboar
 import 'package:pilgrim_tracker/features/reports/presentation/screens/reports_page.dart';
 import 'package:pilgrim_tracker/features/tithe/presentation/screens/tithe_page.dart';
 import 'package:pilgrim_tracker/features/tithe/domain/tithe_policy.dart';
+import 'package:pilgrim_tracker/features/tithe/domain/tithe_summary.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
 import 'package:pilgrim_tracker/features/analytics/domain/financial_period.dart';
 
@@ -90,12 +91,37 @@ void main() {
   testWidgets('Tithe displays calculated monthly tithe', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: TithePage(summary: _summary())),
+        home: Scaffold(
+          body: TithePage(
+            summary: TitheSummary(
+              bookId: 'book',
+              currencyCode: 'IDR',
+              asOf: DateTime(2026, 7, 20),
+              currentMonth: const TithePeriodSummary(
+                due: 1300000,
+                paid: 0,
+                paymentCount: 0,
+              ),
+              yearToDate: const TithePeriodSummary(
+                due: 1300000,
+                paid: 0,
+                paymentCount: 0,
+              ),
+              cumulative: const TithePeriodSummary(
+                due: 1300000,
+                paid: 0,
+                paymentCount: 0,
+              ),
+              recentPayments: const [],
+            ),
+            onRecordPayment: () {},
+          ),
+        ),
       ),
     );
 
-    expect(find.text('Rp 1.300.000'), findsOneWidget);
-    expect(find.text('Rp 10.000.000'), findsOneWidget);
-    expect(find.text('13.0%'), findsWidgets);
+    expect(find.text('Rp 1.300.000'), findsWidgets);
+    expect(find.text('Outstanding'), findsOneWidget);
+    expect(find.text('Record Tithe Payment'), findsOneWidget);
   });
 }

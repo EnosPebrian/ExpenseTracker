@@ -367,7 +367,13 @@ class _CurrencySummaryCard extends StatelessWidget {
             _Metric('Income', summary.income, summary.currencyCode),
             _Metric('Expense', summary.expense, summary.currencyCode),
             _Metric('Net cash flow', summary.netCashFlow, summary.currencyCode),
-            _Metric('Tithe', summary.tithe, summary.currencyCode),
+            _Metric('Tithe due', summary.titheDue, summary.currencyCode),
+            _Metric('Tithe paid', summary.tithePaid, summary.currencyCode),
+            _Metric(
+              'Tithe balance',
+              summary.titheBalance,
+              summary.currencyCode,
+            ),
             _Metric('Transfers in', summary.transfersIn, summary.currencyCode),
             _Metric(
               'Transfers out',
@@ -489,7 +495,9 @@ class _MonthlySummaryTable extends StatelessWidget {
         DataColumn(label: Text('Income')),
         DataColumn(label: Text('Expense')),
         DataColumn(label: Text('Net')),
-        DataColumn(label: Text('Tithe')),
+        DataColumn(label: Text('Tithe due')),
+        DataColumn(label: Text('Tithe paid')),
+        DataColumn(label: Text('Tithe balance')),
       ],
       rows: [
         for (final row in rows)
@@ -500,7 +508,9 @@ class _MonthlySummaryTable extends StatelessWidget {
               DataCell(Text(money(row.income))),
               DataCell(Text(money(row.expense))),
               DataCell(Text(money(row.netCashFlow))),
-              DataCell(Text(money(row.tithe))),
+              DataCell(Text(money(row.titheDue))),
+              DataCell(Text(money(row.tithePaid))),
+              DataCell(Text(money(row.titheBalance))),
             ],
           ),
       ],

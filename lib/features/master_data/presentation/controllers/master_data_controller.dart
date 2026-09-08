@@ -10,6 +10,14 @@ typedef MasterDataPersist =
       String? previousName,
       String? categoryType,
     });
+typedef MasterDataPersistById =
+    Future<void> Function({
+      required String entity,
+      required String name,
+      required String recordId,
+      String? previousName,
+      String? categoryType,
+    });
 
 typedef AccountPersist = Future<void> Function(Account account);
 typedef ProjectRecordsLoader = Future<List<FinancialProject>> Function();
@@ -18,12 +26,14 @@ typedef CategoryRecordsLoader = Future<List<Map<String, Object?>>> Function();
 class MasterDataController extends ChangeNotifier {
   MasterDataController({
     required this.persist,
+    this.persistById,
     this.persistAccount,
     this.loadProjectRecords,
     this.loadCategoryRecords,
   });
 
   final MasterDataPersist persist;
+  final MasterDataPersistById? persistById;
   final AccountPersist? persistAccount;
   final ProjectRecordsLoader? loadProjectRecords;
   final CategoryRecordsLoader? loadCategoryRecords;
@@ -34,6 +44,8 @@ class MasterDataController extends ChangeNotifier {
   final _incomeCategories = <String>[];
   final _expenseCategoryIdsByName = <String, String>{};
   final _incomeCategoryIdsByName = <String, String>{};
+  final _expenseCategoryIds = <String?>[];
+  final _incomeCategoryIds = <String?>[];
   final _projects = <String>[];
   final _projectIdsByName = <String, String>{};
 
@@ -50,6 +62,10 @@ class MasterDataController extends ChangeNotifier {
       Map<String, String>.unmodifiable(_expenseCategoryIdsByName);
   Map<String, String> get incomeCategoryIdsByName =>
       Map<String, String>.unmodifiable(_incomeCategoryIdsByName);
+  List<String?> get expenseCategoryIds =>
+      List<String?>.unmodifiable(_expenseCategoryIds);
+  List<String?> get incomeCategoryIds =>
+      List<String?>.unmodifiable(_incomeCategoryIds);
 
   List<String> get projects => List<String>.unmodifiable(_projects);
   Map<String, String> get projectIdsByName =>
@@ -62,6 +78,7 @@ class MasterDataController extends ChangeNotifier {
     required Iterable<String> incomeCategories,
     Map<String, String> expenseCategoryIdsByName = const {},
     Map<String, String> incomeCategoryIdsByName = const {},
+    Iterable<Map<String, Object?>>? categoryRecords,
     required Iterable<String> projects,
     Iterable<FinancialProject>? projectRecords,
   }) {
@@ -86,6 +103,20 @@ class MasterDataController extends ChangeNotifier {
     _incomeCategoryIdsByName
       ..clear()
       ..addAll(incomeCategoryIdsByName);
+    if (categoryRecords != null) {
+      _replaceCategoryRecords(categoryRecords);
+    } else {
+      _expenseCategoryIds
+        ..clear()
+        ..addAll(
+          _expenseCategories.map((name) => _expenseCategoryIdsByName[name]),
+        );
+      _incomeCategoryIds
+        ..clear()
+        ..addAll(
+          _incomeCategories.map((name) => _incomeCategoryIdsByName[name]),
+        );
+    }
 
     _projects
       ..clear()
@@ -99,6 +130,7 @@ class MasterDataController extends ChangeNotifier {
     required String entity,
     required String name,
     String? previousName,
+    String? previousId,
     String? categoryType,
   }) async {
     final normalizedName = name.trim();
@@ -144,12 +176,22 @@ class MasterDataController extends ChangeNotifier {
       return;
     }
 
-    await persist(
-      entity: entity,
-      name: normalizedName,
-      previousName: previousName,
-      categoryType: categoryType,
-    );
+    if (previousId != null && persistById != null) {
+      await persistById!(
+        entity: entity,
+        name: normalizedName,
+        previousName: previousName,
+        recordId: previousId,
+        categoryType: categoryType,
+      );
+    } else {
+      await persist(
+        entity: entity,
+        name: normalizedName,
+        previousName: previousName,
+        categoryType: categoryType,
+      );
+    }
 
     if (entity == 'categories' && loadCategoryRecords != null) {
       _replaceCategoryRecords(await loadCategoryRecords!());
@@ -198,6 +240,12 @@ class MasterDataController extends ChangeNotifier {
     _incomeCategories
       ..clear()
       ..addAll(incomes.map((record) => record['name'] as String));
+    _expenseCategoryIds
+      ..clear()
+      ..addAll(expenses.map((record) => record['id'] as String?));
+    _incomeCategoryIds
+      ..clear()
+      ..addAll(incomes.map((record) => record['id'] as String?));
     _expenseCategoryIdsByName
       ..clear()
       ..addEntries(

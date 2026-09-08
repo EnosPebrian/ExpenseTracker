@@ -1,5 +1,16 @@
 # Pilgrim Tracker Progress
 
+## BETA-08L Fixed System Tithe & Actual Payment Tracking — 2026-09-08
+
+Implemented deterministic System Tithe category lifecycle, exact-ID payment
+classification, cumulative Due/Paid/Balance with advance support, responsive
+Tithe UX and locked ordinary-expense entry, statement integration without
+double counting, v5 clone/selective-recovery identity remapping, and read-only
+health diagnostics. SQLite remains 26 and backup remains v5. No SQL, Supabase,
+or hosted deployment changed; the deployed BETA-08L0A guard is reused. Owner
+acceptance is **NOT RUN**. Final engineering gate results are recorded in
+`CHECKPOINT_BETA08L_COMPLETE.md`.
+
 ## BETA-08L0A System Tithe Server Guard PASS — 2026-09-08
 
 Deployed one ordered migration to `jylclfebdeaywfdwabph` after a fresh external

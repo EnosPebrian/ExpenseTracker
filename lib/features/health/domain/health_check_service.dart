@@ -8,6 +8,7 @@ import '../../transactions/domain/entities/transaction.dart';
 import '../../transactions/domain/entities/transaction_import_rule.dart';
 import '../../transactions/domain/services/internal_transfer_integrity_validator.dart';
 import 'health_check_models.dart';
+import 'system_tithe_health_check.dart';
 
 abstract interface class HealthCheckDataSource {
   Future<HealthCheckSnapshot> load();
@@ -152,6 +153,10 @@ class HealthCheckService {
           summary: foreignRows == 0
               ? 'No cross-household records were found.'
               : '$foreignRows record${foreignRows == 1 ? '' : 's'} cross the household boundary.',
+        ),
+        const SystemTitheHealthCheck().evaluate(
+          bookId: snapshot.bookId,
+          categories: snapshot.rows('categories'),
         ),
       ],
     );

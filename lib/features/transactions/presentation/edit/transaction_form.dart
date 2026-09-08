@@ -62,11 +62,19 @@ class TransactionForm extends StatefulWidget {
     required this.transaction,
     required this.options,
     required this.onSubmit,
+    this.title = 'Edit transaction',
+    this.submitLabel = 'Save changes',
+    this.lockType = false,
+    this.lockedCategoryId,
   });
 
   final Transaction transaction;
   final TransactionFormOptions options;
   final Future<void> Function(Transaction) onSubmit;
+  final String title;
+  final String submitLabel;
+  final bool lockType;
+  final String? lockedCategoryId;
 
   @override
   State<TransactionForm> createState() => _TransactionFormState();
@@ -96,12 +104,12 @@ class _TransactionFormState extends State<TransactionForm> {
     super.initState();
     final transaction = widget.transaction;
     final movement = transaction.account.split(' -> ');
-    type = transaction.type;
+    type = widget.lockType ? TransactionType.expense : transaction.type;
     account = movement.first;
     destinationAccount = movement.length > 1
         ? movement.sublist(1).join(' -> ')
         : _firstDifferent(account);
-    category = transaction.category;
+    category = widget.lockedCategoryId == null ? transaction.category : 'Tithe';
     project = _projectName(transaction.projectId);
     date = transaction.date;
     time = TimeOfDay.fromDateTime(transaction.date);
@@ -294,7 +302,7 @@ class _TransactionFormState extends State<TransactionForm> {
     return PopScope(
       canPop: !saving,
       child: AlertDialog(
-        title: const Text('Edit transaction'),
+        title: Text(widget.title),
         content: SizedBox(
           width: 520,
           child: SingleChildScrollView(
@@ -327,6 +335,8 @@ class _TransactionFormState extends State<TransactionForm> {
                     ...widget.options.projects,
                   ], project),
                   onTypeChanged: _setType,
+                  typeLocked: widget.lockType,
+                  categoryLocked: widget.lockedCategoryId != null,
                   onAccountChanged: (value) => setState(() => account = value),
                   onDestinationChanged: (value) =>
                       setState(() => destinationAccount = value),
@@ -355,7 +365,7 @@ class _TransactionFormState extends State<TransactionForm> {
           ),
           FilledButton(
             onPressed: saving ? null : _submit,
-            child: Text(saving ? 'Saving...' : 'Save changes'),
+            child: Text(saving ? 'Saving...' : widget.submitLabel),
           ),
         ],
       ),
@@ -363,6 +373,7 @@ class _TransactionFormState extends State<TransactionForm> {
   }
 
   String? _selectedCategoryId(Transaction original) {
+    if (widget.lockedCategoryId case final locked?) return locked;
     if (type != TransactionType.expense && type != TransactionType.income) {
       return null;
     }

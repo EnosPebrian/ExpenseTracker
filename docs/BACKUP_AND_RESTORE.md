@@ -1,5 +1,18 @@
 # Household Backup and Restore
 
+## BETA-08L System Tithe portability
+
+Backup remains v5 with no new payload: the deterministic category and ordinary
+transactions are already covered. Exact restore preserves identity. Clone
+derives the destination household's canonical System Tithe ID and remaps its
+payment references instead of using a random category ID. Selective recovery
+across households remains blocked generally, with one narrow safe projection
+for System-Tithe payments: source canonical ID becomes destination canonical
+ID, the destination category is included when missing, foreign member identity
+is cleared, dependencies are validated, and category plus payment commit in
+the existing atomic recovery boundary. Legacy text-only Tithe rows do not gain
+identity.
+
 ## Current format: v5 — BETA-08L0
 
 Transaction category identity is nullable and authoritative when present;

@@ -1,5 +1,16 @@
 # D10–D14 Roadmap
 
+## BETA-08L Fixed System Tithe & Actual Payment Tracking — 2026-09-08
+
+Implemented the client feature on the deployed BETA-08L0A identity guard.
+Every initialized household gets the deterministic protected expense category;
+actual Paid is derived from ordinary exact-category transactions while Due
+continues to use `TithePolicy`. The Tithe page, locked payment entry, statements,
+backup clone/recovery, sync lifecycle, and read-only health diagnostics share
+that identity. SQLite stays 26, backup stays v5, and no SQL/hosted rollout was
+needed. Owner acceptance is **NOT RUN**. BETA-08M may begin only after the final
+BETA-08L engineering gates pass; BETA-08N/N1 remain unimplemented.
+
 ## BETA-08L0A System Tithe server guard — 2026-09-08
 
 **PASS.** Hosted migration `20260907233238` freezes canonical System Tithe

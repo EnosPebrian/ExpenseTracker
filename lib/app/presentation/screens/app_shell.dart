@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/database/local_store.dart';
+import '../../../core/master_data/system_category.dart';
 import '../../../core/config/app_environment.dart';
 import '../../../core/design/app_colors.dart';
 import '../../../features/analytics/domain/financial_summary.dart';
@@ -60,7 +61,9 @@ import '../../../features/sync/presentation/controllers/sync_conflict_controller
 import '../../../features/sync/presentation/screens/conflict_review_screen.dart';
 import '../../../features/sync/presentation/controllers/initial_sync_controller.dart';
 import '../../../features/tithe/presentation/screens/tithe_page.dart';
+import '../../../features/tithe/presentation/screens/record_tithe_payment_screen.dart';
 import '../../../features/tithe/domain/tithe_policy.dart';
+import '../../../features/tithe/domain/tithe_summary.dart';
 import '../../../features/telegram_integration/domain/telegram_integration_repository.dart';
 import '../../../features/telegram_integration/presentation/screens/integrations_screen.dart';
 import '../../../features/transactions/domain/entities/transaction.dart';
@@ -127,6 +130,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   List<HouseholdMember> householdMembers = const [];
   String? activeMemberId;
   Set<String> currentSessionImportedTransactionIds = const {};
+  TitheSummary? titheSummary;
+  final titheSummaryCalculator = TitheSummaryCalculator();
 
   late FinancialPeriod dashboardPeriod;
 
@@ -262,6 +267,20 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             categoryType: categoryType,
           );
         },
+    persistById:
+        ({
+          required String entity,
+          required String name,
+          required String recordId,
+          String? previousName,
+          String? categoryType,
+        }) => store.saveMasterName(
+          entity,
+          name,
+          previousName: previousName,
+          recordId: recordId,
+          categoryType: categoryType,
+        ),
   );
 
   late final bootstrapService = AppBootstrapService(
@@ -277,7 +296,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
     dashboardPeriod = FinancialPeriod.thisMonth(DateTime.now());
 
-    transactionController.addListener(_onAppStateChanged);
+    transactionController.addListener(_onTransactionsChanged);
     masterDataController.addListener(_onAppStateChanged);
     assetDefinitionController.addListener(_onAppStateChanged);
     assetPriceController.addListener(_onAppStateChanged);
@@ -292,6 +311,30 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _onTransactionsChanged() {
+    _recalculateTitheSummary();
+    _onAppStateChanged();
+  }
+
+  void _recalculateTitheSummary() {
+    final book = financialBook;
+    if (book == null) {
+      titheSummary = null;
+      return;
+    }
+    titheSummary = titheSummaryCalculator.calculate(
+      bookId: book.id,
+      currencyCode: book.baseCurrencyCode,
+      transactions: transactionController.transactions,
+      transferLinks: transactionController.transferLinks,
+      asOf: DateTime.now(),
+      accountCurrencyByName: {
+        for (final account in masterDataController.accountRecords)
+          account.name: account.currencyCode,
+      },
+    );
   }
 
   void _onCloudStateChanged() {
@@ -342,6 +385,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       final categoryRows = allCategoryRows
           .where((row) => row['category_type'] == 'expense')
           .toList(growable: false);
+      final loadedTitheSummary = result.financialBook == null
+          ? null
+          : titheSummaryCalculator.calculate(
+              bookId: result.financialBook!.id,
+              currencyCode: result.financialBook!.baseCurrencyCode,
+              transactions: transactionController.transactions,
+              transferLinks: transactionController.transferLinks,
+              asOf: DateTime.now(),
+              accountCurrencyByName: {
+                for (final account in result.accountRecords)
+                  account.name: account.currencyCode,
+              },
+            );
       await monthlyBudgetController.load(
         bookId: result.financialBook?.id,
         categoryNames: {
@@ -380,6 +436,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             allCategoryRows,
             'income',
           ),
+          categoryRecords: allCategoryRows,
           projects: result.projects,
           projectRecords: result.projectRecords,
         );
@@ -387,6 +444,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         financialBook = result.financialBook;
         householdMembers = result.householdMembers;
         activeMemberId = result.session.activeMemberId;
+        titheSummary = loadedTitheSummary;
 
         bootstrapError = null;
         loading = false;
@@ -425,6 +483,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final categoryRows = allCategoryRows
         .where((row) => row['category_type'] == 'expense')
         .toList(growable: false);
+    final loadedTitheSummary = result.financialBook == null
+        ? null
+        : titheSummaryCalculator.calculate(
+            bookId: result.financialBook!.id,
+            currencyCode: result.financialBook!.baseCurrencyCode,
+            transactions: transactionController.transactions,
+            transferLinks: transactionController.transferLinks,
+            asOf: DateTime.now(),
+            accountCurrencyByName: {
+              for (final account in result.accountRecords)
+                account.name: account.currencyCode,
+            },
+          );
     await monthlyBudgetController.load(
       bookId: result.financialBook?.id,
       categoryNames: {
@@ -462,6 +533,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           'expense',
         ),
         incomeCategoryIdsByName: _categoryIdsByName(allCategoryRows, 'income'),
+        categoryRecords: allCategoryRows,
         projects: result.projects,
         projectRecords: result.projectRecords,
       );
@@ -469,6 +541,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       financialBook = result.financialBook;
       householdMembers = result.householdMembers;
       activeMemberId = result.session.activeMemberId;
+      titheSummary = loadedTitheSummary;
     });
   }
 
@@ -698,6 +771,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   Future<void> addTransaction(Transaction transaction) {
     return transactionController.createTransaction(transaction);
+  }
+
+  Future<void> _recordTithePayment(BuildContext context) async {
+    final book = financialBook;
+    if (book == null) return;
+    try {
+      await RecordTithePaymentScreen.show(
+        context,
+        bookId: book.id,
+        memberId: activeMemberId,
+        controller: transactionController,
+        options: transactionFormOptions,
+        now: DateTime.now(),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   QuickAddConfig get quickAddConfig {
@@ -1007,7 +1100,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     store.onSyncMutation = null;
-    transactionController.removeListener(_onAppStateChanged);
+    transactionController.removeListener(_onTransactionsChanged);
     masterDataController.removeListener(_onAppStateChanged);
     assetDefinitionController.removeListener(_onAppStateChanged);
     assetPriceController.removeListener(_onAppStateChanged);
@@ -1126,7 +1219,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       CategoriesPage(
         expenseCategories: masterDataController.expenseCategories,
         incomeCategories: masterDataController.incomeCategories,
+        expenseCategoryIds: masterDataController.expenseCategoryIds,
+        incomeCategoryIds: masterDataController.incomeCategoryIds,
+        protectedCategoryIds: financialBook == null
+            ? const {}
+            : {SystemCategoryIds.tithe(financialBook!.id)},
         onSave: masterDataController.save,
+        onSaveById: masterDataController.save,
         onManageImportRules: financialBook == null
             ? null
             : () => TransactionImportRulesScreen.show(
@@ -1154,7 +1253,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         controller: monthlyBudgetController,
         currencyCode: financialBook?.baseCurrencyCode ?? 'IDR',
       ),
-      TithePage(summary: currentMonthSummary),
+      if (titheSummary case final tithe?)
+        TithePage(
+          summary: tithe,
+          onRecordPayment: () => _recordTithePayment(context),
+          onOpenPayment: (payment) => _openTransactionDetail(context, payment),
+        )
+      else
+        const SizedBox.shrink(),
       ReportsPage(
         summary: currentMonthSummary,
         onOpenStatements: financialBook == null
