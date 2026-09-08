@@ -62,6 +62,7 @@ class Transaction {
   final String? projectId;
 
   final String title;
+
   /// Stable master-category identity when one is known.
   ///
   /// [category] remains the immutable display-name snapshot used by historical
@@ -193,7 +194,10 @@ class Transaction {
           : projectId as String?,
       title: title ?? this.title,
       categoryId: identical(categoryId, _unset)
-          ? this.categoryId
+          ? ((category != null && category != this.category) ||
+                    (type != null && type != this.type)
+                ? null
+                : this.categoryId)
           : categoryId as String?,
       category: category ?? this.category,
       account: account ?? this.account,

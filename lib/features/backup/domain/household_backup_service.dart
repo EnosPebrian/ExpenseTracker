@@ -143,7 +143,7 @@ class HouseholdBackupService {
         result,
         details: [
           ...result.details,
-          'This backup predates explicit transaction category identity; only unambiguous historical category names were linked.',
+          'This backup predates transaction category identity; historical category names are preserved with unresolved identity.',
         ],
       );
     }

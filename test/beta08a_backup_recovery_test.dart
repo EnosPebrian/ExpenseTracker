@@ -71,6 +71,29 @@ void main() {
 
   group('BETA-08A recovery classification and commit', () {
     test(
+      'recovery never guesses category identity from matching names',
+      () async {
+        final backup = beta06Snapshot();
+        backup['transactions']!.last['category_id'] = 'category-expense';
+        final local = _copy(backup);
+        local['transactions']!.removeLast();
+        local['categories']!.last['id'] = 'different-category';
+        final store = _MemoryRecoveryStore(local);
+        final service = BackupRecoveryService(store: store);
+        final preview = await service.analyze(
+          backup: _decoded(backup),
+          activeBookId: 'book-beta06',
+        );
+        final candidate = preview.candidates.singleWhere(
+          (row) => row.id == 'transaction-expense',
+        );
+        expect(candidate.record['category_id'], isNull);
+        await service.recover(preview: preview, selectedKeys: {candidate.key});
+        expect(store.snapshot['transactions']!.last['category_id'], isNull);
+        expect(store.snapshot['transactions']!.last['category'], 'Groceries');
+      },
+    );
+    test(
       'missing transaction is recoverable and current-only record remains',
       () async {
         final backup = beta06Snapshot();

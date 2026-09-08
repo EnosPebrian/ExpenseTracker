@@ -52,8 +52,9 @@ class PortableBackupCodec {
                   ? clean[key]!
                         .map(
                           (record) => <String, Object?>{
-                            ...record,
-                            'category_id': null,
+                            for (final entry in record.entries)
+                              if (entry.key != 'category_id')
+                                entry.key: entry.value,
                           },
                         )
                         .toList(growable: false)
@@ -228,9 +229,9 @@ class PortableBackupCodec {
       snapshot.putIfAbsent('transaction_import_rules', () => const []);
       snapshot.putIfAbsent('transfer_links', () => const []);
       if (manifest.formatVersion < 5) {
-        HouseholdBackupIntegrity.reconcileLegacyTransactionCategoryIds(
-          snapshot,
-        );
+        for (final transaction in snapshot['transactions'] ?? const []) {
+          transaction['category_id'] = null;
+        }
       }
       HouseholdBackupIntegrity.validate(snapshot);
       for (final key in encodedKeys) {

@@ -137,6 +137,7 @@ class LocalStore {
       }
       for (final record in transactions) {
         final prepared = _withActiveBook(record);
+        _validateTransactionCategory(prepared);
         _records.removeWhere((item) => item['id'] == prepared['id']);
         _records.add(prepared);
         if (enqueueSync) {
@@ -554,6 +555,11 @@ class LocalStore {
         _assetMarketPrices.add(Map<String, Object?>.of(record));
       }
       addAll(_records, 'transactions');
+      for (final record in _records.where(
+        (row) => row['book_id'] == restoredBookId,
+      )) {
+        _validateTransactionCategory(record);
+      }
       addAll(_transferLinks, 'transfer_links');
 
       _activeBookId = restoredBookId;
@@ -780,6 +786,9 @@ class LocalStore {
       }
       _rebuildMasterValues('categories', null);
       _rebuildMasterValues('projects', null);
+      for (final row in _records.where((row) => row['book_id'] == bookId)) {
+        _validateTransactionCategory(row);
+      }
     } catch (_) {
       for (final entry in snapshots.entries) {
         entry.key
@@ -2143,6 +2152,9 @@ class LocalStore {
     final collection = _syncCollection(conflict['entity_type'] as String);
     final collectionSnapshot = collection.map(Map<String, Object?>.of).toList();
     try {
+      if (conflict['entity_type'] == 'transactions') {
+        _validateTransactionCategory(canonicalPayload);
+      }
       collection.removeWhere((item) => item['id'] == conflict['entity_id']);
       collection.add({...canonicalPayload, 'sync_status': 'synced'});
       _validateActiveTransferLinks(conflict['book_id'] as String);
@@ -2245,8 +2257,11 @@ class LocalStore {
         if (entityType == 'transactions' &&
             !payload.containsKey('category_id') &&
             existing.isNotEmpty &&
-            payload.containsKey('category') &&
-            payload['category'] != existing['category']) {
+            ((payload.containsKey('category') &&
+                    payload['category'] != existing['category']) ||
+                (payload.containsKey('transaction_type') &&
+                    payload['transaction_type'] !=
+                        existing['transaction_type']))) {
           payload['category_id'] = null;
         }
         collection.add({

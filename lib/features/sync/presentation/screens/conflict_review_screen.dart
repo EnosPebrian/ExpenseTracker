@@ -57,6 +57,11 @@ class _ConflictReviewScreenState extends State<ConflictReviewScreen> {
               }.contains(f),
             )
             .toList();
+        if (conflict.entityType == 'transactions' &&
+            fields.remove('category_id') &&
+            !fields.contains('category')) {
+          fields.add('category');
+        }
         final mergeFields = conflict.entityType == 'monthly_category_budgets'
             ? fields
                   .where(
@@ -68,6 +73,9 @@ class _ConflictReviewScreenState extends State<ConflictReviewScreen> {
         for (final field in mergeFields) {
           if (choices[field] ?? false) {
             merged[field] = conflict.localPayload?[field];
+            if (conflict.entityType == 'transactions' && field == 'category') {
+              merged['category_id'] = conflict.localPayload?['category_id'];
+            }
           }
         }
         final budgetLifecycleConflict =

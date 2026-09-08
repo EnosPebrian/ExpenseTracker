@@ -82,6 +82,9 @@ begin
 end;
 $$;
 
+revoke all on function public.validate_transfer_link()
+  from public, anon, authenticated;
+
 create trigger validate_transfer_link_reference
 before insert or update on public.transfer_links
 for each row execute function public.validate_transfer_link();

@@ -1,5 +1,12 @@
 # Data Health & Sync Diagnostics
 
+## BETA-08L0 category reference checks
+
+Null transaction category IDs are valid legacy/unresolved data, regardless of
+historical label. Non-null IDs must reference an existing same-household category
+of the matching type; archived references are valid. Dangling/foreign identities
+are diagnostic errors, never auto-repaired. Current SQLite/backup versions: 26/v5.
+
 BETA-08J adds a fast, read-only Health Check under **Data & Sync**. It is an
 operational trust surface for local data and synchronization state, not a
 developer console and not a repair workflow.

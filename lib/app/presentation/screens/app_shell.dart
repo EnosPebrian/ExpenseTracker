@@ -461,10 +461,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           allCategoryRows,
           'expense',
         ),
-        incomeCategoryIdsByName: _categoryIdsByName(
-          allCategoryRows,
-          'income',
-        ),
+        incomeCategoryIdsByName: _categoryIdsByName(allCategoryRows, 'income'),
         projects: result.projects,
         projectRecords: result.projectRecords,
       );
@@ -712,8 +709,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       accounts: accounts,
       expenseCategories: expenses,
       incomeCategories: incomes,
-      expenseCategoryIdsByName:
-          masterDataController.expenseCategoryIdsByName,
+      expenseCategoryIdsByName: masterDataController.expenseCategoryIdsByName,
       incomeCategoryIdsByName: masterDataController.incomeCategoryIdsByName,
       projects: masterDataController.projects,
       projectIdsByName: masterDataController.projectIdsByName,
@@ -731,8 +727,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       accounts: masterDataController.accounts,
       expenseCategories: masterDataController.expenseCategories,
       incomeCategories: masterDataController.incomeCategories,
-      expenseCategoryIdsByName:
-          masterDataController.expenseCategoryIdsByName,
+      expenseCategoryIdsByName: masterDataController.expenseCategoryIdsByName,
       incomeCategoryIdsByName: masterDataController.incomeCategoryIdsByName,
       projects: masterDataController.projects,
       projectIdsByName: masterDataController.projectIdsByName,
@@ -746,7 +741,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     String type,
   ) => {
     for (final row in rows)
-      if (row['deleted_at'] == null && row['category_type'] == type)
+      if (row['deleted_at'] == null &&
+          row['category_type'] == type &&
+          rows
+                  .where(
+                    (other) =>
+                        other['deleted_at'] == null &&
+                        other['category_type'] == type &&
+                        other['name'] == row['name'],
+                  )
+                  .length ==
+              1)
         row['name'] as String: row['id'] as String,
   };
 

@@ -120,6 +120,11 @@ begin
   return new;
 end; $$;
 
+revoke all on function public.validate_import_review_session()
+  from public, anon, authenticated;
+revoke all on function public.validate_import_review_draft()
+  from public, anon, authenticated;
+
 create trigger validate_import_review_session_reference before insert or update
 on public.import_review_sessions for each row execute function public.validate_import_review_session();
 create trigger validate_import_review_draft_reference before insert or update

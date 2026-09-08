@@ -47,13 +47,14 @@ class BackupRecoveryCandidate {
   String get key => '$entityType::$id';
 
   BackupRecoveryCandidate copyWith({
+    Map<String, Object?>? record,
     BackupRecoveryClassification? classification,
     List<String>? dependencies,
     String? reason,
   }) => BackupRecoveryCandidate(
     entityType: entityType,
     id: id,
-    record: record,
+    record: record ?? this.record,
     classification: classification ?? this.classification,
     dependencies: dependencies ?? this.dependencies,
     reason: reason ?? this.reason,

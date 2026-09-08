@@ -1,5 +1,13 @@
 # Cloud Durability and New-Device Bootstrap
 
+## BETA-08L0 category continuity
+
+Initial upload/download and transaction snapshots now retain nullable category
+identity. New-device activation validates same-household category references and
+does not enqueue downloaded records. Legacy nulls remain valid. The prerequisite
+hosted migration is not deployed by this milestone; see
+`TRANSACTION_CATEGORY_IDENTITY.md`.
+
 ## Storage model
 
 Pilgrim remains local-first. Each native device owns an immediately writable
@@ -72,4 +80,3 @@ not the normal linked-household device-migration path.
 Pilgrim does not promise continuous background synchronization while Android
 or Windows has suspended or killed the process. Pending changes retry when the
 application next starts or becomes active and connectivity is available.
-

@@ -97,6 +97,9 @@ begin
   return new;
 end; $$;
 
+revoke all on function public.validate_telegram_connection()
+  from public, anon, authenticated;
+
 create trigger validate_telegram_connection_reference
 before insert or update on public.telegram_connections
 for each row execute function public.validate_telegram_connection();

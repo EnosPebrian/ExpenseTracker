@@ -366,7 +366,9 @@ class _TransactionFormState extends State<TransactionForm> {
     if (type != TransactionType.expense && type != TransactionType.income) {
       return null;
     }
-    if (type == original.type && category == original.category) {
+    if (type == original.type &&
+        category == original.category &&
+        original.categoryId != null) {
       return original.categoryId;
     }
     return type == TransactionType.expense

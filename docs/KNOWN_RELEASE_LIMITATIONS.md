@@ -1,5 +1,22 @@
 # Known Release Limitations
 
+## BETA-08L0A System Tithe guard
+
+The mixed-client server guard is deployed, but it deliberately creates no
+System Tithe category and adds no client UI or payment behavior. BETA-08L owner
+runtime acceptance has not begun. The invariant is identity-based; custom
+random-ID categories named Tithe intentionally remain ordinary.
+
+## BETA-08L0 category identity
+
+SQLite 26 / backup v5 are engineering changes; owner-runtime acceptance is not
+claimed. The Supabase migration is locally tested and hosted, and the enclosing
+BETA-08H1A schema rollout passes after the BETA-08H1A1 privilege correction.
+Legacy backups and ambiguous/unmatched categories can retain null IDs. SQLite
+case folding does not resolve every non-ASCII label equivalence. Historical
+snapshots are not rewritten on rename. No name-based category creation/repair,
+tithe tracking, portable CSV editor or investment ledger is included.
+
 ## Cloud configuration and device-session behavior
 
 Cloud-enabled releases require valid `SUPABASE_URL` and
@@ -185,15 +202,18 @@ These limitations do not change the version-21 financial or accounting model.
 
 ## BETA-08H1 deployment limitations
 
-- The expected hosted project was inactive during the 2026-08-31 read-only
-  preflight, so remote migration ancestry and schema drift could not be
-  verified.
-- No hosted recovery point was listed (PITR disabled; no managed backups), so
-  the database deployment safety gate is blocked.
+- On 2026-09-07, an external logical recovery point was created and the exact
+  BETA-08E/F0/G/G1/H/L0 chain was applied to the now-active hosted project.
+  Existing privacy-safe entity counts and L0 category validity were preserved.
+- Post-rollout checks initially found overly broad Telegram RPC execution. The
+  ordered BETA-08H1A1 correction is now deployed and verified: `anon` and
+  `PUBLIC` execute none, authenticated users execute only the three intentional
+  household-facing APIs, and `service_role` executes all eight. BETA-08H1A
+  Hosted Schema Rollout is **PASS**.
 - The required OpenAI model/key and Telegram bot/webhook secrets are not
   configured. No secret values are stored in the repository.
-- BETA-08E/F0/G/G1/H migrations and the extraction/Telegram Edge Functions
-  remain undeployed; no Telegram webhook is registered by this milestone run.
+- The extraction/Telegram Edge Functions remain undeployed and no Telegram
+  webhook is registered by this milestone run.
 - Telegram supports private chats only, canonical Pilgrim CSV, one image or one
   unlocked PDF source, and no Telegram media-group reconstruction.
 - Hosted Deployment PASS and consolidated BETA-08A1 through BETA-08H Owner

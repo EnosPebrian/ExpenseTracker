@@ -1,8 +1,22 @@
 # Pilgrim Tracker Database and Persistence Schema
 
+## BETA-08L0A hosted category guard
+
+Hosted migration `20260907233238_beta08l0a_system_tithe_category_guard.sql`
+adds no table, column, or row. It adds the internal canonical-ID helper
+`UUIDv5(book_id, "system-category:tithe")` and one categories write trigger.
+Canonical identity requires exact name `Tithe`, type `expense`, and live state;
+identity/household/semantics cannot be changed or deleted. Custom categories
+are unaffected, including random-ID rows named Tithe. SQLite remains 26 and
+backup remains v5.
+
 Fresh schema creation inserts no user financial rows.
 
-Current SQLite schema version: **25**. Version 25 rebuilds only
+Current SQLite schema version: **26**. Version 26 adds nullable transaction
+`category_id` and an index, backfilling only unique same-book/type normalized
+historical category matches (including archived). Collisions/unmatched stay null;
+financial rows and lifecycle/outbox state are preserved. See
+`TRANSACTION_CATEGORY_IDENTITY.md`. Version 25 rebuilds only
 `import_review_drafts` so `deterministic_transaction_id` can be null before
 account selection, adds `deterministic_transaction_account_id`, and persists
 the canonical `source_row_key`. Version 22 additively creates

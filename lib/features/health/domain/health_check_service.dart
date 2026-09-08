@@ -175,8 +175,7 @@ class HealthCheckService {
         (row['name'] as String).trim().toLowerCase(),
     };
     final categories = {
-      for (final row in categoryRows)
-        (row['name'] as String).trim().toLowerCase(): row,
+      for (final row in categoryRows) row['id'] as String: row,
     };
     final activeRows = snapshot
         .rows('transactions')
@@ -815,9 +814,10 @@ class HealthCheckService {
     Transaction transaction,
     Map<String, Map<String, Object?>> categories,
   ) {
-    if (transaction.type == TransactionType.assetConversion) return true;
-    final category = categories[transaction.category.trim().toLowerCase()];
+    if (transaction.categoryId == null) return true;
+    final category = categories[transaction.categoryId];
     if (category == null) return false;
+    if (category['book_id'] != transaction.bookId) return false;
     if (transaction.type == TransactionType.expense) {
       return category['category_type'] == 'expense';
     }

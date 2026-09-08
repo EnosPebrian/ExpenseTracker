@@ -1,5 +1,14 @@
 # Household Backup and Restore
 
+## Current format: v5 — BETA-08L0
+
+Transaction category identity is nullable and authoritative when present;
+category text remains historical. v5 preserves both without changing encryption.
+v1–v4 readers retain null legacy IDs. Clone remaps category IDs; selective recovery
+uses only known identity relationships or clears the ID, never a guessed label
+mapping. Foreign IDs are rejected. Workflow inbox state remains excluded.
+See `TRANSACTION_CATEGORY_IDENTITY.md`; older milestone sections below are history.
+
 Pilgrim Tracker treats synchronization, backup, and CSV export as separate
 tools. Synchronization converges authorized devices. An encrypted `.ptbackup`
 captures one recoverable household snapshot. CSV is a readable interchange

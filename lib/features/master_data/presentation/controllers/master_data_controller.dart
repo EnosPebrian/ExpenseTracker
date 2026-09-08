@@ -13,8 +13,7 @@ typedef MasterDataPersist =
 
 typedef AccountPersist = Future<void> Function(Account account);
 typedef ProjectRecordsLoader = Future<List<FinancialProject>> Function();
-typedef CategoryRecordsLoader =
-    Future<List<Map<String, Object?>>> Function();
+typedef CategoryRecordsLoader = Future<List<Map<String, Object?>>> Function();
 
 class MasterDataController extends ChangeNotifier {
   MasterDataController({
@@ -202,22 +201,34 @@ class MasterDataController extends ChangeNotifier {
     _expenseCategoryIdsByName
       ..clear()
       ..addEntries(
-        expenses.map(
-          (record) => MapEntry(
-            record['name'] as String,
-            record['id'] as String,
-          ),
-        ),
+        expenses
+            .where(
+              (row) =>
+                  expenses
+                      .where((other) => other['name'] == row['name'])
+                      .length ==
+                  1,
+            )
+            .map(
+              (record) =>
+                  MapEntry(record['name'] as String, record['id'] as String),
+            ),
       );
     _incomeCategoryIdsByName
       ..clear()
       ..addEntries(
-        incomes.map(
-          (record) => MapEntry(
-            record['name'] as String,
-            record['id'] as String,
-          ),
-        ),
+        incomes
+            .where(
+              (row) =>
+                  incomes
+                      .where((other) => other['name'] == row['name'])
+                      .length ==
+                  1,
+            )
+            .map(
+              (record) =>
+                  MapEntry(record['name'] as String, record['id'] as String),
+            ),
       );
   }
 

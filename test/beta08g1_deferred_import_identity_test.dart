@@ -387,7 +387,7 @@ void main() {
       await fixture.store.db.insert('import_review_drafts', oldRecord);
       await fixture.store.db.execute('PRAGMA user_version = 24');
       await fixture.reopen();
-      expect(await fixture.store.db.getVersion(), 25);
+      expect(await fixture.store.db.getVersion(), 26);
       final migrated = (await LocalImportReviewRepository(
         fixture.store,
       ).load(resolved.session.id))!.drafts.single;

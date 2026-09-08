@@ -1,5 +1,43 @@
 # Pilgrim Tracker Progress
 
+## BETA-08L0A System Tithe Server Guard PASS — 2026-09-08
+
+Deployed one ordered migration to `jylclfebdeaywfdwabph` after a fresh external
+logical backup, exact one-migration dry run, local reset, and 267/267 pgTAP
+PASS. The database now protects the exact
+`UUIDv5(book_id, "system-category:tithe")` category identity and canonical
+live `Tithe` / `expense` shape across direct, sync, conflict, initial-upload,
+service-role, and old-client writes while leaving custom categories and RLS
+unchanged. Hosted ACL/schema/vector/count checks pass, the advisor has no new
+BETA-08L0A warning, and business counts are unchanged. No Dart or BETA-08L
+client/payment feature was implemented. See
+`CHECKPOINT_BETA08L0A_SYSTEM_TITHE_GUARD.md`.
+
+## BETA-08H1A1 security correction and schema rollout PASS — 2026-09-07
+
+A verified external logical backup preceded deployment of the exact six pending
+BETA-08E/F0/G/G1/H/L0 migrations to hosted project
+`jylclfebdeaywfdwabph`. The push and migration-history reconciliation
+succeeded; existing entity counts were preserved, all 27 transactions remain,
+25 category identities were conservatively populated, 2 remain null, and none
+are invalid. Post-deployment verification found and stopped on overly broad
+Telegram RPC grants. The single ordered BETA-08H1A1 ACL migration now enforces
+0 anonymous RPCs, 3 authenticated user RPCs, 0 authenticated service RPCs, all
+8 service-role RPCs, and no `PUBLIC` execution. Local pgTAP passed 224/224,
+hosted authorization smoke passed, and the advisor's new blocking findings are
+cleared. **BETA-08H1A1 Security Correction PASS** and **BETA-08H1A Hosted
+Schema Rollout PASS**. No function, secret, webhook, or owner runtime was run.
+See `CHECKPOINT_BETA08H1A1_TELEGRAM_RPC_PRIVILEGES.md`.
+
+## BETA-08L0 continuation — 2026-09-07
+
+Completed category-identity plumbing across SQLite 26, web, manual/shared import,
+sync/initial-sync, paired conflicts, backup v5, clone/recovery and read-only health.
+Legacy unresolved identity remains nullable; unique-only migration includes
+archived categories. Local pgTAP: 192 passing. Final engineering gate results are
+recorded in `CHECKPOINT_BETA08L0_COMPLETE.md`. Its hosted migration is applied
+and BETA-08H1A now passes, so separately scoped BETA-08L development may begin.
+
 ## BETA-08J Data Health & Sync Diagnostics — 2026-09-01
 
 Implemented a read-only Data & Sync Health Check over immutable local snapshots.

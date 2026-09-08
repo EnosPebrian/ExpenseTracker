@@ -36,7 +36,7 @@ void main() {
     store = LocalStore(databasePath: fixture.path);
     await store.initialize();
     fixture.store = store;
-    expect(await store.db.getVersion(), 25);
+    expect(await store.db.getVersion(), 26);
     expect(
       (await store.db.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'import_review_%'",
@@ -48,7 +48,7 @@ void main() {
   test('fresh database is created at SQLite version 25', () async {
     final fixture = await _Fixture.create('fresh-v24');
     addTearDown(fixture.dispose);
-    expect(await fixture.store.db.getVersion(), 25);
+    expect(await fixture.store.db.getVersion(), 26);
   });
 
   test('session and normalized drafts survive close and reopen', () async {

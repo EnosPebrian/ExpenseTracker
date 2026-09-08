@@ -300,6 +300,14 @@ void main() {
         manifest: manifest,
       );
       final rows = _downloadRows(manifest.bookId);
+      final feePayload =
+          rows.singleWhere(
+                (row) =>
+                    row['entity_type'] == 'transactions' &&
+                    (row['payload'] as Map)['id'] == 'fee',
+              )['payload']
+              as Map<String, Object?>;
+      feePayload['category_id'] = 'category';
       for (final entityType in initialSyncEntityOrder) {
         final typed = rows
             .where((row) => row['entity_type'] == entityType)
@@ -330,6 +338,10 @@ void main() {
         includeDeleted: true,
       );
       expect(downloaded, hasLength(3));
+      expect(
+        downloaded.singleWhere((row) => row['id'] == 'fee')['category_id'],
+        'category',
+      );
       expect(
         downloaded.singleWhere((row) => row['id'] == 'fee')['fee_amount'],
         0,

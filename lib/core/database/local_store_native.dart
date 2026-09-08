@@ -642,6 +642,7 @@ asset_symbol TEXT,
       }
       for (final record in transactions) {
         final prepared = _withActiveBook(record);
+        await _validateTransactionCategory(txn, prepared);
         await txn.insert(
           'transactions',
           prepared,
@@ -740,11 +741,17 @@ asset_symbol TEXT,
     Map<String, Object?>? obsoleteLinkedExpense,
   }) async {
     await db.transaction((transaction) async {
-      Future<void> upsert(Map<String, Object?> record) => transaction.insert(
-        'transactions',
-        _withActiveBook(record),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      Future<void> upsert(Map<String, Object?> record) async {
+        await _validateTransactionCategory(
+          transaction,
+          _withActiveBook(record),
+        );
+        await transaction.insert(
+          'transactions',
+          _withActiveBook(record),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
 
       await upsert(parent);
       await _enqueueSyncOperation(
@@ -1078,6 +1085,7 @@ asset_symbol TEXT,
       await insertAll('asset_market_prices', 'manual_market_prices');
       await insertAll('transactions', 'transactions');
       await insertAll('transfer_links', 'transfer_links');
+      await _validateTransactionCategoriesInBook(txn, restoredBookId);
 
       final session = await txn.query(
         'local_session',
@@ -1299,6 +1307,7 @@ asset_symbol TEXT,
           if (enqueueSync) await _enqueueSyncOperation(txn, entityType, saved);
         }
       }
+      await _validateTransactionCategoriesInBook(txn, bookId);
     });
     if (enqueueSync && records.values.any((rows) => rows.isNotEmpty)) {
       onSyncMutation?.call();
@@ -1903,6 +1912,9 @@ asset_symbol TEXT,
         ...canonicalPayload,
         'sync_status': 'synced',
       };
+      if (conflict['entity_type'] == 'transactions') {
+        await _validateTransactionCategory(txn, resolvedRecord);
+      }
       if (conflict['entity_type'] == 'transfer_links') {
         final existing = await txn.query(
           table,
@@ -1994,8 +2006,11 @@ asset_symbol TEXT,
         if (entityType == 'transactions' &&
             !payload.containsKey('category_id') &&
             existing.isNotEmpty &&
-            payload.containsKey('category') &&
-            payload['category'] != existing.first['category']) {
+            ((payload.containsKey('category') &&
+                    payload['category'] != existing.first['category']) ||
+                (payload.containsKey('transaction_type') &&
+                    payload['transaction_type'] !=
+                        existing.first['transaction_type']))) {
           payload['category_id'] = null;
         }
         final saved = <String, Object?>{
@@ -2141,7 +2156,7 @@ asset_symbol TEXT,
       '''SELECT t.id FROM transactions t
          LEFT JOIN categories c ON c.id = t.category_id
          WHERE t.book_id = ? AND t.category_id IS NOT NULL
-           AND (c.id IS NULL OR c.book_id <> t.book_id
+           AND (c.id IS NULL OR c.book_id IS NOT t.book_id
                 OR c.category_type <> t.transaction_type)
          LIMIT 1''',
       [bookId],

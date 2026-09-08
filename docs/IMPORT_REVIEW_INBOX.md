@@ -1,5 +1,12 @@
 # Import Review Inbox
 
+## BETA-08L0 final category identity
+
+Shared import finalization carries a resolved review/rule category ID into the
+financial transaction with its name snapshot. Unresolved legacy text stays null.
+Manual precedence, deferred transaction UUID rules and existing source pathways
+are unchanged. See `TRANSACTION_CATEGORY_IDENTITY.md`.
+
 BETA-08G adds a durable household-scoped queue for uncommitted transaction
 imports. CSV, receipt, invoice, and bank-statement sources all resume in the
 existing shared review editor; Telegram is not implemented.

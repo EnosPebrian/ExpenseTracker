@@ -82,6 +82,8 @@ begin
   return new;
 end;
 $$;
+revoke all on function public.validate_transaction_import_rule()
+  from public, anon, authenticated;
 create trigger validate_transaction_import_rule_reference
 before insert or update on public.transaction_import_rules
 for each row execute function public.validate_transaction_import_rule();

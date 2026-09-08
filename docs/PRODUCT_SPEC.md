@@ -1,5 +1,14 @@
 # Pilgrim Tracker Product Specification
 
+## Category identity foundation and future portable editing
+
+BETA-08L0 separates nullable authoritative transaction `categoryId` from historical
+human-readable `category`. No tithe or investment features are added here.
+Owner decision for future BETA-08M: Portable CSV must be machine-safe and
+human-readable/human-editable, supporting export → Excel/Google Sheets edits →
+import review → commit. Blank category IDs remain representable until reviewed.
+This is a documented future requirement, not implemented CSV behavior.
+
 Shared households receive conflict review with Keep shared, Keep this device,
 and safe field-level merge. Deletion and high-risk financial conflicts always
 require explicit confirmation.

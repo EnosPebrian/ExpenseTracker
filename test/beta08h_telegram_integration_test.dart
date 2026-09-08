@@ -130,7 +130,7 @@ void main() {
       await directory.delete(recursive: true);
     });
     await store.initialize();
-    expect(await store.db.getVersion(), 25);
+    expect(await store.db.getVersion(), 26);
     final rows = await store.db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'telegram_%'",
     );

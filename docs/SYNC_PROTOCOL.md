@@ -1,5 +1,24 @@
 # Pilgrim Tracker Incremental Sync Protocol
 
+## BETA-08L0A mixed-client category protection
+
+The hosted categories table now enforces the canonical System Tithe invariant
+for every write, independent of client version. Its identity is
+`UUIDv5(book_id, "system-category:tithe")`; canonical rows must remain live,
+named exactly `Tithe`, and typed `expense`. Normal push, conflict resolution,
+and initial upload continue through their existing functions and are rejected
+by the table trigger if they attempt a protected semantic mutation. Metadata
+updates remain valid, and ordinary/custom categories are unchanged.
+
+## BETA-08L0 nullable transaction category identity
+
+Existing transaction payloads and initial snapshots include `category_id`.
+Legacy payloads omitting it preserve an ID only for unchanged category/type;
+changed category/type clears stale identity. Conflict selection treats category
+snapshot + ID as one state. Remote application validates same-household/type
+references without echo. The category-identity migration is hosted; see
+`TRANSACTION_CATEGORY_IDENTITY.md`.
+
 ## Source of truth
 
 SQLite remains the operational source of truth. A local financial action

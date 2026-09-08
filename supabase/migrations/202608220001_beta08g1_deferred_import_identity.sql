@@ -72,6 +72,9 @@ begin
   return new;
 end; $$;
 
+revoke all on function public.validate_import_review_draft()
+  from public, anon, authenticated;
+
 create or replace function public.beta08g1_patch_function(
   p_function regprocedure, p_from text, p_to text
 ) returns void language plpgsql security definer set search_path = public, pg_temp as $$

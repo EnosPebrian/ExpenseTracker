@@ -1,5 +1,23 @@
 # Pilgrim Tracker Architecture
 
+## BETA-08L0A System Tithe server invariant
+
+The hosted database freezes System Tithe identity as
+`UUIDv5(book_id, "system-category:tithe")`. A fixed-search-path,
+security-invoker `BEFORE INSERT OR UPDATE OR DELETE` trigger on `categories`
+allows only the canonical live `Tithe` / `expense` shape and metadata-only
+updates. Identity—not display name—activates protection, so a random-ID custom
+category named Tithe remains ordinary. This invariant covers direct, sync,
+conflict, initial-upload, and old-client writes without changing RLS or the
+sync architecture. BETA-08L client/payment behavior is not part of this guard.
+
+## BETA-08L0 category identity
+
+Transactions carry authoritative nullable `categoryId` plus historical `category`
+snapshot. Selection, shared import finalization, conflict pairing, and persistence
+preserve that distinction; monetary reporting is unchanged. See
+`TRANSACTION_CATEGORY_IDENTITY.md`. SQLite is 26 and encrypted backup is v5.
+
 Production bootstrap is load-only for user-owned finance. Reference asset
 presets remain automatic, while sample transactions are test-only; see
 `FRESH_INSTALL_DATA_POLICY.md`.

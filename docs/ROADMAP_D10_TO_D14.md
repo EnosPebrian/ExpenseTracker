@@ -1,5 +1,38 @@
 # D10–D14 Roadmap
 
+## BETA-08L0A System Tithe server guard — 2026-09-08
+
+**PASS.** Hosted migration `20260907233238` freezes canonical System Tithe
+identity as `UUIDv5(book_id, "system-category:tithe")` and protects its live
+`Tithe` / `expense` semantics through one categories write trigger. Direct,
+sync, conflict, initial-upload, service-role, and old-client mutation attempts
+cannot bypass it; custom categories remain ordinary and category RLS is
+unchanged. The migration changes no business data, SQLite, backup, Dart, or
+product feature. BETA-08L client/payment work may now resume.
+
+## BETA-08H1A hosted schema rollout — 2026-09-07
+
+The exact BETA-08E/F0/G/G1/H/L0 database chain was backed up, dry-run, and
+applied to hosted project `jylclfebdeaywfdwabph`. Migration history and existing
+record counts reconcile, and BETA-08L0 category identity is valid (25 populated,
+2 intentionally null, 0 invalid). The rollout initially stopped on excessive
+Telegram RPC grants. The ordered BETA-08H1A1 ACL correction now passes local
+pgTAP and direct hosted ACL, authorization, and advisor verification.
+**BETA-08H1A Hosted Schema Rollout PASS.** BETA-08H1 full deployment remains
+pending because no Edge Function, secret, webhook, owner runtime, or new product
+feature was deployed.
+
+## BETA-08L0 category foundation — 2026-09-07
+
+SQLite 26 / backup v5 add nullable authoritative transaction category identity
+with historical snapshot fallback. See `CHECKPOINT_BETA08L0_COMPLETE.md` for
+engineering gates. Its hosted migration is applied and the encompassing
+BETA-08H1A rollout now passes. BETA-08L tithe tracking remains a separate scope
+and may resume after the BETA-08L0A server guard above.
+BETA-08M must deliver machine-safe AND human-readable/human-editable Portable CSV
+(export → spreadsheet editing → import review → commit). Documented only;
+BETA-08M and BETA-08N/N1 investment work remain unimplemented here.
+
 ## D10 — Foreign-currency asset model and FX pricing
 
 Complete. Concrete USD and SGD definitions, IDR-per-unit FX quotes, validation,

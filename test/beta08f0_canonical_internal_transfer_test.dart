@@ -58,8 +58,8 @@ void main() {
       await store.initialize();
       addTearDown(store.close);
       final version = await store.db.rawQuery('PRAGMA user_version');
-      expect(version.single['user_version'], 25);
-      expect(native.LocalStore.schemaVersion, 25);
+      expect(version.single['user_version'], 26);
+      expect(native.LocalStore.schemaVersion, 26);
       expect((await store.getTransactions()).single['id'], legacy.id);
       expect(
         (await store.getTransactions()).single['transaction_type'],
@@ -460,7 +460,11 @@ void main() {
         'book-1',
       );
       final codec = PortableBackupCodec(databaseSchemaVersion: 23);
-      final v4 = await codec.encode(snapshot: snapshot, password: 'secret');
+      final v4 = await codec.encode(
+        snapshot: snapshot,
+        password: 'secret',
+        formatVersion: 4,
+      );
       final decodedV4 = await codec.decode(v4.bytes, 'secret');
       expect(v4.manifest.formatVersion, 4);
       expect(decodedV4.snapshot['transactions'], hasLength(2));

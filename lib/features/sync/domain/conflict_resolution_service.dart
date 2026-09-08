@@ -132,9 +132,14 @@ class ConflictResolutionService {
     final shared = conflict.serverPayload;
     final local = conflict.localPayload;
     if (mergedPayload == null || shared == null || local == null) {
-      throw StateError('A deleted transaction cannot be merged field by field.');
+      throw StateError(
+        'A deleted transaction cannot be merged field by field.',
+      );
     }
-    final mergedPair = (mergedPayload['category'], mergedPayload['category_id']);
+    final mergedPair = (
+      mergedPayload['category'],
+      mergedPayload['category_id'],
+    );
     final localPair = (local['category'], local['category_id']);
     final serverPair = (shared['category'], shared['category_id']);
     if (mergedPair != localPair && mergedPair != serverPair) {

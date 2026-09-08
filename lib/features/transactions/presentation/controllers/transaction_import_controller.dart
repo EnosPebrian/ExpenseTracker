@@ -562,7 +562,7 @@ class TransactionImportController extends ChangeNotifier {
               enteredByMemberId: activeMemberId,
               title: draft.description,
               category: draft.category,
-              categoryId: _persistedCategoryIds[draft.transactionId],
+              categoryId: _categoryIdForDraft(draft),
               account: account.name,
               date: draft.date,
               amount: draft.amount,
@@ -709,22 +709,6 @@ class TransactionImportController extends ChangeNotifier {
           createdByMemberId: activeMemberId,
           summary: persistedSummary,
         );
-    String? categoryId(TransactionImportDraft draft) {
-      final persistedId = _persistedCategoryIds[draft.transactionId];
-      if (persistedId != null &&
-          !(_editedFields[draft.transactionId]?.contains('category') ??
-              false)) {
-        return persistedId;
-      }
-      final matches = _ruleCategoriesAtAnalysis.values.where(
-        (category) =>
-            category.available &&
-            category.name == draft.category &&
-            category.type == draft.type,
-      );
-      return matches.isEmpty ? null : matches.first.id;
-    }
-
     final drafts = current.drafts.map((draft) {
       final existing =
           existingDrafts['${draft.sourceRowNumber}|${draft.sourceRowFingerprint}'];
@@ -752,7 +736,7 @@ class TransactionImportController extends ChangeNotifier {
         currencyCode: destinationAccount?.currencyCode ?? 'IDR',
         transactionType: draft.type,
         categoryName: draft.category,
-        categoryId: categoryId(draft),
+        categoryId: _categoryIdForDraft(draft),
         categoryProvenance: draft.categorySource,
         referenceText: draft.reference,
         noteText: draft.note,
@@ -1016,6 +1000,39 @@ class TransactionImportController extends ChangeNotifier {
       drafts: drafts,
       remoteFreshnessVerified: current.remoteFreshnessVerified,
     );
+  }
+
+  String? _categoryIdForDraft(TransactionImportDraft draft) {
+    final persistedId = _persistedCategoryIds[draft.transactionId];
+    final persisted = _ruleCategoriesAtAnalysis[persistedId];
+    if (persisted != null &&
+        persisted.available &&
+        persisted.bookId == activeBookId &&
+        persisted.type == draft.type &&
+        persisted.name == draft.category &&
+        !(_editedFields[draft.transactionId]?.contains('category') ?? false)) {
+      return persisted.id;
+    }
+    final rule =
+        _ruleCategoriesAtAnalysis[_rulesAtAnalysis
+            .where((rule) => rule.id == draft.winningRuleId)
+            .firstOrNull
+            ?.categoryId];
+    if (rule != null &&
+        rule.available &&
+        rule.bookId == activeBookId &&
+        rule.type == draft.type &&
+        rule.name == draft.category) {
+      return rule.id;
+    }
+    final matches = _ruleCategoriesAtAnalysis.values.where(
+      (category) =>
+          category.available &&
+          category.bookId == activeBookId &&
+          category.name == draft.category &&
+          category.type == draft.type,
+    );
+    return matches.length == 1 ? matches.single.id : null;
   }
 
   void _markUnavailablePersistedCategory(String transactionId) {

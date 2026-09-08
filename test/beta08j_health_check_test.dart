@@ -10,6 +10,42 @@ import 'package:pilgrim_tracker/features/transactions/domain/entities/transactio
 
 void main() {
   group('BETA-08J read-only health checks', () {
+    test(
+      'category null is valid; dangling and foreign IDs are errors',
+      () async {
+        final snapshot = _healthySnapshot();
+        final records = _copyRecords(snapshot);
+        records['transactions']!.first['category'] = 'Historical label';
+        expect(
+          _item(
+            await _run(_replace(snapshot, records: records)),
+            'transactions.invalid_reference',
+          ).status,
+          HealthCheckItemStatus.healthy,
+        );
+        records['transactions']!.first['category_id'] = 'missing-category';
+        expect(
+          _item(
+            await _run(_replace(snapshot, records: records)),
+            'transactions.invalid_reference',
+          ).status,
+          HealthCheckItemStatus.error,
+        );
+        records['categories']!.add({
+          'id': 'missing-category',
+          'book_id': 'foreign',
+          'category_type': 'expense',
+          'name': 'Historical label',
+        });
+        expect(
+          _item(
+            await _run(_replace(snapshot, records: records)),
+            'transactions.invalid_reference',
+          ).status,
+          HealthCheckItemStatus.error,
+        );
+      },
+    );
     test('healthy household reports Healthy with stable codes', () async {
       final report = await _run(_healthySnapshot());
 
@@ -381,7 +417,7 @@ HealthCheckSnapshot _healthySnapshot() {
     schemaVersion: 25,
     expectedSchemaVersion: 25,
     bookId: 'book-a',
-    backupFormatVersion: 4,
+    backupFormatVersion: 5,
     sync: const HealthSyncSnapshot(
       cloudState: HealthCloudState.localOnly,
       pendingOutboxCount: 0,

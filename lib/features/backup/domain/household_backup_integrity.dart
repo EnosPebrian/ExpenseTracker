@@ -557,32 +557,6 @@ class HouseholdBackupIntegrity {
     };
   }
 
-  /// Reconciles pre-v5 historical category names only when identity is
-  /// unambiguous within the same household and transaction type.
-  static void reconcileLegacyTransactionCategoryIds(
-    Map<String, List<Map<String, Object?>>> snapshot,
-  ) {
-    final categories = snapshot['categories'] ?? const [];
-    for (final transaction in snapshot['transactions'] ?? const []) {
-      transaction['category_id'] = null;
-      final type = transaction['transaction_type'];
-      if (type != 'expense' && type != 'income') continue;
-      final name = (transaction['category'] as String? ?? '')
-          .trim()
-          .toLowerCase();
-      if (name.isEmpty) continue;
-      final matches = categories.where(
-        (category) =>
-            category['book_id'] == transaction['book_id'] &&
-            category['category_type'] == type &&
-            (category['name'] as String? ?? '').trim().toLowerCase() == name,
-      );
-      if (matches.length == 1) {
-        transaction['category_id'] = matches.single['id'];
-      }
-    }
-  }
-
   static Map<String, List<Map<String, Object?>>> _remapAsCopy(
     Map<String, List<Map<String, Object?>>> source,
   ) {
