@@ -2,12 +2,14 @@ import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
 
+import '../../../../core/master_data/system_category.dart';
 import '../../../master_data/domain/entities/account.dart';
 import '../entities/transaction.dart';
 import '../entities/transaction_import_rule.dart';
 import '../services/transaction_import_rule_engine.dart';
 import '../services/transaction_duplicate_detector.dart';
 import 'csv_value_parsers.dart';
+import 'transaction_import_category_review.dart';
 import 'transaction_import_models.dart';
 import 'transaction_import_identity.dart';
 
@@ -130,17 +132,28 @@ class TransactionImportPlanner {
       );
     }
     final rawCategory = _atNullable(row, mapping.categoryColumn).trim();
-    var category = _resolveCategory(
+    final resolvedSourceCategory = _resolveCategory(
       rawCategory,
       type == TransactionType.income ? incomeCategories : expenseCategories,
+      activeBookId: activeBookId,
+      type: type,
+      categoriesById: ruleCategories,
     );
-    var categorySource = category.isEmpty
+    var category = resolvedSourceCategory.isEmpty
+        ? rawCategory
+        : resolvedSourceCategory;
+    var categorySource = resolvedSourceCategory.isEmpty
         ? TransactionImportCategorySource.unresolved
         : TransactionImportCategorySource.source;
+    var categoryResolution = rawCategory.isEmpty
+        ? TransactionImportCategoryResolution.notRequired
+        : resolvedSourceCategory.isEmpty
+        ? TransactionImportCategoryResolution.unresolved
+        : TransactionImportCategoryResolution.mapToExisting;
     var matchedRuleIds = const <String>[];
     String? winningRuleId;
     var ruleAmbiguous = false;
-    if (category.isEmpty && !issues.any((item) => item.blocking)) {
+    if (rawCategory.isEmpty && !issues.any((item) => item.blocking)) {
       final ruleMatch = const TransactionImportRuleEngine().evaluate(
         input: TransactionImportRuleInput(
           bookId: activeBookId,
@@ -161,12 +174,14 @@ class TransactionImportPlanner {
       if (ruleMatch.hasSuggestion) {
         category = ruleMatch.categoryName!;
         categorySource = TransactionImportCategorySource.rule;
+        categoryResolution = TransactionImportCategoryResolution.notRequired;
       }
     }
-    if (rawCategory.isNotEmpty && category.isEmpty) {
+    if (rawCategory.isNotEmpty && resolvedSourceCategory.isEmpty) {
       issues.add(
-        const TransactionImportIssue(
-          'Category was not matched; assign it during review.',
+        TransactionImportIssue(
+          'Unknown CSV category “$rawCategory”. Map it, create it, or ignore it before importing.',
+          blocking: true,
         ),
       );
     }
@@ -241,6 +256,8 @@ class TransactionImportPlanner {
       winningRuleId: winningRuleId,
       ruleAmbiguous: ruleAmbiguous,
       merchantHint: row.merchantHint ?? '',
+      sourceCategory: rawCategory,
+      categoryResolution: categoryResolution,
     );
   }
 
@@ -298,9 +315,26 @@ class TransactionImportPlanner {
     }
   }
 
-  static String _resolveCategory(String source, Iterable<String> categories) {
+  static String _resolveCategory(
+    String source,
+    Iterable<String> categories, {
+    required String activeBookId,
+    required TransactionType type,
+    required Map<String, ImportRuleCategory> categoriesById,
+  }) {
     if (source.trim().isEmpty) return '';
     final normalized = _normalize(source);
+    if (normalized == _normalize(SystemCategoryDefinition.tithe.name)) {
+      final systemId = SystemCategoryIds.tryTithe(activeBookId);
+      final system = systemId == null ? null : categoriesById[systemId];
+      return system != null &&
+              system.available &&
+              system.bookId == activeBookId &&
+              system.type == TransactionType.expense &&
+              type == TransactionType.expense
+          ? SystemCategoryDefinition.tithe.name
+          : '';
+    }
     final matches = categories
         .where((item) => _normalize(item) == normalized)
         .toList();

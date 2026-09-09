@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../../../master_data/domain/entities/account.dart';
 import '../../domain/entities/transaction.dart';
 import '../../domain/entities/transaction_import_rule.dart';
+import '../../domain/import/transaction_import_category_review.dart';
 import '../../domain/import/transaction_import_models.dart';
 import '../../domain/services/internal_transfer_matcher.dart';
 import '../controllers/transaction_import_controller.dart';
+import 'transaction_import_category_resolution.dart';
 import 'transaction_import_mapping_panel.dart';
 import 'transaction_import_rules_screen.dart';
 
@@ -414,7 +416,9 @@ class TransactionImportScreen extends StatelessWidget {
               label: Text(controller.saved ? 'Saved' : 'Save for later'),
             ),
             FilledButton(
-              onPressed: preview.readyCount == 0
+              onPressed:
+                  preview.readyCount == 0 ||
+                      controller.hasUnresolvedCategoryResolutions
                   ? null
                   : () async {
                       final confirmed = await showDialog<bool>(
@@ -446,6 +450,13 @@ class TransactionImportScreen extends StatelessWidget {
             ),
           ],
         ),
+        if (controller.hasUnresolvedCategoryResolutions) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Resolve every unknown CSV category before importing.',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ],
       ],
     );
   }
@@ -499,25 +510,40 @@ class TransactionImportScreen extends StatelessWidget {
               '${draft.date.day.toString().padLeft(2, '0')} · '
               '${draft.classification.name}',
             ),
-            DropdownButton<String>(
-              value:
-                  categoryChoices.contains(draft.category) &&
-                      draft.category.isNotEmpty
-                  ? draft.category
-                  : null,
-              hint: const Text('Assign category'),
-              items: categoryChoices
-                  .map(
-                    (value) =>
-                        DropdownMenuItem(value: value, child: Text(value)),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  controller.editDraft(draft.transactionId, category: value);
-                }
-              },
-            ),
+            if (draft.requiresCategoryResolution)
+              TransactionImportCategoryResolutionPanel(
+                sourceCategory: draft.sourceCategory,
+                transactionType: draft.type,
+                existingCategories: categoryChoices,
+                canCreate: controller.canCreateCategories,
+                onMap: (value) =>
+                    controller.mapCategory(draft.transactionId, value),
+                onCreate: (name) => controller.createCategoryForDraft(
+                  draft.transactionId,
+                  name,
+                ),
+                onIgnore: () => controller.ignoreCategory(draft.transactionId),
+              )
+            else
+              DropdownButton<String>(
+                value:
+                    categoryChoices.contains(draft.category) &&
+                        draft.category.isNotEmpty
+                    ? draft.category
+                    : null,
+                hint: const Text('Assign category'),
+                items: categoryChoices
+                    .map(
+                      (value) =>
+                          DropdownMenuItem(value: value, child: Text(value)),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    controller.editDraft(draft.transactionId, category: value);
+                  }
+                },
+              ),
             Text(_categoryProvenance(draft)),
             if (controller.transferMatchFor(draft.transactionId)
                 case final match?) ...[
@@ -685,6 +711,22 @@ class TransactionImportScreen extends StatelessWidget {
   }
 
   String _categoryProvenance(TransactionImportDraft draft) {
+    if (draft.categoryResolution ==
+        TransactionImportCategoryResolution.createCategory) {
+      return 'Will create “${draft.category}” when the import commits';
+    }
+    if (draft.categoryResolution ==
+        TransactionImportCategoryResolution.mapToExisting) {
+      return draft.categorySource == TransactionImportCategorySource.source
+          ? 'Matched existing category'
+          : 'Mapped to existing category';
+    }
+    if (draft.categoryExplicitlyIgnored) {
+      return 'Source category explicitly ignored';
+    }
+    if (draft.requiresCategoryResolution) {
+      return 'Unknown source category · resolution required';
+    }
     if (draft.ruleAmbiguous) {
       final matches = draft.matchedRuleIds
           .map(controller.ruleMatchSummary)

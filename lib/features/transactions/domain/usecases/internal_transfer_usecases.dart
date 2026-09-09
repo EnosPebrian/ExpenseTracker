@@ -18,6 +18,18 @@ class CanonicalInternalTransfer {
   final Transaction incoming;
 }
 
+class PlannedDraftExistingTransfer {
+  const PlannedDraftExistingTransfer({
+    required this.transfer,
+    required this.importedDraft,
+    required this.mutation,
+  });
+
+  final CanonicalInternalTransfer transfer;
+  final Transaction importedDraft;
+  final TransactionImportTransferMutation mutation;
+}
+
 class InternalTransferService {
   InternalTransferService(
     this.repository, {
@@ -213,6 +225,29 @@ class InternalTransferService {
     required String draftAccountId,
     required String existingAccountId,
   }) async {
+    final plan = await planDraftExisting(
+      draft: draft,
+      existingTransactionId: existingTransactionId,
+      expectedExistingVersion: expectedExistingVersion,
+      draftAccountId: draftAccountId,
+      existingAccountId: existingAccountId,
+    );
+    await repository.saveInternalTransferAtomic(
+      transactions: [plan.importedDraft],
+      link: plan.transfer.link,
+      expectedTransactionVersions: plan.mutation.expectedTransactionVersions,
+      requireNewTransactionIds: plan.mutation.requireNewTransactionIds,
+    );
+    return plan.transfer;
+  }
+
+  Future<PlannedDraftExistingTransfer> planDraftExisting({
+    required Transaction draft,
+    required String existingTransactionId,
+    required int expectedExistingVersion,
+    required String draftAccountId,
+    required String existingAccountId,
+  }) async {
     final transactions = await repository.getAllTransactions();
     final accounts = await repository.getAllAccounts();
     final existing = _transaction(transactions, existingTransactionId);
@@ -224,6 +259,7 @@ class InternalTransferService {
     final draftAccount = _account(accounts, draftAccountId);
     final existingAccount = _account(accounts, existingAccountId);
     final preparedDraft = draft.copyWith(
+      category: 'Transfer',
       categoryId: null,
       version: 1,
       updatedAt: draft.createdAt,
@@ -247,20 +283,27 @@ class InternalTransferService {
       source: source,
       destination: destination,
     );
-    await _validateAndSave(
+    validator.validate(
       link: link,
       outgoing: outgoing,
       incoming: incoming,
-      source: source,
-      destination: destination,
-      transactions: [preparedDraft],
-      expectedTransactionVersions: {existing.id: expectedExistingVersion},
-      requireNewTransactionIds: {preparedDraft.id},
+      sourceAccount: source,
+      destinationAccount: destination,
+      existingLinks: await repository.getTransferLinks(),
     );
-    return CanonicalInternalTransfer(
+    final transfer = CanonicalInternalTransfer(
       link: link,
       outgoing: outgoing,
       incoming: incoming,
+    );
+    return PlannedDraftExistingTransfer(
+      transfer: transfer,
+      importedDraft: preparedDraft,
+      mutation: TransactionImportTransferMutation(
+        link: link,
+        expectedTransactionVersions: {existing.id: expectedExistingVersion},
+        requireNewTransactionIds: {preparedDraft.id},
+      ),
     );
   }
 

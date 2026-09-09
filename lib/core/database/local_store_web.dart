@@ -101,6 +101,163 @@ class LocalStore {
     onSyncMutation?.call();
   }
 
+  Future<Map<String, String>> insertTransactionImportAtomic({
+    required List<Map<String, Object?>> transactions,
+    required List<Map<String, Object?>> categoryCreations,
+    required List<Map<String, Object?>> transferLinks,
+    Map<String, int> expectedTransactionVersions = const {},
+    Set<String> requireNewTransactionIds = const {},
+  }) async {
+    final transactionSnapshot = _records.map(Map<String, Object?>.of).toList();
+    final categorySnapshot = _masterRecords
+        .map(Map<String, Object?>.of)
+        .toList();
+    final masterSnapshot = {
+      for (final entry in _master.entries)
+        entry.key: List<String>.of(entry.value),
+    };
+    final linkSnapshot = _transferLinks.map(Map<String, Object?>.of).toList();
+    final outboxSnapshot = _syncOutbox.map(Map<String, Object?>.of).toList();
+    final resolvedCategoryIds = <String, String>{};
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (final requested in categoryCreations) {
+        final requestedId = requested['id'] as String;
+        final bookId = requested['book_id'] as String? ?? _activeBookId;
+        final name = (requested['name'] as String).trim();
+        final categoryType = requested['category_type'] as String;
+        if (bookId == null ||
+            bookId != _activeBookId ||
+            name.isEmpty ||
+            (categoryType != 'expense' && categoryType != 'income')) {
+          throw StateError('The planned import category is invalid.');
+        }
+        final normalized = _normalizeImportCategory(name);
+        final matches = _masterRecords
+            .where(
+              (row) =>
+                  row['_entity_type'] == 'categories' &&
+                  row['book_id'] == bookId &&
+                  row['deleted_at'] == null &&
+                  row['category_type'] == categoryType &&
+                  _normalizeImportCategory(row['name'] as String) == normalized,
+            )
+            .toList();
+        if (normalized ==
+            _normalizeImportCategory(SystemCategoryDefinition.tithe.name)) {
+          final canonicalId = SystemCategoryIds.tryTithe(bookId);
+          final canonical = matches.where((row) => row['id'] == canonicalId);
+          if (canonical.length != 1) {
+            throw StateError(
+              'The System Tithe category must be repaired before import.',
+            );
+          }
+          resolvedCategoryIds[requestedId] = canonical.single['id'] as String;
+          continue;
+        }
+        if (matches.length > 1) {
+          throw StateError(
+            'More than one active category matches the requested name.',
+          );
+        }
+        if (matches.length == 1) {
+          resolvedCategoryIds[requestedId] = matches.single['id'] as String;
+          continue;
+        }
+        if (_masterRecords.any((row) => row['id'] == requestedId)) {
+          throw StateError(
+            'The planned import category identity is unavailable.',
+          );
+        }
+        final record = <String, Object?>{
+          'id': requestedId,
+          'book_id': bookId,
+          'name': name,
+          'category_type': categoryType,
+          'created_at': now,
+          'updated_at': now,
+          'deleted_at': null,
+          'version': 1,
+          'device_id': 'web-device',
+          'sync_status': 'pending',
+          '_entity_type': 'categories',
+        };
+        _masterRecords.add(record);
+        _master
+            .putIfAbsent(_key('categories', categoryType), () => [])
+            .add(name);
+        resolvedCategoryIds[requestedId] = requestedId;
+        _enqueueSyncOperation('categories', record);
+      }
+      for (final entry in expectedTransactionVersions.entries) {
+        final matches = _records.where((item) => item['id'] == entry.key);
+        if (matches.length != 1 ||
+            (matches.single['version'] as num).toInt() != entry.value) {
+          throw StateError('This transfer candidate changed. Review again.');
+        }
+      }
+      if (requireNewTransactionIds.any(
+        (id) => _records.any((item) => item['id'] == id),
+      )) {
+        throw StateError('This transfer candidate changed. Review again.');
+      }
+      final incomingIds = <Object?>{};
+      for (final record in transactions) {
+        if (!incomingIds.add(record['id']) ||
+            _records.any((item) => item['id'] == record['id'])) {
+          throw StateError('A transaction with this stable identity exists.');
+        }
+        final originalCategoryId = record['category_id'] as String?;
+        final prepared = _withActiveBook({
+          ...record,
+          if (originalCategoryId != null &&
+              resolvedCategoryIds.containsKey(originalCategoryId))
+            'category_id': resolvedCategoryIds[originalCategoryId],
+        });
+        _validateTransactionCategory(prepared);
+        _records.add(prepared);
+        _enqueueSyncOperation('transactions', prepared);
+      }
+      for (final link in transferLinks) {
+        final prepared = _withActiveBook(link);
+        if (_transferLinks.any((item) => item['id'] == prepared['id'])) {
+          throw StateError('This transfer candidate changed. Review again.');
+        }
+        _transferLinks.add(prepared);
+        _enqueueSyncOperation('transfer_links', prepared);
+      }
+      for (final bookId
+          in transferLinks
+              .map((link) => (link['book_id'] as String?) ?? _activeBookId)
+              .whereType<String>()
+              .toSet()) {
+        _validateActiveTransferLinks(bookId);
+      }
+    } catch (_) {
+      _records
+        ..clear()
+        ..addAll(transactionSnapshot);
+      _masterRecords
+        ..clear()
+        ..addAll(categorySnapshot);
+      _master
+        ..clear()
+        ..addAll(masterSnapshot);
+      _transferLinks
+        ..clear()
+        ..addAll(linkSnapshot);
+      _syncOutbox
+        ..clear()
+        ..addAll(outboxSnapshot);
+      rethrow;
+    }
+    onSyncMutation?.call();
+    return resolvedCategoryIds;
+  }
+
+  static String _normalizeImportCategory(String value) =>
+      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
   Future<List<Map<String, Object?>>> getTransferLinks({
     bool includeDeleted = false,
     String? bookId,
@@ -2208,9 +2365,9 @@ class LocalStore {
     final collectionSnapshot = collection.map(Map<String, Object?>.of).toList();
     try {
       final current = conflict['entity_type'] == 'transactions'
-          ? collection.where(
-              (item) => item['id'] == canonicalPayload['id'],
-            ).firstOrNull
+          ? collection
+                .where((item) => item['id'] == canonicalPayload['id'])
+                .firstOrNull
           : null;
       final resolvedPayload = <String, Object?>{
         if (current != null && !canonicalPayload.containsKey('note'))

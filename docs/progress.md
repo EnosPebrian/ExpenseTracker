@@ -1,5 +1,14 @@
 # Pilgrim Tracker Progress
 
+## BETA-08M CSV Unknown-Category Resolution — 2026-09-09
+
+Implemented explicit exact-map/create/ignore review for unknown CSV categories.
+Create is deferred durable intent and final category, transaction, transfer, and
+ordinary outbox writes are atomic with native/web rollback parity. Inbox
+restart, canonical System Tithe, row override, duplicate/reimport, offline
+bootstrap, backup v6, and 5,000-row behavior have focused coverage. SQLite
+remains 27; no Supabase/SQL change exists. Owner acceptance is **NOT RUN**.
+
 ## BETA-08M0 Durable Transaction Note & Reference — 2026-09-08
 
 Added nullable user-owned transaction note/reference across SQLite 27, web,

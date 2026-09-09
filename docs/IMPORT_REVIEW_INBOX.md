@@ -1,5 +1,18 @@
 # Import Review Inbox
 
+## BETA-08M category-resolution state
+
+CSV drafts persist unresolved, map-to-existing, create-intent, and ignore
+choices in existing review metadata. Create stores a requested name and planned
+UUID but creates no Category row. Restart/reopen preserves that intent; discard
+removes only the review workflow. At final commit, current category validity is
+rechecked and category + transaction + transfer + outbox mutations share one
+atomic boundary. Manual row category edits outrank source-category group
+resolution. Existing legacy/source-neutral assignments do not acquire a new
+`ImportRuleCategory` prerequisite, while an explicit map stores durable intent
+and must still resolve to the same compatible stable Category ID at commit.
+Original source bytes remain excluded.
+
 ## BETA-08M0 committed metadata
 
 Draft `note` and `reference` edits now flow through shared finalization into the

@@ -601,6 +601,171 @@ asset_symbol TEXT,
     onSyncMutation?.call();
   }
 
+  Future<Map<String, String>> insertTransactionImportAtomic({
+    required List<Map<String, Object?>> transactions,
+    required List<Map<String, Object?>> categoryCreations,
+    required List<Map<String, Object?>> transferLinks,
+    Map<String, int> expectedTransactionVersions = const {},
+    Set<String> requireNewTransactionIds = const {},
+  }) async {
+    final resolvedCategoryIds = <String, String>{};
+    await db.transaction((txn) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final categoryRowsByBook = <String, List<Map<String, Object?>>>{};
+      for (final requested in categoryCreations) {
+        final requestedId = requested['id'] as String;
+        final bookId = requested['book_id'] as String? ?? _activeBookId;
+        final name = (requested['name'] as String).trim();
+        final categoryType = requested['category_type'] as String;
+        if (bookId == null ||
+            bookId != _activeBookId ||
+            name.isEmpty ||
+            (categoryType != 'expense' && categoryType != 'income')) {
+          throw StateError('The planned import category is invalid.');
+        }
+        var rows = categoryRowsByBook[bookId];
+        if (rows == null) {
+          rows = List<Map<String, Object?>>.of(
+            await txn.query(
+              'categories',
+              where: 'book_id = ? AND deleted_at IS NULL',
+              whereArgs: [bookId],
+            ),
+          );
+          categoryRowsByBook[bookId] = rows;
+        }
+        final normalized = _normalizeImportCategory(name);
+        final matches = rows
+            .where(
+              (row) =>
+                  row['category_type'] == categoryType &&
+                  _normalizeImportCategory(row['name'] as String) == normalized,
+            )
+            .toList();
+        if (normalized ==
+            _normalizeImportCategory(SystemCategoryDefinition.tithe.name)) {
+          final canonicalId = SystemCategoryIds.tryTithe(bookId);
+          final canonical = matches.where((row) => row['id'] == canonicalId);
+          if (canonical.length != 1) {
+            throw StateError(
+              'The System Tithe category must be repaired before import.',
+            );
+          }
+          resolvedCategoryIds[requestedId] = canonical.single['id'] as String;
+          continue;
+        }
+        if (matches.length > 1) {
+          throw StateError(
+            'More than one active category matches the requested name.',
+          );
+        }
+        if (matches.length == 1) {
+          resolvedCategoryIds[requestedId] = matches.single['id'] as String;
+          continue;
+        }
+        final idCollision = await txn.query(
+          'categories',
+          columns: const ['id'],
+          where: 'id = ?',
+          whereArgs: [requestedId],
+          limit: 1,
+        );
+        if (idCollision.isNotEmpty) {
+          throw StateError(
+            'The planned import category identity is unavailable.',
+          );
+        }
+        final record = <String, Object?>{
+          'id': requestedId,
+          'book_id': bookId,
+          'name': name,
+          'category_type': categoryType,
+          'created_at': now,
+          'updated_at': now,
+          'deleted_at': null,
+          'version': 1,
+          'device_id': 'local-device',
+          'sync_status': 'pending',
+        };
+        await txn.insert(
+          'categories',
+          record,
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        rows.add(record);
+        resolvedCategoryIds[requestedId] = requestedId;
+        await _enqueueSyncOperation(txn, 'categories', record);
+      }
+
+      for (final entry in expectedTransactionVersions.entries) {
+        final rows = await txn.query(
+          'transactions',
+          columns: const ['version'],
+          where: 'id = ?',
+          whereArgs: [entry.key],
+          limit: 1,
+        );
+        if (rows.length != 1 ||
+            (rows.single['version'] as num).toInt() != entry.value) {
+          throw StateError('This transfer candidate changed. Review again.');
+        }
+      }
+      for (final id in requireNewTransactionIds) {
+        final rows = await txn.query(
+          'transactions',
+          columns: const ['id'],
+          where: 'id = ?',
+          whereArgs: [id],
+          limit: 1,
+        );
+        if (rows.isNotEmpty) {
+          throw StateError('This transfer candidate changed. Review again.');
+        }
+      }
+      final incomingIds = <Object?>{};
+      for (final record in transactions) {
+        if (!incomingIds.add(record['id'])) {
+          throw StateError('The import contains duplicate stable identities.');
+        }
+        final originalCategoryId = record['category_id'] as String?;
+        final prepared = _withActiveBook({
+          ...record,
+          if (originalCategoryId != null &&
+              resolvedCategoryIds.containsKey(originalCategoryId))
+            'category_id': resolvedCategoryIds[originalCategoryId],
+        });
+        await _validateTransactionCategory(txn, prepared);
+        await txn.insert(
+          'transactions',
+          prepared,
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        await _enqueueSyncOperation(txn, 'transactions', prepared);
+      }
+      for (final link in transferLinks) {
+        final prepared = _withActiveBook(link);
+        await txn.insert(
+          'transfer_links',
+          prepared,
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        await _enqueueSyncOperation(txn, 'transfer_links', prepared);
+      }
+      for (final bookId
+          in transferLinks
+              .map((link) => (link['book_id'] as String?) ?? _activeBookId)
+              .whereType<String>()
+              .toSet()) {
+        await _validateInternalTransfersInDatabase(txn, bookId);
+      }
+    });
+    onSyncMutation?.call();
+    return resolvedCategoryIds;
+  }
+
+  static String _normalizeImportCategory(String value) =>
+      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
   Future<List<Map<String, Object?>>> getTransferLinks({
     bool includeDeleted = false,
     String? bookId,

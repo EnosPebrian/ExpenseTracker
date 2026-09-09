@@ -1,5 +1,14 @@
 # Pilgrim Tracker Incremental Sync Protocol
 
+## BETA-08M category creation
+
+Import review choices synchronize as existing Import Inbox draft metadata. A
+create choice is not a category mutation and produces no category outbox row
+until financial commit. Linked offline commit atomically enqueues the ordinary
+category, transaction, and optional transfer-link operations. Existing push,
+pull, conflict, and initial-bootstrap behavior then converges devices; no entity,
+payload, cursor, RPC, RLS, or hosted migration is added.
+
 ## BETA-08M0 presence-sensitive transaction metadata
 
 Transaction payloads, change feed, conflicts, and initial snapshots now carry

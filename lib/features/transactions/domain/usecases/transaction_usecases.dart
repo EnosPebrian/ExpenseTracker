@@ -6,6 +6,7 @@ import '../../../assets/domain/services/asset_trade_validator.dart';
 import '../entities/transaction.dart';
 import '../entities/transaction_relation_type.dart';
 import '../entities/transaction_metadata.dart';
+import '../import/transaction_import_category_review.dart';
 import '../repositories/transaction_repository.dart';
 import 'save_asset_conversion_with_fee.dart';
 
@@ -276,7 +277,14 @@ class ImportTransactionsBatch {
   ImportTransactionsBatch(this.repository);
   final TransactionBatchRepository repository;
 
-  Future<List<Transaction>> call(List<Transaction> transactions) async {
+  bool get supportsCategoryCreation =>
+      repository is TransactionImportAtomicRepository;
+
+  Future<List<Transaction>> call(
+    List<Transaction> transactions, {
+    List<TransactionImportCategoryCreation> categoryCreations = const [],
+    List<TransactionImportTransferMutation> transferMutations = const [],
+  }) async {
     final ids = <String>{};
     final prepared = <Transaction>[];
     for (final transaction in transactions) {
@@ -305,8 +313,25 @@ class ImportTransactionsBatch {
         ),
       );
     }
-    await repository.saveAllAtomic(prepared);
-    return prepared;
+    if (categoryCreations.isEmpty && transferMutations.isEmpty) {
+      await repository.saveAllAtomic(prepared);
+      return prepared;
+    }
+    if (repository is! TransactionImportAtomicRepository) {
+      throw TransactionValidationException(
+        'Atomic category and transfer import is unavailable.',
+      );
+    }
+    final atomic = repository as TransactionImportAtomicRepository;
+    final categoryIds = await atomic.saveImportAtomic(
+      transactions: prepared,
+      categoryCreations: categoryCreations,
+      transferMutations: transferMutations,
+    );
+    return prepared.map((item) {
+      final resolvedId = categoryIds[item.categoryId];
+      return resolvedId == null ? item : item.copyWith(categoryId: resolvedId);
+    }).toList();
   }
 }
 

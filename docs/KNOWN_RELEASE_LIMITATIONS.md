@@ -1,5 +1,13 @@
 # Known Release Limitations
 
+## BETA-08M limitations
+
+- Category matching is exact after trim/case/repeated-whitespace normalization;
+  fuzzy or semantic guessing is intentionally unsupported.
+- Pending Import Inbox state remains device-persistent but excluded from backup;
+  only committed categories and transactions are covered by backup v6.
+- Owner runtime acceptance on Windows and Android is **NOT RUN**.
+
 ## BETA-08M0 limitations
 
 - Transaction note/reference are durable in SQLite 27, sync, and encrypted

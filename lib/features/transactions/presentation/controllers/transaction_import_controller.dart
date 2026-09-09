@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
+import '../../../../core/master_data/system_category.dart';
 import '../../../master_data/domain/entities/account.dart';
 import '../../data/csv_transaction_source_parser.dart';
 import '../../data/local_import_review_repository.dart';
@@ -11,11 +13,13 @@ import '../../domain/entities/transaction.dart';
 import '../../domain/entities/transaction_import_rule.dart';
 import '../../domain/entities/internal_transfer_link.dart';
 import '../../domain/import/transaction_import_models.dart';
+import '../../domain/import/transaction_import_category_review.dart';
 import '../../domain/import/transaction_import_identity.dart';
 import '../../domain/import/transaction_import_planner.dart';
 import '../../domain/services/transaction_import_rule_engine.dart';
 import '../../domain/services/transaction_duplicate_detector.dart';
 import '../../domain/services/internal_transfer_matcher.dart';
+import '../../domain/repositories/transaction_repository.dart';
 import '../../domain/usecases/internal_transfer_usecases.dart';
 import '../../domain/usecases/transaction_usecases.dart';
 
@@ -25,8 +29,8 @@ class TransactionImportController extends ChangeNotifier {
     required this.importBatch,
     required this.existingTransactions,
     required this.accounts,
-    required this.expenseCategories,
-    required this.incomeCategories,
+    required List<String> expenseCategories,
+    required List<String> incomeCategories,
     required this.activeBookId,
     required this.activeMemberId,
     this.refreshBeforeAnalysis,
@@ -40,7 +44,8 @@ class TransactionImportController extends ChangeNotifier {
     this.hasUnresolvedSyncConflict,
     this.parser = const CsvTransactionSourceParser(),
     this.planner = const TransactionImportPlanner(),
-  });
+  }) : expenseCategories = List.of(expenseCategories),
+       incomeCategories = List.of(incomeCategories);
 
   final Future<SelectedCsvFile?> Function() pickFile;
   final ImportTransactionsBatch importBatch;
@@ -82,6 +87,7 @@ class TransactionImportController extends ChangeNotifier {
   ImportReviewBundle? reviewBundle;
   final Map<String, Set<String>> _editedFields = {};
   final Map<String, String> _persistedCategoryIds = {};
+  final Set<String> _explicitMappedDraftIds = {};
   Timer? _saveDebounce;
   bool saved = false;
   ImportReviewSourceType reviewSourceType = ImportReviewSourceType.csv;
@@ -90,6 +96,11 @@ class TransactionImportController extends ChangeNotifier {
 
   Map<String, ImportRuleCategory> get availableRuleCategories =>
       Map.unmodifiable(_ruleCategoriesAtAnalysis);
+
+  bool get hasUnresolvedCategoryResolutions =>
+      preview?.drafts.any((draft) => draft.requiresCategoryResolution) ?? false;
+
+  bool get canCreateCategories => importBatch.supportsCategoryCreation;
 
   String? ruleName(String? id) {
     if (id == null) return null;
@@ -318,6 +329,15 @@ class TransactionImportController extends ChangeNotifier {
       final editedDescription = (description ?? draft.description).trim();
       final editedAmount = amount ?? draft.amount;
       final editedType = type ?? draft.type;
+      var categoryResolution = category == null
+          ? draft.categoryResolution
+          : category.trim().isEmpty
+          ? (draft.sourceCategory.trim().isEmpty
+                ? TransactionImportCategoryResolution.notRequired
+                : TransactionImportCategoryResolution.unresolved)
+          : TransactionImportCategoryResolution.mapToExisting;
+      final unresolvedSourceCategory =
+          categoryResolution == TransactionImportCategoryResolution.unresolved;
       var editedCategory = category ?? draft.category;
       var categorySource = category == null
           ? draft.categorySource
@@ -344,7 +364,16 @@ class TransactionImportController extends ChangeNotifier {
       final compatibleCategories = editedType == TransactionType.income
           ? incomeCategories
           : expenseCategories;
-      if (editedCategory.isNotEmpty &&
+      if (unresolvedSourceCategory) {
+        issues.add(
+          TransactionImportIssue(
+            'Unknown CSV category “${draft.sourceCategory}”. Map it, create it, or ignore it before importing.',
+            blocking: true,
+          ),
+        );
+      } else if (categoryResolution !=
+              TransactionImportCategoryResolution.createCategory &&
+          editedCategory.isNotEmpty &&
           !compatibleCategories.contains(editedCategory)) {
         final protectedPersistedCategory =
             category == null &&
@@ -360,6 +389,9 @@ class TransactionImportController extends ChangeNotifier {
         } else {
           editedCategory = '';
           categorySource = TransactionImportCategorySource.unresolved;
+          categoryResolution = draft.sourceCategory.trim().isEmpty
+              ? TransactionImportCategoryResolution.notRequired
+              : TransactionImportCategoryResolution.unresolved;
           issues.add(
             const TransactionImportIssue(
               'Category was cleared because it does not match the transaction type.',
@@ -370,7 +402,9 @@ class TransactionImportController extends ChangeNotifier {
       var matchedRuleIds = draft.matchedRuleIds;
       var winningRuleId = draft.winningRuleId;
       var ruleAmbiguous = draft.ruleAmbiguous;
-      if ((category == null || category.trim().isEmpty) &&
+      if (categoryResolution != TransactionImportCategoryResolution.ignore &&
+          !unresolvedSourceCategory &&
+          (category == null || category.trim().isEmpty) &&
           (categorySource == TransactionImportCategorySource.unresolved ||
               categorySource == TransactionImportCategorySource.rule) &&
           !issues.any((issue) => issue.blocking)) {
@@ -396,9 +430,11 @@ class TransactionImportController extends ChangeNotifier {
         if (match.hasSuggestion) {
           editedCategory = match.categoryName!;
           categorySource = TransactionImportCategorySource.rule;
+          categoryResolution = TransactionImportCategoryResolution.notRequired;
         } else if (categorySource == TransactionImportCategorySource.rule) {
           editedCategory = '';
           categorySource = TransactionImportCategorySource.unresolved;
+          categoryResolution = TransactionImportCategoryResolution.notRequired;
         }
         issues.addAll(match.warnings.map(TransactionImportIssue.new));
       }
@@ -462,6 +498,9 @@ class TransactionImportController extends ChangeNotifier {
         winningRuleId: winningRuleId,
         ruleAmbiguous: ruleAmbiguous,
         merchantHint: draft.merchantHint,
+        sourceCategory: draft.sourceCategory,
+        categoryResolution: categoryResolution,
+        plannedCategoryId: category == null ? draft.plannedCategoryId : null,
       );
     });
     final fields = _editedFields.putIfAbsent(id, () => {});
@@ -472,9 +511,253 @@ class TransactionImportController extends ChangeNotifier {
     if (category != null) fields.add('category');
     if (reference != null) fields.add('reference');
     if (note != null) fields.add('note');
-    if (category != null) _persistedCategoryIds.remove(id);
+    if (category != null) {
+      _persistedCategoryIds.remove(id);
+      _explicitMappedDraftIds.remove(id);
+    }
     if (persist) _scheduleAutoSave();
   }
+
+  void ignoreCategory(String id) {
+    _applySourceCategoryResolution(
+      id,
+      resolution: TransactionImportCategoryResolution.ignore,
+      category: '',
+    );
+  }
+
+  Future<bool> createCategoryForDraft(String id, String name) async {
+    final current = preview;
+    final draft = current?.drafts
+        .where((item) => item.transactionId == id)
+        .firstOrNull;
+    if (!canCreateCategories || draft == null) {
+      error = 'Category creation is unavailable.';
+      notifyListeners();
+      return false;
+    }
+    final normalizedName = name.trim();
+    if (normalizedName.isEmpty) {
+      error = 'Category name is required.';
+      notifyListeners();
+      return false;
+    }
+    error = null;
+    final systemName = _normalizeCategoryName(
+      SystemCategoryDefinition.tithe.name,
+    );
+    if (_normalizeCategoryName(normalizedName) == systemName) {
+      error = 'Use the protected System Tithe category instead.';
+      notifyListeners();
+      return false;
+    }
+    final existing = _matchingCategories(normalizedName, draft.type);
+    if (existing.length == 1) {
+      mapCategory(id, existing.single.name);
+      return true;
+    }
+    if (existing.length > 1) {
+      error = 'More than one existing category has that name.';
+      notifyListeners();
+      return false;
+    }
+    final existingPlan = current!.drafts
+        .where(
+          (item) =>
+              item.type == draft.type &&
+              item.categoryResolution ==
+                  TransactionImportCategoryResolution.createCategory &&
+              _normalizeCategoryName(item.category) ==
+                  _normalizeCategoryName(normalizedName) &&
+              item.plannedCategoryId != null,
+        )
+        .firstOrNull;
+    _applySourceCategoryResolution(
+      id,
+      resolution: TransactionImportCategoryResolution.createCategory,
+      category: normalizedName,
+      plannedCategoryId: existingPlan?.plannedCategoryId ?? const Uuid().v4(),
+    );
+    return true;
+  }
+
+  void mapCategory(String id, String category) {
+    final draft = preview?.drafts
+        .where((item) => item.transactionId == id)
+        .firstOrNull;
+    if (draft == null ||
+        _matchingCategories(category, draft.type).length != 1) {
+      error = 'Choose one current category in this household.';
+      notifyListeners();
+      return;
+    }
+    _applySourceCategoryResolution(
+      id,
+      resolution: TransactionImportCategoryResolution.mapToExisting,
+      category: category,
+    );
+  }
+
+  List<ImportRuleCategory> _matchingCategories(
+    String name,
+    TransactionType type,
+  ) {
+    final normalized = _normalizeCategoryName(name);
+    if (normalized ==
+        _normalizeCategoryName(SystemCategoryDefinition.tithe.name)) {
+      final systemId = SystemCategoryIds.tryTithe(activeBookId);
+      final system = systemId == null
+          ? null
+          : _ruleCategoriesAtAnalysis[systemId];
+      return system != null &&
+              system.available &&
+              system.bookId == activeBookId &&
+              system.type == TransactionType.expense &&
+              type == TransactionType.expense
+          ? [system]
+          : const [];
+    }
+    return _ruleCategoriesAtAnalysis.values
+        .where(
+          (item) =>
+              item.available &&
+              item.bookId == activeBookId &&
+              item.type == type &&
+              _normalizeCategoryName(item.name) == normalized,
+        )
+        .toList();
+  }
+
+  void _applySourceCategoryResolution(
+    String id, {
+    required TransactionImportCategoryResolution resolution,
+    required String category,
+    String? plannedCategoryId,
+  }) {
+    final current = preview;
+    final selected = current?.drafts
+        .where((item) => item.transactionId == id)
+        .firstOrNull;
+    if (current == null || selected == null) return;
+    final sourceKey = _normalizeCategoryName(selected.sourceCategory);
+    final mappedCategory =
+        resolution == TransactionImportCategoryResolution.mapToExisting
+        ? _matchingCategories(category, selected.type).singleOrNull
+        : null;
+    final affectedIds = <String>{};
+    final drafts = current.drafts.map((draft) {
+      final affected =
+          draft.type == selected.type &&
+          _normalizeCategoryName(draft.sourceCategory) == sourceKey &&
+          !(_editedFields[draft.transactionId]?.contains('category') ?? false);
+      if (!affected) return draft;
+      affectedIds.add(draft.transactionId);
+      return _reclassifyCategoryResolution(
+        draft.copyWith(
+          category: category,
+          categorySource:
+              resolution == TransactionImportCategoryResolution.ignore
+              ? TransactionImportCategorySource.unresolved
+              : TransactionImportCategorySource.manual,
+          categoryResolution: resolution,
+          plannedCategoryId: plannedCategoryId,
+          clearPlannedCategoryId: plannedCategoryId == null,
+        ),
+      );
+    }).toList();
+    preview = TransactionImportPreview(
+      source: current.source,
+      drafts: drafts,
+      remoteFreshnessVerified: current.remoteFreshnessVerified,
+    );
+    for (final draftId in affectedIds) {
+      _persistedCategoryIds.remove(draftId);
+      _explicitMappedDraftIds.remove(draftId);
+      if (mappedCategory != null) {
+        _persistedCategoryIds[draftId] = mappedCategory.id;
+        _explicitMappedDraftIds.add(draftId);
+      }
+    }
+    _scheduleAutoSave();
+    notifyListeners();
+  }
+
+  TransactionImportDraft _reclassifyCategoryResolution(
+    TransactionImportDraft draft,
+  ) {
+    final issues = draft.issues
+        .where((issue) => !_isCategoryResolutionIssue(issue.message))
+        .toList();
+    if (draft.requiresCategoryResolution) {
+      issues.add(
+        TransactionImportIssue(
+          'Unknown CSV category “${draft.sourceCategory}”. Map it, create it, or ignore it before importing.',
+          blocking: true,
+        ),
+      );
+    } else if (draft.categoryResolution !=
+            TransactionImportCategoryResolution.createCategory &&
+        draft.categoryResolution !=
+            TransactionImportCategoryResolution.ignore &&
+        draft.category.trim().isNotEmpty &&
+        _matchingCategories(draft.category, draft.type).length != 1) {
+      issues.add(
+        const TransactionImportIssue(
+          'Category unavailable. Select a current category before importing.',
+          blocking: true,
+        ),
+      );
+    }
+
+    var classification = issues.any((issue) => issue.blocking)
+        ? TransactionImportClassification.invalid
+        : TransactionImportClassification.newRecord;
+    String? matchedId;
+    if (classification != TransactionImportClassification.invalid) {
+      final candidate = Transaction(
+        id: draft.transactionId,
+        bookId: activeBookId,
+        title: draft.description,
+        category: draft.category,
+        account: destinationAccount?.name ?? '',
+        date: draft.date,
+        amount: draft.amount,
+        type: draft.type,
+      ).toRecord();
+      final match = planner.duplicateDetector.classify(
+        candidate,
+        _existingAtAnalysis.map((transaction) => transaction.toRecord()),
+      );
+      matchedId = match.existingId;
+      classification = switch (match.classification) {
+        TransactionCandidateClassification.exactIdentity =>
+          TransactionImportClassification.alreadyImported,
+        TransactionCandidateClassification.semanticDuplicate =>
+          TransactionImportClassification.semanticDuplicate,
+        TransactionCandidateClassification.possibleDuplicate =>
+          TransactionImportClassification.possibleDuplicate,
+        TransactionCandidateClassification.newRecord =>
+          TransactionImportClassification.newRecord,
+      };
+    }
+    final wasNew =
+        draft.classification == TransactionImportClassification.newRecord;
+    final included = classification == TransactionImportClassification.newRecord
+        ? (wasNew ? draft.included : true)
+        : false;
+    return draft.copyWith(
+      classification: classification,
+      included: included,
+      issues: issues,
+      matchedTransactionId: matchedId,
+      clearMatchedTransactionId: matchedId == null,
+    );
+  }
+
+  static bool _isCategoryResolutionIssue(String message) =>
+      message.startsWith('Unknown CSV category') ||
+      message.startsWith('Category unavailable.') ||
+      message.startsWith('Category was cleared');
 
   bool bulkAssignCategory(String category) {
     final current = preview;
@@ -489,15 +772,7 @@ class TransactionImportController extends ChangeNotifier {
         : expenseCategories;
     if (!compatible.any((value) => value == category)) return false;
     for (final draft in selected) {
-      _replaceDraft(
-        draft.transactionId,
-        (item) => item.copyWith(
-          category: category,
-          categorySource: TransactionImportCategorySource.manual,
-        ),
-        notify: false,
-      );
-      _editedFields.putIfAbsent(draft.transactionId, () => {}).add('category');
+      editDraft(draft.transactionId, category: category, persist: false);
     }
     _scheduleAutoSave();
     notifyListeners();
@@ -512,12 +787,22 @@ class TransactionImportController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    if (current.drafts.any((draft) => draft.requiresCategoryResolution)) {
+      error = 'Resolve every unknown CSV category before importing.';
+      notifyListeners();
+      return;
+    }
     await _run(() async {
       if (await hasUnresolvedSyncConflict?.call() ?? false) {
         throw const TransactionImportException(
           'Resolve pending shared-data conflicts before committing this import.',
         );
       }
+      if (ruleCategories != null) {
+        _ruleCategoriesAtAnalysis = await ruleCategories!.call();
+      }
+      final drafts = current.drafts.where((draft) => draft.canImport).toList();
+      final categoryPlan = _prepareCategoryCommit(drafts);
       if (reviewBundle case final bundle?) {
         final refreshed = await importReviewRepository?.load(bundle.session.id);
         if (refreshed == null ||
@@ -545,15 +830,16 @@ class TransactionImportController extends ChangeNotifier {
             'Select destination account before importing.',
           );
         }
+        final readySession =
+            latest.session.state == ImportReviewSessionState.readyToCommit
+            ? latest.session
+            : latest.session.transition(ImportReviewSessionState.readyToCommit);
         reviewBundle = ImportReviewBundle(
-          session: latest.session.transition(
-            ImportReviewSessionState.readyToCommit,
-          ),
+          session: readySession,
           drafts: latest.drafts,
         );
         await _persistCurrentReview();
       }
-      final drafts = current.drafts.where((draft) => draft.canImport).toList();
       final transactions = drafts
           .map(
             (draft) => Transaction(
@@ -562,7 +848,8 @@ class TransactionImportController extends ChangeNotifier {
               enteredByMemberId: activeMemberId,
               title: draft.description,
               category: draft.category,
-              categoryId: _categoryIdForDraft(draft),
+              categoryId:
+                  categoryPlan.categoryIdByTransaction[draft.transactionId],
               account: account.name,
               note: draft.note,
               reference: draft.reference,
@@ -575,6 +862,7 @@ class TransactionImportController extends ChangeNotifier {
       final byId = {for (final item in transactions) item.id: item};
       final convertedIds = <String>[];
       final convertedDisplayIds = <String>[];
+      final transferMutations = <TransactionImportTransferMutation>[];
       final usedIds = <String>{};
       final transferService = internalTransfers;
       for (final entry in confirmedTransferCounterparts.entries) {
@@ -593,7 +881,7 @@ class TransactionImportController extends ChangeNotifier {
             'A transaction can belong to only one confirmed transfer.',
           );
         }
-        final converted = await transferService.convertDraftExisting(
+        final planned = await transferService.planDraftExisting(
           draft: draft,
           existingTransactionId: option.counterpart.id,
           expectedExistingVersion: option.counterpart.version,
@@ -601,17 +889,33 @@ class TransactionImportController extends ChangeNotifier {
           existingAccountId: option.counterpart.accountId,
         );
         convertedIds.add(draft.id);
-        convertedDisplayIds.add(converted.outgoing.id);
+        convertedDisplayIds.add(planned.transfer.outgoing.id);
+        transferMutations.add(planned.mutation);
+        byId[draft.id] = planned.importedDraft;
       }
-      final ordinary = transactions
+      final ordinary = byId.values
           .where((item) => !convertedIds.contains(item.id))
           .toList();
-      final saved = await importBatch(ordinary);
+      final allTransactions = [
+        ...ordinary,
+        ...convertedIds.map((id) => byId[id]!),
+      ];
+      final saved = await importBatch(
+        allTransactions,
+        categoryCreations: categoryPlan.creations,
+        transferMutations: transferMutations,
+      );
+      final ordinarySaved = saved
+          .where((item) => !convertedIds.contains(item.id))
+          .toList();
+      for (final item in saved.where((item) => item.categoryId != null)) {
+        _persistedCategoryIds[item.id] = item.categoryId!;
+      }
       await afterImport?.call();
       result = TransactionImportResult(
-        importedIds: [...saved.map((item) => item.id), ...convertedIds],
+        importedIds: saved.map((item) => item.id).toList(),
         viewTransactionIds: [
-          ...saved.map((item) => item.id),
+          ...ordinarySaved.map((item) => item.id),
           ...convertedDisplayIds,
         ],
         convertedInternalTransfers: convertedIds.length,
@@ -632,21 +936,33 @@ class TransactionImportController extends ChangeNotifier {
             )
             .length,
         excluded: current.excludedCount,
-        incomeTotal: ordinary
+        incomeTotal: ordinarySaved
             .where((item) => item.type == TransactionType.income)
             .fold(0, (sum, item) => sum + item.amount),
-        expenseTotal: ordinary
+        expenseTotal: ordinarySaved
             .where((item) => item.type == TransactionType.expense)
             .fold(0, (sum, item) => sum + item.amount),
         completedAt: DateTime.now(),
       );
       if (reviewBundle case final bundle?) {
+        final savedById = {for (final item in saved) item.id: item};
+        final completedDrafts = bundle.drafts.map((draft) {
+          final transactionId = draft.deterministicTransactionId;
+          final savedTransaction = transactionId == null
+              ? null
+              : savedById[transactionId];
+          if (savedTransaction == null) return draft;
+          return ImportReviewDraft.fromRecord({
+            ...draft.toRecord(),
+            'category_id': savedTransaction.categoryId,
+          });
+        }).toList();
         reviewBundle = ImportReviewBundle(
           session: bundle.session.transition(
             ImportReviewSessionState.completed,
             at: result!.completedAt,
           ),
-          drafts: bundle.drafts,
+          drafts: completedDrafts,
         );
         await _persistCurrentReview();
       }
@@ -738,16 +1054,30 @@ class TransactionImportController extends ChangeNotifier {
         currencyCode: destinationAccount?.currencyCode ?? 'IDR',
         transactionType: draft.type,
         categoryName: draft.category,
-        categoryId: _categoryIdForDraft(draft),
+        categoryId:
+            draft.categoryResolution ==
+                    TransactionImportCategoryResolution.createCategory ||
+                draft.categoryResolution ==
+                    TransactionImportCategoryResolution.ignore ||
+                draft.categoryResolution ==
+                    TransactionImportCategoryResolution.unresolved
+            ? null
+            : _categoryIdForDraft(draft),
         categoryProvenance: draft.categorySource,
         referenceText: draft.reference,
         noteText: draft.note,
         merchantHint: draft.merchantHint,
         included: draft.included,
-        userEditedFields:
-            _editedFields[draft.transactionId] ??
-            existing?.userEditedFields ??
-            const {},
+        userEditedFields: TransactionImportCategoryReviewCodec.encode(
+          existingFields:
+              _editedFields[draft.transactionId] ??
+              existing?.userEditedFields ??
+              const {},
+          resolution: draft.categoryResolution,
+          sourceCategory: draft.sourceCategory,
+          plannedCategoryId: draft.plannedCategoryId,
+          explicitMap: _explicitMappedDraftIds.contains(draft.transactionId),
+        ),
         warnings: draft.issues.map((issue) => issue.message).toList(),
         createdAt: existing?.createdAt,
         updatedAt: now,
@@ -820,6 +1150,22 @@ class TransactionImportController extends ChangeNotifier {
                 draft.categoryId!,
               ),
             ),
+      );
+    _explicitMappedDraftIds
+      ..clear()
+      ..addAll(
+        bundle.drafts
+            .where((draft) {
+              final transactionId = draft.deterministicTransactionId;
+              if (transactionId == null) return false;
+              return TransactionImportCategoryReviewCodec.decode(
+                fields: draft.userEditedFields,
+                categoryName: draft.categoryName,
+                categoryId: draft.categoryId,
+                categoryProvenance: draft.categoryProvenance.name,
+              ).explicitMap;
+            })
+            .map((draft) => draft.deterministicTransactionId!),
       );
     source = CsvParsedSource(
       fileName: bundle.session.title,
@@ -896,30 +1242,38 @@ class TransactionImportController extends ChangeNotifier {
       preview = TransactionImportPreview(
         source: source!,
         remoteFreshnessVerified: freshness,
-        drafts: bundle.drafts
-            .where((draft) => draft.deletedAt == null)
-            .map(
-              (draft) => TransactionImportDraft(
-                sourceRowNumber: draft.sourceIndex,
-                sourceRowIdentity:
-                    draft.sourceRowKey ?? draft.sourceIndex.toString(),
-                sourceRowFingerprint: draft.sourceRowIdentity,
-                transactionId: finalizedIds[draft.id]!,
-                date: draft.transactionDate,
-                description: draft.description,
-                amount: draft.amountMinor,
-                type: draft.transactionType,
-                category: draft.categoryName,
-                reference: draft.referenceText,
-                note: draft.noteText,
-                classification: TransactionImportClassification.newRecord,
-                included: draft.included,
-                issues: const [],
-                categorySource: draft.categoryProvenance,
-                merchantHint: draft.merchantHint,
-              ),
-            )
-            .toList(),
+        drafts: bundle.drafts.where((draft) => draft.deletedAt == null).map((
+          draft,
+        ) {
+          final categoryReview = TransactionImportCategoryReviewCodec.decode(
+            fields: draft.userEditedFields,
+            categoryName: draft.categoryName,
+            categoryId: draft.categoryId,
+            categoryProvenance: draft.categoryProvenance.name,
+          );
+          return TransactionImportDraft(
+            sourceRowNumber: draft.sourceIndex,
+            sourceRowIdentity:
+                draft.sourceRowKey ?? draft.sourceIndex.toString(),
+            sourceRowFingerprint: draft.sourceRowIdentity,
+            transactionId: finalizedIds[draft.id]!,
+            date: draft.transactionDate,
+            description: draft.description,
+            amount: draft.amountMinor,
+            type: draft.transactionType,
+            category: draft.categoryName,
+            reference: draft.referenceText,
+            note: draft.noteText,
+            classification: TransactionImportClassification.newRecord,
+            included: draft.included,
+            issues: const [],
+            categorySource: draft.categoryProvenance,
+            merchantHint: draft.merchantHint,
+            sourceCategory: categoryReview.sourceCategory,
+            categoryResolution: categoryReview.resolution,
+            plannedCategoryId: categoryReview.plannedCategoryId,
+          );
+        }).toList(),
       );
       for (final draft in List<TransactionImportDraft>.of(preview!.drafts)) {
         editDraft(draft.transactionId, persist: false);
@@ -1004,7 +1358,110 @@ class TransactionImportController extends ChangeNotifier {
     );
   }
 
+  _CategoryCommitPlan _prepareCategoryCommit(
+    List<TransactionImportDraft> drafts,
+  ) {
+    final creationsByKey = <String, TransactionImportCategoryCreation>{};
+    final categoryIdByTransaction = <String, String?>{};
+    for (final draft in drafts) {
+      if (confirmedTransferCounterparts.containsKey(draft.transactionId) ||
+          draft.categoryResolution ==
+              TransactionImportCategoryResolution.ignore ||
+          draft.category.trim().isEmpty) {
+        categoryIdByTransaction[draft.transactionId] = null;
+        continue;
+      }
+      if (draft.categoryResolution ==
+          TransactionImportCategoryResolution.unresolved) {
+        throw const TransactionImportException(
+          'Resolve every unknown CSV category before importing.',
+        );
+      }
+      final matches = _matchingCategories(draft.category, draft.type);
+      if (draft.categoryResolution !=
+          TransactionImportCategoryResolution.createCategory) {
+        if (_explicitMappedDraftIds.contains(draft.transactionId)) {
+          final mappedId = _persistedCategoryIds[draft.transactionId];
+          final mapped = _ruleCategoriesAtAnalysis[mappedId];
+          if (mapped == null ||
+              !mapped.available ||
+              mapped.bookId != activeBookId ||
+              mapped.type != draft.type ||
+              mapped.name != draft.category) {
+            throw const TransactionImportException(
+              'A mapped category changed or is unavailable. Review it again.',
+            );
+          }
+          categoryIdByTransaction[draft.transactionId] = mapped.id;
+        } else {
+          categoryIdByTransaction[draft.transactionId] = _categoryIdForDraft(
+            draft,
+          );
+        }
+        continue;
+      }
+      if (matches.length > 1) {
+        throw const TransactionImportException(
+          'A planned category now matches multiple existing categories.',
+        );
+      }
+      if (matches.length == 1) {
+        categoryIdByTransaction[draft.transactionId] = matches.single.id;
+        continue;
+      }
+      final plannedId = draft.plannedCategoryId;
+      if (plannedId == null || plannedId.isEmpty) {
+        throw const TransactionImportException(
+          'The planned category identity is missing. Review it again.',
+        );
+      }
+      final key =
+          '${draft.type.name}|${_normalizeCategoryName(draft.category)}';
+      final creation = creationsByKey.putIfAbsent(
+        key,
+        () => TransactionImportCategoryCreation(
+          id: plannedId,
+          bookId: activeBookId,
+          name: draft.category.trim(),
+          type: draft.type,
+        ),
+      );
+      categoryIdByTransaction[draft.transactionId] = creation.id;
+    }
+    return _CategoryCommitPlan(
+      creations: creationsByKey.values.toList(),
+      categoryIdByTransaction: categoryIdByTransaction,
+    );
+  }
+
   String? _categoryIdForDraft(TransactionImportDraft draft) {
+    if (draft.categoryResolution ==
+            TransactionImportCategoryResolution.createCategory ||
+        draft.categoryResolution ==
+            TransactionImportCategoryResolution.ignore ||
+        draft.categoryResolution ==
+            TransactionImportCategoryResolution.unresolved) {
+      return null;
+    }
+    if (_normalizeCategoryName(draft.category) ==
+        _normalizeCategoryName(SystemCategoryDefinition.tithe.name)) {
+      final systemId = SystemCategoryIds.tryTithe(activeBookId);
+      final system = systemId == null
+          ? null
+          : _ruleCategoriesAtAnalysis[systemId];
+      if (system != null &&
+          system.available &&
+          system.bookId == activeBookId &&
+          system.type == TransactionType.expense &&
+          draft.type == TransactionType.expense) {
+        return system.id;
+      }
+      return draft.categoryResolution ==
+                  TransactionImportCategoryResolution.notRequired &&
+              draft.type == TransactionType.expense
+          ? systemId
+          : null;
+    }
     final persistedId = _persistedCategoryIds[draft.transactionId];
     final persisted = _ruleCategoriesAtAnalysis[persistedId];
     if (persisted != null &&
@@ -1040,7 +1497,11 @@ class TransactionImportController extends ChangeNotifier {
   void _markUnavailablePersistedCategory(String transactionId) {
     final categoryId = _persistedCategoryIds[transactionId];
     final current = preview;
-    if (categoryId == null || current == null) return;
+    if (categoryId == null ||
+        current == null ||
+        !_explicitMappedDraftIds.contains(transactionId)) {
+      return;
+    }
     final index = current.drafts.indexWhere(
       (draft) => draft.transactionId == transactionId,
     );
@@ -1118,6 +1579,7 @@ class TransactionImportController extends ChangeNotifier {
     reviewBundle = null;
     _editedFields.clear();
     _persistedCategoryIds.clear();
+    _explicitMappedDraftIds.clear();
     saved = false;
     notifyListeners();
   }
@@ -1266,3 +1728,16 @@ class TransactionImportController extends ChangeNotifier {
     }
   }
 }
+
+class _CategoryCommitPlan {
+  const _CategoryCommitPlan({
+    required this.creations,
+    required this.categoryIdByTransaction,
+  });
+
+  final List<TransactionImportCategoryCreation> creations;
+  final Map<String, String?> categoryIdByTransaction;
+}
+
+String _normalizeCategoryName(String value) =>
+    value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');

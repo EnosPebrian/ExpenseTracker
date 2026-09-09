@@ -1,6 +1,7 @@
 import '../../../../core/database/local_store.dart';
 import '../../domain/entities/transaction.dart';
 import '../../domain/entities/internal_transfer_link.dart';
+import '../../domain/import/transaction_import_category_review.dart';
 import '../../domain/repositories/transaction_repository.dart';
 import '../../../master_data/domain/entities/account.dart';
 
@@ -8,6 +9,7 @@ class LocalTransactionRepository
     implements
         TransactionRepository,
         TransactionBatchRepository,
+        TransactionImportAtomicRepository,
         InternalTransferRepository {
   LocalTransactionRepository(this.store);
   final LocalStore store;
@@ -39,6 +41,34 @@ class LocalTransactionRepository
       store.insertTransactionsAtomic(
         transactions.map((transaction) => transaction.toRecord()).toList(),
       );
+
+  @override
+  Future<Map<String, String>> saveImportAtomic({
+    required List<Transaction> transactions,
+    required List<TransactionImportCategoryCreation> categoryCreations,
+    required List<TransactionImportTransferMutation> transferMutations,
+  }) => store.insertTransactionImportAtomic(
+    transactions: transactions.map((item) => item.toRecord()).toList(),
+    categoryCreations: categoryCreations
+        .map(
+          (item) => <String, Object?>{
+            'id': item.id,
+            'book_id': item.bookId,
+            'name': item.name,
+            'category_type': item.type.name,
+          },
+        )
+        .toList(),
+    transferLinks: transferMutations
+        .map((item) => item.link.toRecord())
+        .toList(),
+    expectedTransactionVersions: {
+      for (final item in transferMutations) ...item.expectedTransactionVersions,
+    },
+    requireNewTransactionIds: {
+      for (final item in transferMutations) ...item.requireNewTransactionIds,
+    },
+  );
 
   @override
   Future<void> softDelete(Transaction transaction) =>

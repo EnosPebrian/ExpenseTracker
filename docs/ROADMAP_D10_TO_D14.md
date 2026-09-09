@@ -1,5 +1,13 @@
 # D10–D14 Roadmap
 
+## BETA-08M CSV unknown-category resolution — 2026-09-09
+
+The reviewed CSV path now requires explicit Map, Create, or Ignore for unknown
+categories. Create is deferred until the final atomic local commit; Inbox,
+System Tithe, transfer, duplicate, offline sync/bootstrap, and backup behavior
+remain on their existing architectures. SQLite remains 27, backup remains v6,
+and no Supabase migration is needed. Owner acceptance is **NOT RUN**.
+
 ## BETA-08M0 durable metadata prerequisite — 2026-09-08
 
 Transaction note/reference now have a single durable domain and persistence

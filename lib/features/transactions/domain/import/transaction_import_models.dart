@@ -1,4 +1,5 @@
 import '../entities/transaction.dart';
+import 'transaction_import_category_review.dart';
 
 const int csvImportMaxBytes = 10 * 1024 * 1024;
 const int csvImportMaxRows = 5000;
@@ -181,6 +182,9 @@ class TransactionImportDraft {
     this.winningRuleId,
     this.ruleAmbiguous = false,
     this.merchantHint = '',
+    this.sourceCategory = '',
+    this.categoryResolution = TransactionImportCategoryResolution.unresolved,
+    this.plannedCategoryId,
   });
 
   final int sourceRowNumber;
@@ -203,6 +207,16 @@ class TransactionImportDraft {
   final String? winningRuleId;
   final bool ruleAmbiguous;
   final String merchantHint;
+  final String sourceCategory;
+  final TransactionImportCategoryResolution categoryResolution;
+  final String? plannedCategoryId;
+
+  bool get categoryExplicitlyIgnored =>
+      categoryResolution == TransactionImportCategoryResolution.ignore;
+
+  bool get requiresCategoryResolution =>
+      categoryResolution == TransactionImportCategoryResolution.unresolved &&
+      (sourceCategory.isNotEmpty || category.trim().isNotEmpty);
 
   bool get canImport =>
       included &&
@@ -228,11 +242,16 @@ class TransactionImportDraft {
     bool? included,
     List<TransactionImportIssue>? issues,
     String? matchedTransactionId,
+    bool clearMatchedTransactionId = false,
     TransactionImportCategorySource? categorySource,
     List<String>? matchedRuleIds,
     String? winningRuleId,
     bool? ruleAmbiguous,
     String? merchantHint,
+    String? sourceCategory,
+    TransactionImportCategoryResolution? categoryResolution,
+    String? plannedCategoryId,
+    bool clearPlannedCategoryId = false,
   }) => TransactionImportDraft(
     sourceRowNumber: sourceRowNumber,
     sourceRowIdentity: sourceRowIdentity,
@@ -248,12 +267,19 @@ class TransactionImportDraft {
     classification: classification ?? this.classification,
     included: included ?? this.included,
     issues: issues ?? this.issues,
-    matchedTransactionId: matchedTransactionId ?? this.matchedTransactionId,
+    matchedTransactionId: clearMatchedTransactionId
+        ? null
+        : matchedTransactionId ?? this.matchedTransactionId,
     categorySource: categorySource ?? this.categorySource,
     matchedRuleIds: matchedRuleIds ?? this.matchedRuleIds,
     winningRuleId: winningRuleId ?? this.winningRuleId,
     ruleAmbiguous: ruleAmbiguous ?? this.ruleAmbiguous,
     merchantHint: merchantHint ?? this.merchantHint,
+    sourceCategory: sourceCategory ?? this.sourceCategory,
+    categoryResolution: categoryResolution ?? this.categoryResolution,
+    plannedCategoryId: clearPlannedCategoryId
+        ? null
+        : plannedCategoryId ?? this.plannedCategoryId,
   );
 }
 

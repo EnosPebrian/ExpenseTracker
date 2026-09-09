@@ -1,5 +1,19 @@
 # Pilgrim Tracker Architecture
 
+## BETA-08M reviewed category resolution
+
+Unknown CSV category handling is review state, not master-data mutation.
+Unresolved/map/create/ignore state is encoded in existing Import Inbox draft
+metadata. Finalization builds one category plan and sends it with transactions
+and confirmed transfer mutations through `TransactionImportAtomicRepository`.
+Native SQLite commits category rows, financial rows, relation rows, and ordinary
+outbox operations in one transaction; the in-memory web store mirrors rollback
+semantics. Draft/manual/source identity and BETA-08B transaction UUIDs remain
+separate from the planned category UUID. SQLite stays v27 and backup stays v6.
+The review metadata also distinguishes explicit user mapping from pre-existing,
+manual, and source-neutral category assignments: only explicit mapping requires
+an `ImportRuleCategory` target and exact stable-ID revalidation at commit.
+
 ## BETA-08M0 durable transaction metadata
 
 `Transaction.note` and `Transaction.reference` are nullable, user-owned fields

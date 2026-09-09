@@ -70,8 +70,15 @@ work.
 
 The shared BETA-08A duplicate detector additionally classifies semantic and
 possible duplicates. Possible deleted matches remain excluded by default.
-Category mapping uses one exact normalized compatible active-category match;
-it never creates or fuzzily guesses categories.
+Category mapping uses one exact normalized compatible active-category match.
+An unknown non-empty CSV category remains visible in review and blocks commit
+until the user explicitly chooses **Map to existing**, **Create category**, or
+**Ignore category**. Create records review intent only; the category is created
+with the selected transactions and ordinary outbox entries in the final atomic
+commit. Cancel, discard, and Save for later create no category. Ignoring imports
+the transaction without a category. One unknown category does not discard or
+invalidate the other review rows, and fuzzy category guessing remains
+unsupported. See `CSV_UNKNOWN_CATEGORY_RESOLUTION.md`.
 
 Review happens before mutation. Rows can be edited, selected for compatible
 bulk category assignment, included, or excluded. Already-imported, invalid,
@@ -89,10 +96,11 @@ duplicate rows never enter matching.
 
 ## Commit and synchronization
 
-Confirmed rows use normal validation and one SQLite transaction. Every new row
-and its ordinary outbox operation commits together; any failure rolls the whole
-batch back. There is no import-history table, CSV cloud endpoint, Supabase SQL,
-cursor reset, or reconnect flow.
+Confirmed rows use normal validation and one SQLite transaction. Explicitly
+planned categories, imported rows, confirmed transfer links, and their ordinary
+outbox operations commit together; any failure rolls the whole batch back.
+There is no import-history table, CSV cloud endpoint, Supabase SQL, cursor reset,
+or separate reconnect flow.
 
 Local-only import works offline. A cloud-linked offline device may continue
 with a visible warning that duplicate analysis used current local data. New

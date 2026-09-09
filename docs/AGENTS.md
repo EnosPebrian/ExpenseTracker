@@ -7,6 +7,17 @@
 - Primary shell: Windows CMD
 - Product: local-first personal finance and asset-management application
 
+## Mandatory Session Startup
+
+At the start of every Codex session, read and follow:
+
+- `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md`
+- `docs/CODEX_WORK_QUEUE.md`
+- `docs/ENGINEERING_HANDOFF.md`
+
+Resume any `IN_PROGRESS` work item before selecting new work. These startup
+requirements supplement and do not replace any rule in this file.
+
 ## Usage Efficiency
 
 Codex usage is limited.
