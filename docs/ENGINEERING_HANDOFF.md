@@ -8,22 +8,25 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-`PT-BETA-08M-R1 — Category-commit compatibility repair`
+`PT-AUTO-NEXT — Derive the next accepted milestone`
 
 ## Current state
 
-`VALIDATING`
+`BLOCKED_ARCHITECT`
 
-## Last known pushed engineering baseline
+## Latest pushed engineering baseline
 
 ```text
 branch: main
 remote: origin
-commit: f2924fba5d4b7fdc54acbb81ec05f48ecc5647c4
-message: feat: complete BETA-08M0 transaction metadata foundation
+commit: 1e5a97c0d3c458f4519ec7528494a3a80e438a77
+message: feat: resolve unknown CSV categories safely
+push: origin/main succeeded
+HEAD == origin/main: yes
+post-push worktree: clean
 ```
 
-## Latest verified state before Git completion
+## Latest completed engineering state
 
 ```text
 BETA-08M implementation: preserved
@@ -54,11 +57,38 @@ existing validation path.
 
 ## Exact next action
 
-1. Review the intended BETA-08M and autonomy-protocol diff.
-2. Run final `git diff --check` after documentation reconciliation.
-3. Commit and push the validated sprint.
-4. Record branch, commit, push, and clean status.
-5. Mark PT-BETA-08M-R1 COMPLETE and automatically continue to PT-AUTO-NEXT.
+Resolve `ARCH-20260910-01`. The repository must identify and specify the next
+accepted milestone before another engineering item can safely become `READY`.
+Owner/runtime acceptance for BETA-08M remains **NOT RUN** and is not the blocker.
+
+---
+
+## Completed sprint records
+
+### PT-BETA-08M-R1 — Category-commit compatibility repair
+
+```text
+work item: PT-BETA-08M-R1
+verdict: COMPLETE
+root cause / implementation: _prepareCategoryCommit treated every category ID as rule-backed; explicit Map provenance is now durable and only that path requires ImportRuleCategory stable-ID revalidation
+files changed: BETA-08M category review/domain/controller/UI, native/web atomic repositories, focused tests, architecture/import/sync/checkpoint docs, and autonomy protocol docs
+schema/version changes: none; SQLite 27; backup v6
+focused tests: 294/294 PASS
+historical regressions: included in 294/294; BETA-08B 9/9 and BETA-08L0 15/15 PASS
+full suite: 954/954 PASS
+analyzer: PASS
+builds: Web PASS; Windows debug PASS; Android debug APK PASS
+server/pgTAP if applicable: not applicable; no SQL/Supabase change
+git diff --check: PASS
+owner acceptance status: NOT RUN
+branch: main
+implementation commit: 1e5a97c0d3c458f4519ec7528494a3a80e438a77
+status/documentation commit if any: follow-up durable-state commit containing this record
+push result: origin/main succeeded
+final git status: clean after implementation push; durable-state update pending its follow-up commit
+remaining limitations: exact category matching only; pending Inbox state remains excluded from backup; owner runtime acceptance pending
+next READY item: none; PT-AUTO-NEXT is BLOCKED_ARCHITECT by ARCH-20260910-01
+```
 
 ---
 

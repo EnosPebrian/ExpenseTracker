@@ -2,6 +2,7 @@
 
 **Queue protocol:** `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md`
 **Last architect seed:** 2026-09-09
+**Last reconciled:** 2026-09-10
 
 ## Queue rules
 
@@ -16,12 +17,12 @@ Codex must:
 
 ---
 
-## ACTIVE
+## RECENTLY COMPLETED
 
 ### PT-BETA-08M-R1 — Category-commit compatibility repair
 
 **Priority:** P0
-**State:** VALIDATING
+**State:** COMPLETE
 **Type:** regression repair / completion of existing BETA-08M
 **Scope expansion:** prohibited
 
@@ -66,6 +67,16 @@ Verified affected regression groups:
 
 - BETA-08B: 9/9 PASS
 - BETA-08L0: 15/15 PASS
+
+Git completion:
+
+```text
+branch: main
+implementation commit: 1e5a97c0d3c458f4519ec7528494a3a80e438a77
+push: origin/main succeeded
+HEAD == origin/main: yes
+post-push worktree: clean
+```
 
 ### Objective
 
@@ -139,7 +150,7 @@ Record in `docs/ENGINEERING_HANDOFF.md`:
 ### PT-AUTO-NEXT — Derive the next accepted milestone
 
 **Priority:** P1
-**State:** READY, but may begin only after PT-BETA-08M-R1 is COMPLETE.
+**State:** BLOCKED_ARCHITECT
 
 After BETA-08M is fully complete:
 
@@ -155,6 +166,14 @@ Do not select a milestone merely because it appears in an obsolete historical ro
 Prefer the newest accepted checkpoint/progress state.
 
 If multiple roadmaps conflict, create `BLOCKED_ARCHITECT` instead of guessing.
+
+### Selection blocker
+
+The current documents conflict on whether human-editable Portable CSV remains
+unfinished BETA-08M scope or whether BETA-08M is complete after unknown-category
+resolution. BETA-08N is named as investment/brokerage work but has no executable
+domain contract or acceptance criteria. No next item can safely become `READY`
+until `ARCH-20260910-01` is resolved.
 
 ---
 
