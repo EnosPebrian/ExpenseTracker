@@ -14,11 +14,12 @@ import 'native_database_path.dart';
 import 'sync_schema_native.dart';
 import 'transaction_import_rule_schema_native.dart';
 import 'transaction_category_identity_schema_native.dart';
+import 'transaction_metadata_schema_native.dart';
 import 'transfer_link_schema_native.dart';
 
 class LocalStore {
   LocalStore({this.databasePath});
-  static const schemaVersion = 26;
+  static const schemaVersion = 27;
   static bool _ffiInitialized = false;
 
   final String? databasePath;
@@ -53,6 +54,8 @@ class LocalStore {
             category TEXT NOT NULL,
             category_id TEXT,
             account TEXT NOT NULL,
+            note TEXT CHECK(note IS NULL OR length(note) <= 4000),
+            reference TEXT CHECK(reference IS NULL OR length(reference) <= 256),
             transaction_date INTEGER NOT NULL,
             amount INTEGER NOT NULL,
             transaction_type TEXT NOT NULL,
@@ -440,6 +443,9 @@ asset_symbol TEXT,
         }
         if (oldVersion < 26) {
           await TransactionCategoryIdentitySchemaNative.upgradeToV26(db);
+        }
+        if (oldVersion < 27) {
+          await TransactionMetadataSchemaNative.upgradeToV27(db);
         }
       },
     );
@@ -1909,7 +1915,20 @@ asset_symbol TEXT,
       }
       final conflict = conflicts.first;
       final table = _syncTable(conflict['entity_type'] as String);
+      final currentRows = conflict['entity_type'] == 'transactions'
+          ? await txn.query(
+              table,
+              where: 'id = ?',
+              whereArgs: [canonicalPayload['id']],
+              limit: 1,
+            )
+          : const <Map<String, Object?>>[];
       final resolvedRecord = <String, Object?>{
+        if (currentRows.isNotEmpty && !canonicalPayload.containsKey('note'))
+          'note': currentRows.first['note'],
+        if (currentRows.isNotEmpty &&
+            !canonicalPayload.containsKey('reference'))
+          'reference': currentRows.first['reference'],
         ...canonicalPayload,
         'sync_status': 'synced',
       };

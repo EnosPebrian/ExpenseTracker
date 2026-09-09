@@ -83,6 +83,8 @@ class TransactionForm extends StatefulWidget {
 class _TransactionFormState extends State<TransactionForm> {
   late final TextEditingController amountController;
   late final TextEditingController descriptionController;
+  late final TextEditingController referenceController;
+  late final TextEditingController noteController;
   late final TextEditingController quantityController;
   late final TextEditingController unitController;
   late final TextEditingController unitPriceController;
@@ -115,6 +117,10 @@ class _TransactionFormState extends State<TransactionForm> {
     time = TimeOfDay.fromDateTime(transaction.date);
     amountController = TextEditingController(text: money(transaction.amount));
     descriptionController = TextEditingController(text: transaction.title);
+    referenceController = TextEditingController(
+      text: transaction.reference ?? '',
+    );
+    noteController = TextEditingController(text: transaction.note ?? '');
     quantityController = TextEditingController(
       text: transaction.quantity?.toString() ?? '',
     );
@@ -219,6 +225,8 @@ class _TransactionFormState extends State<TransactionForm> {
                   type == TransactionType.assetConversion
               ? '$account -> $destinationAccount'
               : account,
+          reference: referenceController.text,
+          note: noteController.text,
           date: DateTime(
             date.year,
             date.month,
@@ -290,6 +298,8 @@ class _TransactionFormState extends State<TransactionForm> {
   void dispose() {
     amountController.dispose();
     descriptionController.dispose();
+    referenceController.dispose();
+    noteController.dispose();
     quantityController.dispose();
     unitController.dispose();
     unitPriceController.dispose();
@@ -313,6 +323,8 @@ class _TransactionFormState extends State<TransactionForm> {
                   type: type,
                   amountController: amountController,
                   descriptionController: descriptionController,
+                  referenceController: referenceController,
+                  noteController: noteController,
                   quantityController: quantityController,
                   unitController: unitController,
                   unitPriceController: unitPriceController,

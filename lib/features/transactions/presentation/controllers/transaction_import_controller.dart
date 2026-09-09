@@ -564,6 +564,8 @@ class TransactionImportController extends ChangeNotifier {
               category: draft.category,
               categoryId: _categoryIdForDraft(draft),
               account: account.name,
+              note: draft.note,
+              reference: draft.reference,
               date: draft.date,
               amount: draft.amount,
               type: draft.type,

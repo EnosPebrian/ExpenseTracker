@@ -1,5 +1,13 @@
 # Import Review Inbox
 
+## BETA-08M0 committed metadata
+
+Draft `note` and `reference` edits now flow through shared finalization into the
+ordinary durable transaction. CSV, receipt/invoice, statement, Inbox, and
+eventual Telegram commits therefore share one source-neutral persistence path;
+no source invents metadata. Review identity, source identity, deferred final
+transaction identity, rules, transfers, and duplicate behavior are unchanged.
+
 ## BETA-08L0 final category identity
 
 Shared import finalization carries a resolved review/rule category ID into the

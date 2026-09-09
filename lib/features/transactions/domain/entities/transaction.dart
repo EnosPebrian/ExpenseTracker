@@ -2,6 +2,7 @@ import 'package:uuid/uuid.dart';
 
 import 'transaction_relation_type.dart';
 import 'asset_market_reference_source.dart';
+import 'transaction_metadata.dart';
 
 enum TransactionType { expense, income, transfer, assetConversion }
 
@@ -26,6 +27,8 @@ class Transaction {
     required this.category,
     this.categoryId,
     required this.account,
+    String? note,
+    String? reference,
     required this.date,
     required this.amount,
     required this.type,
@@ -51,7 +54,9 @@ class Transaction {
     this.version = 1,
     this.deviceId = 'local-device',
     this.syncStatus = 'local_only',
-  }) : feeTreatment = feeAmount == 0 ? AssetFeeTreatment.none : feeTreatment,
+  }) : note = TransactionMetadataPolicy.normalizeNote(note),
+       reference = TransactionMetadataPolicy.normalizeReference(reference),
+       feeTreatment = feeAmount == 0 ? AssetFeeTreatment.none : feeTreatment,
        id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now();
@@ -70,6 +75,8 @@ class Transaction {
   final String? categoryId;
   final String category;
   final String account;
+  final String? note;
+  final String? reference;
 
   final DateTime date;
   final int amount;
@@ -157,6 +164,8 @@ class Transaction {
     Object? categoryId = _unset,
     String? category,
     String? account,
+    Object? note = _unset,
+    Object? reference = _unset,
     DateTime? date,
     int? amount,
     TransactionType? type,
@@ -201,6 +210,10 @@ class Transaction {
           : categoryId as String?,
       category: category ?? this.category,
       account: account ?? this.account,
+      note: identical(note, _unset) ? this.note : note as String?,
+      reference: identical(reference, _unset)
+          ? this.reference
+          : reference as String?,
       date: date ?? this.date,
       amount: amount ?? this.amount,
       type: type ?? this.type,
@@ -270,6 +283,8 @@ class Transaction {
       'category_id': categoryId,
       'category': category,
       'account': account,
+      'note': note,
+      'reference': reference,
       'transaction_date': date.millisecondsSinceEpoch,
       'amount': amount,
       'transaction_type': type.name,
@@ -312,6 +327,8 @@ class Transaction {
       categoryId: record['category_id'] as String?,
       category: record['category'] as String,
       account: record['account'] as String,
+      note: record['note'] as String?,
+      reference: record['reference'] as String?,
       date: DateTime.fromMillisecondsSinceEpoch(
         record['transaction_date'] as int,
       ),

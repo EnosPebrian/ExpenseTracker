@@ -7,7 +7,7 @@ import '../master_data/system_category.dart';
 class LocalStore {
   LocalStore({String? databasePath});
 
-  static const schemaVersion = 26;
+  static const schemaVersion = 27;
   static final List<Map<String, Object?>> _records = [];
   static final List<Map<String, Object?>> _assetMarketPrices = [];
   static final List<Map<String, Object?>> _assetDefinitions = [];
@@ -2207,11 +2207,23 @@ class LocalStore {
     final collection = _syncCollection(conflict['entity_type'] as String);
     final collectionSnapshot = collection.map(Map<String, Object?>.of).toList();
     try {
+      final current = conflict['entity_type'] == 'transactions'
+          ? collection.where(
+              (item) => item['id'] == canonicalPayload['id'],
+            ).firstOrNull
+          : null;
+      final resolvedPayload = <String, Object?>{
+        if (current != null && !canonicalPayload.containsKey('note'))
+          'note': current['note'],
+        if (current != null && !canonicalPayload.containsKey('reference'))
+          'reference': current['reference'],
+        ...canonicalPayload,
+      };
       if (conflict['entity_type'] == 'transactions') {
-        _validateTransactionCategory(canonicalPayload);
+        _validateTransactionCategory(resolvedPayload);
       }
       collection.removeWhere((item) => item['id'] == conflict['entity_id']);
-      collection.add({...canonicalPayload, 'sync_status': 'synced'});
+      collection.add({...resolvedPayload, 'sync_status': 'synced'});
       _validateActiveTransferLinks(conflict['book_id'] as String);
     } catch (_) {
       collection

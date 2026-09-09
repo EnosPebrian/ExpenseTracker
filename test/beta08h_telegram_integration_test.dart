@@ -120,22 +120,25 @@ void main() {
     await tester.pump();
   });
 
-  test('SQLite stays v25 and contains no Telegram integration tables', () async {
-    final directory = await Directory.systemTemp.createTemp('beta08h_');
-    final store = LocalStore(
-      databasePath: p.join(directory.path, 'pilgrim.db'),
-    );
-    addTearDown(() async {
-      await store.close();
-      await directory.delete(recursive: true);
-    });
-    await store.initialize();
-    expect(await store.db.getVersion(), 26);
-    final rows = await store.db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'telegram_%'",
-    );
-    expect(rows, isEmpty);
-  });
+  test(
+    'SQLite stays at the current version and contains no Telegram tables',
+    () async {
+      final directory = await Directory.systemTemp.createTemp('beta08h_');
+      final store = LocalStore(
+        databasePath: p.join(directory.path, 'pilgrim.db'),
+      );
+      addTearDown(() async {
+        await store.close();
+        await directory.delete(recursive: true);
+      });
+      await store.initialize();
+      expect(await store.db.getVersion(), LocalStore.schemaVersion);
+      final rows = await store.db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'telegram_%'",
+      );
+      expect(rows, isEmpty);
+    },
+  );
 
   test(
     'Telegram deferred source identity yields direct-import canonical UUID',

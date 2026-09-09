@@ -13,6 +13,7 @@ import 'package:pilgrim_tracker/core/database/local_store_native.dart'
     as native;
 import 'package:pilgrim_tracker/core/database/local_store_web.dart' as web;
 import 'package:pilgrim_tracker/features/backup/data/portable_backup_codec.dart';
+import 'package:pilgrim_tracker/features/backup/domain/backup_models.dart';
 import 'package:pilgrim_tracker/features/backup/domain/household_backup_integrity.dart';
 import 'package:pilgrim_tracker/features/master_data/domain/entities/account.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
@@ -133,7 +134,7 @@ void main() {
       await store.db.execute('PRAGMA user_version = 25');
       await store.close();
       await store.initialize();
-      expect(await store.getSchemaVersion(), 26);
+      expect(await store.getSchemaVersion(), 27);
       final rows = {
         for (final r in await store.getTransactions(includeDeleted: true))
           r['id']: r,
@@ -372,14 +373,14 @@ void main() {
   }
 
   test(
-    'v5 encrypted round-trip and clone remap preserve category identity',
+    'current encrypted round-trip and clone remap preserve category identity',
     () async {
       final codec = PortableBackupCodec(databaseSchemaVersion: 26);
       final encoded = await codec.encode(
         snapshot: snapshot(),
         password: 'synthetic-test',
       );
-      expect(encoded.manifest.formatVersion, 5);
+      expect(encoded.manifest.formatVersion, portableBackupFormatVersion);
       final decoded = await codec.decode(encoded.bytes, 'synthetic-test');
       expect(
         decoded.snapshot['transactions']!.last['category_id'],

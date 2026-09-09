@@ -1,5 +1,13 @@
 # Cloud Durability and New-Device Bootstrap
 
+## BETA-08M0 transaction metadata continuity
+
+Notes and references save locally first and use the ordinary transaction
+outbox. Initial upload/download and incremental pull preserve modern values;
+legacy omitted update properties preserve existing values, while explicit null
+clears them. A fresh device applies downloaded metadata without an outbox echo.
+Null metadata is valid and is never treated as corruption.
+
 ## BETA-08L System Tithe convergence
 
 Bootstrap ensures the deterministic System Tithe category after selecting the

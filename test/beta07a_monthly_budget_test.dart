@@ -183,7 +183,7 @@ void main() {
       final store = native.LocalStore(databasePath: fixture.path);
       await store.initialize();
       addTearDown(store.close);
-      expect(native.LocalStore.schemaVersion, 26);
+      expect(native.LocalStore.schemaVersion, 27);
 
       final categoryId = await _prepareStore(store);
       final first = _budgetRecord('budget-first', categoryId);
@@ -328,7 +328,7 @@ void main() {
         where: 'type = ? AND name = ?',
         whereArgs: ['table', 'monthly_category_budgets'],
       );
-      expect(version.single['user_version'], 26);
+      expect(version.single['user_version'], native.LocalStore.schemaVersion);
       expect(tables, hasLength(1));
     },
   );

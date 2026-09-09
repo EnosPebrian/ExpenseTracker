@@ -1,5 +1,15 @@
 # Known Release Limitations
 
+## BETA-08M0 limitations
+
+- Transaction note/reference are durable in SQLite 27, sync, and encrypted
+  backup v6, but human-editable Portable CSV v1 remains future BETA-08M work.
+- Reference is limited to 256 characters and note to 4,000 characters; values
+  are rejected rather than silently truncated.
+- Web continues to be an in-memory development preview.
+- Owner runtime acceptance is **NOT RUN** until the engineering gates and
+  hosted migration complete.
+
 ## BETA-08L limitations
 
 - Owner runtime acceptance on physical Windows and Android devices is **NOT

@@ -10,6 +10,8 @@ class TransactionFormFields extends StatelessWidget {
     required this.type,
     required this.amountController,
     required this.descriptionController,
+    required this.referenceController,
+    required this.noteController,
     required this.quantityController,
     required this.unitController,
     required this.unitPriceController,
@@ -37,6 +39,8 @@ class TransactionFormFields extends StatelessWidget {
   final TransactionType type;
   final TextEditingController amountController;
   final TextEditingController descriptionController;
+  final TextEditingController referenceController;
+  final TextEditingController noteController;
   final TextEditingController quantityController;
   final TextEditingController unitController;
   final TextEditingController unitPriceController;
@@ -146,6 +150,25 @@ class TransactionFormFields extends StatelessWidget {
           value: project,
           options: projectOptions,
           onChanged: onProjectChanged,
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          key: const Key('transaction-reference-field'),
+          controller: referenceController,
+          maxLength: 256,
+          decoration: const InputDecoration(
+            labelText: 'Reference (optional)',
+            hintText: 'Receipt, invoice, or bank reference',
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          key: const Key('transaction-note-field'),
+          controller: noteController,
+          minLines: 2,
+          maxLines: 4,
+          maxLength: 4000,
+          decoration: const InputDecoration(labelText: 'Note (optional)'),
         ),
         if (type == TransactionType.assetConversion) ...[
           const SizedBox(height: 12),

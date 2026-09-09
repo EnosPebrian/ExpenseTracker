@@ -1,5 +1,14 @@
 # Pilgrim Tracker Progress
 
+## BETA-08M0 Durable Transaction Note & Reference — 2026-09-08
+
+Added nullable user-owned transaction note/reference across SQLite 27, web,
+manual edit, shared import finalization, presence-sensitive sync, and encrypted
+backup v6. Metadata does not affect deterministic identity or financial math.
+Portable CSV/BETA-08M and BETA-08N/N1 remain unimplemented. Final engineering,
+hosted rollout, Git, and owner-acceptance status are recorded in
+`CHECKPOINT_BETA08M0_COMPLETE.md`.
+
 ## BETA-08L Fixed System Tithe & Actual Payment Tracking — 2026-09-08
 
 Implemented deterministic System Tithe category lifecycle, exact-ID payment

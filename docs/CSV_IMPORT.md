@@ -1,5 +1,14 @@
 # CSV Transaction Import
 
+## BETA-08M0 durable metadata
+
+The existing simple CSV adapter and Import Review editor continue to recognize
+optional `reference` and `note`, but their final transaction commit now retains
+them durably. Reference is trimmed; whitespace-only values become null; a
+non-empty note preserves internal whitespace and newlines. These fields do not
+change the established UUIDv5 transaction identity or duplicate policy.
+Human-editable Portable CSV v1 is not implemented here and remains BETA-08M.
+
 Transactions → Import now offers CSV, Receipt / invoice photo, and Bank
 statement PDF / images. All three sources converge on the normalized draft,
 duplicate review, atomic commit, and ordinary sync pipeline described here;
@@ -32,8 +41,7 @@ date,description,amount,type,category,reference,note
 
 `type` is `income` or `expense`; transfers are not supported. The selected
 destination account supplies account ownership and currency. Reference and
-note are review metadata in v1 because the current transaction schema has no
-separate reference/note columns.
+note are durable optional transaction metadata.
 
 ## External bank mapping
 

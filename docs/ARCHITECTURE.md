@@ -1,5 +1,15 @@
 # Pilgrim Tracker Architecture
 
+## BETA-08M0 durable transaction metadata
+
+`Transaction.note` and `Transaction.reference` are nullable, user-owned fields
+carried by the existing transaction entity, repository, import-finalization,
+backup, and synchronization paths. They are metadata only: neither participates
+in deterministic transaction identity, duplicate identity, or financial math.
+SQLite 27 is the native source of truth; the web preview mirrors the same domain
+semantics. A missing legacy sync property means “preserve on update,” while an
+explicit JSON null means “clear.” Portable CSV v1 remains future BETA-08M work.
+
 ## BETA-08L System Tithe and payment derivation
 
 `SystemCategoryDefinition` centralizes the deterministic

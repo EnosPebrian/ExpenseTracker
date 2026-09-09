@@ -1,5 +1,13 @@
 # Household Backup and Restore
 
+## Current format: v6 — BETA-08M0
+
+Encrypted backup v6 includes nullable transaction `note` and `reference`
+without changing encryption or password derivation. Exact restore, household
+clone, and selective transaction recovery preserve these ordinary metadata
+values. Versions v1–v5 remain readable and supply null for fields they did not
+contain. Portable CSV is a separate future BETA-08M format.
+
 ## BETA-08L System Tithe portability
 
 Backup remains v5 with no new payload: the deterministic category and ordinary
@@ -13,7 +21,7 @@ is cleared, dependencies are validated, and category plus payment commit in
 the existing atomic recovery boundary. Legacy text-only Tithe rows do not gain
 identity.
 
-## Current format: v5 — BETA-08L0
+## Previous format: v5 — BETA-08L0
 
 Transaction category identity is nullable and authoritative when present;
 category text remains historical. v5 preserves both without changing encryption.

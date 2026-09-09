@@ -1,5 +1,14 @@
 # Pilgrim Tracker Incremental Sync Protocol
 
+## BETA-08M0 presence-sensitive transaction metadata
+
+Transaction payloads, change feed, conflicts, and initial snapshots now carry
+nullable `note` and `reference`. On update, an omitted property from an older
+client preserves the stored value; an explicit null from a current client
+clears it; a present string sets it after domain/database validation. An
+old-client create that omits both stores null. Remote application remains
+echo-free and uses the existing transaction/outbox/cursor protocol.
+
 ## BETA-08L0A mixed-client category protection
 
 The hosted categories table now enforces the canonical System Tithe invariant

@@ -10,6 +10,7 @@ import '../../master_data/domain/entities/account.dart';
 import '../../master_data/domain/services/account_balance_calculator.dart';
 import '../../tithe/domain/tithe_policy.dart';
 import '../../transactions/domain/entities/transaction.dart';
+import '../../transactions/domain/entities/transaction_metadata.dart';
 import '../../transactions/domain/entities/internal_transfer_link.dart';
 import 'backup_models.dart';
 
@@ -215,6 +216,21 @@ class HouseholdBackupIntegrity {
 
     for (final record in transactions) {
       final id = _requiredString(record, 'id', 'transactions');
+      final note = record['note'];
+      final reference = record['reference'];
+      if ((note != null && note is! String) ||
+          (reference != null && reference is! String)) {
+        throw BackupValidationException(
+          'Transaction $id has invalid note or reference metadata.',
+        );
+      }
+      final metadataError = TransactionMetadataPolicy.validationMessage(
+        note: note as String?,
+        reference: reference as String?,
+      );
+      if (metadataError != null) {
+        throw BackupValidationException('Transaction $id: $metadataError');
+      }
       final type = _requiredString(record, 'transaction_type', 'transactions');
       final categoryId = record['category_id'] as String?;
       if (categoryId != null &&

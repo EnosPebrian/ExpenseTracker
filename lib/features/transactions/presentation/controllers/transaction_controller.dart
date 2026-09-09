@@ -101,6 +101,8 @@ class TransactionController extends ChangeNotifier {
           destinationAccountId: destination.id,
           date: transaction.date,
           amount: transaction.amount,
+          note: transaction.note,
+          reference: transaction.reference,
         );
       } else {
         await update(transaction);

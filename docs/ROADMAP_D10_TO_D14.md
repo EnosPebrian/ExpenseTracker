@@ -1,5 +1,14 @@
 # D10–D14 Roadmap
 
+## BETA-08M0 durable metadata prerequisite — 2026-09-08
+
+Transaction note/reference now have a single durable domain and persistence
+path through SQLite 27, web parity, shared import commit, sync, and backup v6.
+Missing old-client JSON properties preserve stored metadata; explicit null
+clears it. The fields remain outside deterministic transaction identity and all
+financial calculations. This prerequisite does not implement Portable CSV;
+BETA-08M may resume only after BETA-08M0 engineering and hosted rollout pass.
+
 ## BETA-08L Fixed System Tithe & Actual Payment Tracking — 2026-09-08
 
 Implemented the client feature on the deployed BETA-08L0A identity guard.

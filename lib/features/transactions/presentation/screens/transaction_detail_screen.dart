@@ -326,6 +326,10 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
                   label: 'Entered by',
                   value: widget.enteredByName ?? 'Legacy / unknown',
                 ),
+                if (transaction.reference case final reference?)
+                  _DetailLine(label: 'Reference', value: reference),
+                if (transaction.note case final note?)
+                  _DetailLine(label: 'Note', value: note),
                 if (isManagedFeeExpense) ...[
                   const SizedBox(height: 12),
                   const Text(

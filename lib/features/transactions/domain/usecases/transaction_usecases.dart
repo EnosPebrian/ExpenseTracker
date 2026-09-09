@@ -5,6 +5,7 @@ import '../../../assets/domain/services/asset_definition_retirement_policy.dart'
 import '../../../assets/domain/services/asset_trade_validator.dart';
 import '../entities/transaction.dart';
 import '../entities/transaction_relation_type.dart';
+import '../entities/transaction_metadata.dart';
 import '../repositories/transaction_repository.dart';
 import 'save_asset_conversion_with_fee.dart';
 
@@ -28,6 +29,13 @@ void validateTransaction(Transaction transaction) {
     throw TransactionValidationException(
       'Transaction amount cannot be negative.',
     );
+  }
+  final metadataError = TransactionMetadataPolicy.validationMessage(
+    reference: transaction.reference,
+    note: transaction.note,
+  );
+  if (metadataError != null) {
+    throw TransactionValidationException(metadataError);
   }
   if (transaction.feeAmount < 0) {
     throw TransactionValidationException('Transaction fee cannot be negative.');
@@ -329,6 +337,8 @@ class DuplicateTransaction {
       category: original.category,
       categoryId: original.categoryId,
       account: original.account,
+      note: original.note,
+      reference: original.reference,
       date: DateTime.now(),
       amount: withoutAmount ? 0 : original.amount,
       type: original.type,

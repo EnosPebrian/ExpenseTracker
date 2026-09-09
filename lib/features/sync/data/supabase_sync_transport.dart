@@ -359,6 +359,8 @@ class SupabaseSyncTransport
       'title',
       'category',
       'account',
+      'note',
+      'reference',
       'transaction_date',
       'amount',
       'transaction_type',

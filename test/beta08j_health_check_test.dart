@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pilgrim_tracker/features/backup/domain/backup_models.dart';
 import 'package:pilgrim_tracker/features/health/domain/health_check_models.dart';
 import 'package:pilgrim_tracker/features/health/domain/health_check_service.dart';
 import 'package:pilgrim_tracker/features/master_data/domain/entities/account.dart';
@@ -293,6 +294,32 @@ void main() {
       },
     );
 
+    test(
+      'current backup format is healthy and future format is critical',
+      () async {
+        final current = _healthySnapshot();
+        final currentReport = await _run(current);
+        expect(
+          _item(currentReport, 'backup.format').status,
+          HealthCheckItemStatus.healthy,
+        );
+        expect(current.backupFormatVersion, portableBackupFormatVersion);
+
+        final futureReport = await _run(
+          _replace(
+            current,
+            backupFormatVersion: portableBackupFormatVersion + 1,
+          ),
+        );
+        expect(
+          _item(futureReport, 'backup.format').status,
+          HealthCheckItemStatus.error,
+        );
+        expect(futureReport.overallStatus, HealthCheckOverallStatus.critical);
+        expect(current.backupFormatVersion, portableBackupFormatVersion);
+      },
+    );
+
     test('privacy-safe summary excludes financial and identity data', () async {
       final report = await _run(_healthySnapshot());
       final summary = report.privacySafeSummary();
@@ -417,7 +444,7 @@ HealthCheckSnapshot _healthySnapshot() {
     schemaVersion: 25,
     expectedSchemaVersion: 25,
     bookId: 'book-a',
-    backupFormatVersion: 5,
+    backupFormatVersion: portableBackupFormatVersion,
     sync: const HealthSyncSnapshot(
       cloudState: HealthCloudState.localOnly,
       pendingOutboxCount: 0,
@@ -523,11 +550,12 @@ HealthCheckSnapshot _replace(
   List<Map<String, Object?>>? importSessions,
   List<Map<String, Object?>>? importDrafts,
   HealthSyncSnapshot? sync,
+  int? backupFormatVersion,
 }) => HealthCheckSnapshot(
   schemaVersion: source.schemaVersion,
   expectedSchemaVersion: source.expectedSchemaVersion,
   bookId: source.bookId,
-  backupFormatVersion: source.backupFormatVersion,
+  backupFormatVersion: backupFormatVersion ?? source.backupFormatVersion,
   sync: sync ?? source.sync,
   localSession: source.localSession,
   records: records ?? source.records,

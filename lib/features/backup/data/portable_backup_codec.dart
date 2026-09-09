@@ -48,12 +48,15 @@ class PortableBackupCodec {
     final encodedSnapshot = <String, List<Map<String, Object?>>>{
       for (final key in portableBackupEntityKeys)
         key: encodedKeys.contains(key)
-            ? (key == 'transactions' && formatVersion < 5
+            ? (key == 'transactions' && formatVersion < 6
                   ? clean[key]!
                         .map(
                           (record) => <String, Object?>{
                             for (final entry in record.entries)
-                              if (entry.key != 'category_id')
+                              if ((formatVersion >= 5 ||
+                                      entry.key != 'category_id') &&
+                                  entry.key != 'note' &&
+                                  entry.key != 'reference')
                                 entry.key: entry.value,
                           },
                         )
@@ -231,6 +234,12 @@ class PortableBackupCodec {
       if (manifest.formatVersion < 5) {
         for (final transaction in snapshot['transactions'] ?? const []) {
           transaction['category_id'] = null;
+        }
+      }
+      if (manifest.formatVersion < 6) {
+        for (final transaction in snapshot['transactions'] ?? const []) {
+          transaction['note'] = null;
+          transaction['reference'] = null;
         }
       }
       HouseholdBackupIntegrity.validate(snapshot);

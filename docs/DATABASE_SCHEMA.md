@@ -1,5 +1,14 @@
 # Pilgrim Tracker Database and Persistence Schema
 
+## BETA-08M0 transaction note and reference
+
+Current SQLite schema version: **27**. Version 27 additively adds nullable
+`transactions.note` and `transactions.reference`. Existing rows receive null;
+no financial value, identity, version, lifecycle state, or outbox row is
+rewritten. SQLite constraints reject notes longer than 4,000 characters and
+references longer than 256 characters. The matching hosted migration is
+`20260908124412_beta08m0_transaction_note_reference.sql`.
+
 ## BETA-08L0A hosted category guard
 
 Hosted migration `20260907233238_beta08l0a_system_tithe_category_guard.sql`
@@ -12,7 +21,7 @@ backup remains v5.
 
 Fresh schema creation inserts no user financial rows.
 
-Current SQLite schema version: **26**. Version 26 adds nullable transaction
+Version 26 adds nullable transaction
 `category_id` and an index, backfilling only unique same-book/type normalized
 historical category matches (including archived). Collisions/unmatched stay null;
 financial rows and lifecycle/outbox state are preserved. See
@@ -87,6 +96,8 @@ account TEXT NOT NULL
 transaction_date INTEGER NOT NULL
 amount INTEGER NOT NULL
 transaction_type TEXT NOT NULL
+note TEXT
+reference TEXT
 quantity REAL
 unit TEXT
 unit_price INTEGER
