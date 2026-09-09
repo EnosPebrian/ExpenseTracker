@@ -15,9 +15,10 @@ expenses; they are never double-counted.
 
 BETA-08L0 separates nullable authoritative transaction `categoryId` from historical
 human-readable `category`. No tithe or investment features are added here.
-Owner decision for future BETA-08M: Portable CSV must be machine-safe and
-human-readable/human-editable, supporting export → Excel/Google Sheets edits →
-import review → commit. Blank category IDs remain representable until reviewed.
+Future Portable CSV must be machine-safe and human-readable/human-editable,
+supporting export → Excel/Google Sheets edits → import review → commit. Blank
+category IDs remain representable until reviewed. It is not BETA-08M and
+requires its own milestone contract before implementation.
 This is a documented future requirement, not implemented CSV behavior.
 
 Shared households receive conflict review with Keep shared, Keep this device,

@@ -1,5 +1,15 @@
 # D10–D14 Roadmap
 
+## BETA-08N0/N1 accepted investment sequence — 2026-09-10
+
+`ARCH-20260910-01` Option B confirms BETA-08M is complete and authorizes
+BETA-08N0 Investment / Brokerage Ledger Foundation followed by dependent
+BETA-08N1 Brokerage Statement CSV Import. The authoritative accounting,
+identity, local-first, backup, sync, Health Check, scope, and validation contract
+is `BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`. Human-editable Portable CSV is a
+neutral future backlog capability and is not part of BETA-08M or BETA-08N.
+Feature freeze resumes after BETA-08N1 engineering completion.
+
 ## BETA-08M CSV unknown-category resolution — 2026-09-09
 
 The reviewed CSV path now requires explicit Map, Create, or Ignore for unknown
@@ -15,7 +25,7 @@ path through SQLite 27, web parity, shared import commit, sync, and backup v6.
 Missing old-client JSON properties preserve stored metadata; explicit null
 clears it. The fields remain outside deterministic transaction identity and all
 financial calculations. This prerequisite does not implement Portable CSV;
-BETA-08M may resume only after BETA-08M0 engineering and hosted rollout pass.
+that capability remains neutral future backlog work under a separate contract.
 
 ## BETA-08L Fixed System Tithe & Actual Payment Tracking — 2026-09-08
 
@@ -25,8 +35,8 @@ actual Paid is derived from ordinary exact-category transactions while Due
 continues to use `TithePolicy`. The Tithe page, locked payment entry, statements,
 backup clone/recovery, sync lifecycle, and read-only health diagnostics share
 that identity. SQLite stays 26, backup stays v5, and no SQL/hosted rollout was
-needed. Owner acceptance is **NOT RUN**. BETA-08M may begin only after the final
-BETA-08L engineering gates pass; BETA-08N/N1 remain unimplemented.
+needed. Owner acceptance is **NOT RUN**. BETA-08N0/N1 remain separate later
+investment/brokerage milestones.
 
 ## BETA-08L0A System Tithe server guard — 2026-09-08
 
@@ -57,9 +67,10 @@ with historical snapshot fallback. See `CHECKPOINT_BETA08L0_COMPLETE.md` for
 engineering gates. Its hosted migration is applied and the encompassing
 BETA-08H1A rollout now passes. BETA-08L tithe tracking remains a separate scope
 and may resume after the BETA-08L0A server guard above.
-BETA-08M must deliver machine-safe AND human-readable/human-editable Portable CSV
-(export → spreadsheet editing → import review → commit). Documented only;
-BETA-08M and BETA-08N/N1 investment work remain unimplemented here.
+Human-readable/human-editable Portable CSV (export → spreadsheet editing →
+import review → commit) remains neutral future backlog work requiring its own
+contract. It is not BETA-08M. BETA-08N0/N1 investment work was not implemented
+by this historical checkpoint.
 
 ## D10 — Foreign-currency asset model and FX pricing
 
@@ -317,6 +328,6 @@ acceptance is NOT RUN.
 **BETA-08J Engineering PASS.** The owner temporarily lifted feature freeze for
 four bounded milestones: BETA-08K cloud durability/new-device bootstrap,
 BETA-08L fixed tithe category/payment tracking, BETA-08M CSV unknown-category
-resolution, and BETA-08N investment/brokerage ledger. BETA-08K is implemented
-without a schema or hosted deployment change. BETA-08L/M/N remain
-unimplemented; feature freeze resumes after BETA-08N.
+resolution, and BETA-08N0/N1 investment/brokerage work. BETA-08K is implemented
+without a schema or hosted deployment change. BETA-08L and BETA-08M are now
+complete; BETA-08N0/N1 follow, and feature freeze resumes after BETA-08N1.

@@ -145,12 +145,12 @@ Record in `docs/ENGINEERING_HANDOFF.md`:
 
 ---
 
-## NEXT WORK SELECTION
+## ACTIVE
 
 ### PT-AUTO-NEXT — Derive the next accepted milestone
 
 **Priority:** P1
-**State:** BLOCKED_ARCHITECT
+**State:** COMPLETE
 
 After BETA-08M is fully complete:
 
@@ -167,13 +167,62 @@ Prefer the newest accepted checkpoint/progress state.
 
 If multiple roadmaps conflict, create `BLOCKED_ARCHITECT` instead of guessing.
 
-### Selection blocker
+### Resolution
 
-The current documents conflict on whether human-editable Portable CSV remains
-unfinished BETA-08M scope or whether BETA-08M is complete after unknown-category
-resolution. BETA-08N is named as investment/brokerage work but has no executable
-domain contract or acceptance criteria. No next item can safely become `READY`
-until `ARCH-20260910-01` is resolved.
+`ARCH-20260910-01` selected Option B on 2026-09-10. BETA-08M is complete;
+Portable CSV moved to neutral future backlog; BETA-08N0 and BETA-08N1 are the
+accepted investment/brokerage sequence.
+
+---
+
+### PT-BETA-08N0 — Investment / Brokerage Ledger Foundation
+
+**Priority:** P0
+**State:** READY
+**Type:** product foundation / additive local-first financial subledger
+**Architecture contract:** `docs/BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`
+
+#### Scope
+
+Implement the N0 persistence/domain foundation, manual brokerage activities,
+reuse of existing asset accounting, brokerage cash and positions, investment
+performance, net-worth integration, encrypted backup/restore/clone, ordinary
+sync/bootstrap, read-only Health Check diagnostics, and responsive
+Windows/Android/web-preview UI.
+
+#### Non-goals
+
+No broker CSV import, extraction/AI, brokerage API or order placement, quote
+provider expansion, tax-law calculation, options/futures/margin/shorts,
+security transfers, unsupported corporate actions, or hosted deployment.
+
+#### Required first step
+
+Complete the N0 engineering analysis in the architecture contract before schema
+design. Reuse D10–D13 authority. If the contract would require two competing
+accounting truths, create `BLOCKED_ARCHITECT` before implementation.
+
+#### Completion gate
+
+All N0 required tests and applicable D10–D13, transfer, reporting/net-worth,
+Tithe, backup/recovery, sync/bootstrap, Health Check, migration, pgTAP, analyzer,
+full-suite, platform-build, diff-review, commit, and push gates in the contract
+must pass. Owner acceptance is prepared but remains **NOT RUN**.
+
+---
+
+### PT-BETA-08N1 — Brokerage Statement CSV Import
+
+**Priority:** P1
+**State:** READY
+**Depends on:** PT-BETA-08N0 COMPLETE
+**Architecture contract:** `docs/BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`
+
+Implement explicit mapped/reviewed/idempotent brokerage-activity CSV import
+only after N0 completes. Preserve source identity, explicit unresolved activity
+and instrument review, atomic authoritative postings, and local-first sync.
+Do not implement any N1 out-of-scope provider, extraction, AI, trading, tax, or
+advanced instrument behavior.
 
 ---
 
@@ -183,6 +232,7 @@ The following capabilities are within the reopened product-development scope but
 
 - Receivables / Advances
 - Account Reconciliation
+- Human-editable Portable CSV
 
 They may become autonomous work items only after the repository contains enough accepted domain behavior and acceptance criteria to implement them safely.
 

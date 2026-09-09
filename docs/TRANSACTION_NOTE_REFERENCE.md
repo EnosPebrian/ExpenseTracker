@@ -47,4 +47,5 @@ because the fields did not exist. Exact restore, clone, and selective recovery
 preserve current metadata. Backup cryptography is unchanged.
 
 Human-editable Portable CSV v1 is deliberately not part of BETA-08M0. It
-remains future BETA-08M work built on this durable foundation.
+remains separately contracted future backlog work built on this durable
+foundation.

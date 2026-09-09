@@ -31,5 +31,6 @@ One ordered Supabase migration is present:
 - Hosted dry-run / deployment / verification: pending.
 - Git finalization: pending.
 
-Portable CSV/BETA-08M and BETA-08N/N1 were not implemented. Owner runtime
-acceptance remains deferred until after engineering completion.
+Future Portable CSV, BETA-08M category resolution, and BETA-08N0/N1 were not
+implemented. Owner runtime acceptance remains deferred until after engineering
+completion.

@@ -7,7 +7,9 @@ optional `reference` and `note`, but their final transaction commit now retains
 them durably. Reference is trimmed; whitespace-only values become null; a
 non-empty note preserves internal whitespace and newlines. These fields do not
 change the established UUIDv5 transaction identity or duplicate policy.
-Human-editable Portable CSV v1 is not implemented here and remains BETA-08M.
+Human-editable Portable CSV v1 is not implemented here. It remains a neutral
+future backlog capability that requires its own milestone and contract; it is
+not BETA-08M scope.
 
 Transactions → Import now offers CSV, Receipt / invoice photo, and Bank
 statement PDF / images. All three sources converge on the normalized draft,

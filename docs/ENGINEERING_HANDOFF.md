@@ -8,19 +8,19 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-`PT-AUTO-NEXT — Derive the next accepted milestone`
+`PT-BETA-08N0 — Investment / Brokerage Ledger Foundation`
 
 ## Current state
 
-`BLOCKED_ARCHITECT`
+`READY`
 
 ## Latest pushed engineering baseline
 
 ```text
 branch: main
 remote: origin
-commit: 1e5a97c0d3c458f4519ec7528494a3a80e438a77
-message: feat: resolve unknown CSV categories safely
+commit: bf46d2b5cddf1a5d9f4a5e1452c6594c699db2c7
+message: docs: record BETA-08M completion and next blocker
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -57,9 +57,10 @@ existing validation path.
 
 ## Exact next action
 
-Resolve `ARCH-20260910-01`. The repository must identify and specify the next
-accepted milestone before another engineering item can safely become `READY`.
-Owner/runtime acceptance for BETA-08M remains **NOT RUN** and is not the blocker.
+After the architecture reconciliation commit is pushed, inspect D10–D13 and
+explicitly determine the eight N0 reuse questions in
+`docs/BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md` before designing schema.
+Owner/runtime acceptance for BETA-08M remains **NOT RUN**.
 
 ---
 

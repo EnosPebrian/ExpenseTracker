@@ -11,7 +11,8 @@
 ## BETA-08M0 limitations
 
 - Transaction note/reference are durable in SQLite 27, sync, and encrypted
-  backup v6, but human-editable Portable CSV v1 remains future BETA-08M work.
+  backup v6, but human-editable Portable CSV v1 remains separately contracted
+  future backlog work.
 - Reference is limited to 256 characters and note to 4,000 characters; values
   are rejected rather than silently truncated.
 - Web continues to be an in-memory development preview.
@@ -282,5 +283,5 @@ These limitations do not change the version-21 financial or accounting model.
   successfully synchronize. Local-only households require encrypted backups
   for device-loss recovery.
 - BETA-08K owner runtime acceptance is **NOT RUN**. The owner temporarily
-  lifted feature freeze only for BETA-08K through BETA-08N; freeze resumes after
-  BETA-08N.
+  lifted feature freeze through BETA-08N0 and BETA-08N1; freeze resumes after
+  BETA-08N1 engineering completion unless a later explicit decision changes it.

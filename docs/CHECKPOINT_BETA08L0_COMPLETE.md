@@ -53,11 +53,12 @@ Detailed semantics and limitations are in `TRANSACTION_CATEGORY_IDENTITY.md`.
 
 ## Scope confirmation
 
-BETA-08L tithe tracking, BETA-08M Portable CSV implementation, and BETA-08N/N1
-investment/brokerage work were not implemented. Monetary reports, deterministic
-transaction UUID derivation, Supabase deployment and release signing are unchanged.
-The future BETA-08M requirement for machine-safe plus human-readable/editable CSV
-is documented, but remains unimplemented.
+BETA-08L tithe tracking, BETA-08M category resolution, future Portable CSV, and
+BETA-08N0/N1 investment/brokerage work were not implemented. Monetary reports,
+deterministic transaction UUID derivation, Supabase deployment, and release
+signing are unchanged. The future requirement for machine-safe plus
+human-readable/editable CSV is documented but remains a separately contracted
+backlog capability.
 
 BETA-08L may resume after the separately authorized hosted migration rollout and
 the milestone's intentionally deferred owner/runtime acceptance as applicable.

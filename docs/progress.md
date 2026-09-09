@@ -1,5 +1,14 @@
 # Pilgrim Tracker Progress
 
+## BETA-08N0/N1 Architecture Authorization — 2026-09-10
+
+`ARCH-20260910-01` resolved Option B. BETA-08M is complete. The accepted next
+sequence is BETA-08N0 Investment / Brokerage Ledger Foundation followed by
+BETA-08N1 Brokerage Statement CSV Import. Their authoritative contract is
+`BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`; N0 engineering has not started at
+this checkpoint. Human-editable Portable CSV remains neutral future backlog
+work and does not reopen BETA-08M. Owner acceptance remains **NOT RUN**.
+
 ## BETA-08M CSV Unknown-Category Resolution — 2026-09-09
 
 Implemented explicit exact-map/create/ignore review for unknown CSV categories.
@@ -14,8 +23,9 @@ remains 27; no Supabase/SQL change exists. Owner acceptance is **NOT RUN**.
 Added nullable user-owned transaction note/reference across SQLite 27, web,
 manual edit, shared import finalization, presence-sensitive sync, and encrypted
 backup v6. Metadata does not affect deterministic identity or financial math.
-Portable CSV/BETA-08M and BETA-08N/N1 remain unimplemented. Final engineering,
-hosted rollout, Git, and owner-acceptance status are recorded in
+Future Portable CSV and BETA-08N0/N1 remain unimplemented. Portable CSV is not
+BETA-08M and requires its own milestone contract. Final engineering, hosted
+rollout, Git, and owner-acceptance status are recorded in
 `CHECKPOINT_BETA08M0_COMPLETE.md`.
 
 ## BETA-08L Fixed System Tithe & Actual Payment Tracking — 2026-09-08
@@ -79,7 +89,7 @@ repair, persistence, SQL, cloud calls, or hosted changes. Owner acceptance is
 NOT RUN. Final gate results are recorded in `CHECKPOINT_BETA08J_COMPLETE.md`.
 
 Engineering PASS. The owner temporarily lifted feature freeze for the bounded
-BETA-08K through BETA-08N sequence; freeze resumes after BETA-08N.
+BETA-08K through BETA-08N0/N1 sequence; freeze resumes after BETA-08N1.
 
 ## BETA-08K Cloud Durability & New-Device Bootstrap — 2026-09-04
 

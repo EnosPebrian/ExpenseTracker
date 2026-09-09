@@ -6,7 +6,8 @@ Encrypted backup v6 includes nullable transaction `note` and `reference`
 without changing encryption or password derivation. Exact restore, household
 clone, and selective transaction recovery preserve these ordinary metadata
 values. Versions v1–v5 remain readable and supply null for fields they did not
-contain. Portable CSV is a separate future BETA-08M format.
+contain. Portable CSV is a separate future backlog format that requires its own
+milestone and contract.
 
 ## BETA-08L System Tithe portability
 

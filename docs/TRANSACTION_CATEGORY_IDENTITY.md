@@ -67,6 +67,7 @@ require clone rather than selective recovery.
 
 No hosted deployment or owner-runtime acceptance is claimed. Monetary reporting,
 tithe calculations, CSV format and investment behavior are unchanged. BETA-08L,
-BETA-08M and BETA-08N/N1 remain separate future milestones. Owner approved that
-future Portable CSV must be machine-safe AND human-readable/human-editable, with
-export → spreadsheet edits → import review → commit; that feature is not built here.
+BETA-08M and BETA-08N0/N1 were separate later milestones. Future Portable CSV
+must be machine-safe AND human-readable/human-editable, with export →
+spreadsheet edits → import review → commit; it is not BETA-08M and requires its
+own future milestone contract.
