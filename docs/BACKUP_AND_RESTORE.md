@@ -1,6 +1,19 @@
 # Household Backup and Restore
 
-## Current format: v6 — BETA-08M0
+## Current format: v7 — BETA-08N0
+
+Encrypted backup v7 adds transaction brokerage-account attribution, activity
+type, and split ratio to the existing authenticated payload. Exact restore
+preserves those fields. Household clone remaps `brokerage_account_id` through
+the cloned account identity and validates every reference before mutation.
+Invalid or cross-household brokerage metadata fails closed. Selective recovery
+continues through the existing transaction/dependency validation boundary.
+
+Formats v1-v6 remain readable and supply null brokerage metadata. Encryption,
+password derivation, checksums, file extension, and restore atomicity are
+unchanged. Import Inbox workflow state remains excluded.
+
+## Previous format: v6 — BETA-08M0
 
 Encrypted backup v6 includes nullable transaction `note` and `reference`
 without changing encryption or password derivation. Exact restore, household

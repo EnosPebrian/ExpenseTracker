@@ -1,5 +1,20 @@
 # Pilgrim Tracker Database and Persistence Schema
 
+## BETA-08N0 brokerage attribution
+
+Current SQLite schema version: **28**. Version 28 additively adds nullable
+`transactions.brokerage_account_id`, `brokerage_activity_type`,
+`split_numerator`, and `split_denominator`, plus an attribution index. Existing
+rows remain null and are not rewritten. A referenced brokerage account must
+belong to the same household and have account type `brokerage`; split
+ratio components are positive, paired, and valid only for SPLIT. Account type
+uses the existing text column, so no account-table rebuild is needed.
+
+The matching additive Supabase migration is
+`20260910054452_beta08n0_brokerage_metadata.sql`. It preserves transaction RLS,
+uses presence-sensitive sync handling for mixed clients, and was verified only
+against the local Supabase stack; it has not been deployed to hosted Supabase.
+
 ## BETA-08M0 transaction note and reference
 
 Current SQLite schema version: **27**. Version 27 additively adds nullable
@@ -105,6 +120,10 @@ asset_definition_id TEXT
 asset_name TEXT
 asset_symbol TEXT
 asset_action TEXT
+brokerage_account_id TEXT
+brokerage_activity_type TEXT
+split_numerator INTEGER
+split_denominator INTEGER
 fee_amount INTEGER NOT NULL DEFAULT 0
 fee_treatment TEXT NOT NULL DEFAULT 'none'
 related_transaction_id TEXT

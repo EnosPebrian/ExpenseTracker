@@ -478,6 +478,7 @@ class FinancialStatementPdfRenderer {
     StatementTransactionKind.transferOut => 'Transfer out',
     StatementTransactionKind.legacyTransfer => 'Legacy transfer',
     StatementTransactionKind.assetMovement => 'Asset movement',
+    StatementTransactionKind.investmentActivity => 'Investment activity',
   };
 
   static String _money(String currency, int value) =>

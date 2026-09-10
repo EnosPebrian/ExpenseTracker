@@ -134,7 +134,7 @@ void main() {
       await store.db.execute('PRAGMA user_version = 25');
       await store.close();
       await store.initialize();
-      expect(await store.getSchemaVersion(), 27);
+      expect(await store.getSchemaVersion(), native.LocalStore.schemaVersion);
       final rows = {
         for (final r in await store.getTransactions(includeDeleted: true))
           r['id']: r,

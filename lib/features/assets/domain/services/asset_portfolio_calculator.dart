@@ -15,6 +15,7 @@ class AssetPortfolioCalculator {
     required Iterable<Transaction> transactions,
     Iterable<AssetMarketPrice> marketPrices = const [],
     Iterable<AssetDefinition> assetDefinitions = const [],
+    String? brokerageAccountId,
   }) {
     final definitionById = <String, AssetDefinition>{};
 
@@ -42,7 +43,10 @@ class AssetPortfolioCalculator {
             .where((transaction) {
               return transaction.deletedAt == null &&
                   transaction.type == TransactionType.assetConversion &&
-                  (transaction.quantity ?? 0) > 0;
+                  (brokerageAccountId == null ||
+                      transaction.brokerageAccountId == brokerageAccountId) &&
+                  (transaction.assetAction == AssetAction.split ||
+                      (transaction.quantity ?? 0) > 0);
             })
             .toList(growable: false)
           ..sort(AssetTransactionIdentity.compareChronologically);
@@ -75,10 +79,6 @@ class AssetPortfolioCalculator {
       final groupingKey = AssetTransactionIdentity.key(transaction);
 
       final quantity = transaction.quantity ?? 0;
-
-      if (quantity <= 0) {
-        continue;
-      }
 
       final unit =
           definition?.normalizedUnit ?? _resolvedUnit(transaction.unit);
@@ -156,6 +156,20 @@ class AssetPortfolioCalculator {
             state.quantity = 0;
             state.costBasis = 0;
           }
+        case AssetAction.split:
+          final numerator = transaction.splitNumerator;
+          final denominator = transaction.splitDenominator;
+          if (state.quantity <= 0 ||
+              numerator == null ||
+              numerator <= 0 ||
+              denominator == null ||
+              denominator <= 0) {
+            continue;
+          }
+          state.quantity = AssetNumericPolicy.normalizeQuantity(
+            state.quantity * numerator / denominator,
+            state.kind,
+          );
       }
     }
 

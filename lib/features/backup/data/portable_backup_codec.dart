@@ -48,15 +48,23 @@ class PortableBackupCodec {
     final encodedSnapshot = <String, List<Map<String, Object?>>>{
       for (final key in portableBackupEntityKeys)
         key: encodedKeys.contains(key)
-            ? (key == 'transactions' && formatVersion < 6
+            ? (key == 'transactions' && formatVersion < 7
                   ? clean[key]!
                         .map(
                           (record) => <String, Object?>{
                             for (final entry in record.entries)
                               if ((formatVersion >= 5 ||
                                       entry.key != 'category_id') &&
-                                  entry.key != 'note' &&
-                                  entry.key != 'reference')
+                                  (formatVersion >= 6 ||
+                                      (entry.key != 'note' &&
+                                          entry.key != 'reference')) &&
+                                  (formatVersion >= 7 ||
+                                      !const {
+                                        'brokerage_account_id',
+                                        'brokerage_activity_type',
+                                        'split_numerator',
+                                        'split_denominator',
+                                      }.contains(entry.key)))
                                 entry.key: entry.value,
                           },
                         )
@@ -240,6 +248,14 @@ class PortableBackupCodec {
         for (final transaction in snapshot['transactions'] ?? const []) {
           transaction['note'] = null;
           transaction['reference'] = null;
+        }
+      }
+      if (manifest.formatVersion < 7) {
+        for (final transaction in snapshot['transactions'] ?? const []) {
+          transaction['brokerage_account_id'] = null;
+          transaction['brokerage_activity_type'] = null;
+          transaction['split_numerator'] = null;
+          transaction['split_denominator'] = null;
         }
       }
       HouseholdBackupIntegrity.validate(snapshot);

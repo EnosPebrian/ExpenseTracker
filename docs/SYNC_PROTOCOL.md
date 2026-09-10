@@ -1,5 +1,17 @@
 # Pilgrim Tracker Incremental Sync Protocol
 
+## BETA-08N0 brokerage metadata
+
+Ordinary transaction payloads, change feed, conflicts, and initial snapshots
+carry nullable `brokerage_account_id`, `brokerage_activity_type`,
+`split_numerator`, and `split_denominator`. A missing property from an older
+client preserves the current stored value on update; explicit null clears it.
+Local and server validation reject cross-household/non-brokerage account
+attribution and incoherent activity shapes. Remote apply and bootstrap remain
+echo-free, and no new sync entity, cursor, outbox, or conflict architecture is
+introduced. The additive BETA-08N0 migration is locally verified and remains
+undeployed.
+
 ## BETA-08M category creation
 
 Import review choices synchronize as existing Import Inbox draft metadata. A

@@ -9,6 +9,7 @@ import '../master_data/system_category.dart';
 import 'household_schema_native.dart';
 import 'import_review_schema_native.dart';
 import 'backup_schema_native.dart';
+import 'brokerage_schema_native.dart';
 import 'budget_schema_native.dart';
 import 'native_database_path.dart';
 import 'sync_schema_native.dart';
@@ -19,7 +20,7 @@ import 'transfer_link_schema_native.dart';
 
 class LocalStore {
   LocalStore({this.databasePath});
-  static const schemaVersion = 27;
+  static const schemaVersion = 28;
   static bool _ffiInitialized = false;
 
   final String? databasePath;
@@ -66,6 +67,12 @@ asset_definition_id TEXT,
 asset_name TEXT,
 asset_symbol TEXT,
             asset_action TEXT,
+            brokerage_account_id TEXT,
+            brokerage_activity_type TEXT,
+            split_numerator INTEGER
+              CHECK(split_numerator IS NULL OR split_numerator > 0),
+            split_denominator INTEGER
+              CHECK(split_denominator IS NULL OR split_denominator > 0),
             fee_amount INTEGER NOT NULL DEFAULT 0,
             fee_treatment TEXT NOT NULL DEFAULT 'none',
             related_transaction_id TEXT,
@@ -100,6 +107,10 @@ asset_symbol TEXT,
         await db.execute(
           'CREATE INDEX idx_transactions_asset_definition '
           'ON transactions(asset_definition_id)',
+        );
+        await db.execute(
+          'CREATE INDEX idx_transactions_brokerage_account '
+          'ON transactions(brokerage_account_id)',
         );
         await db.execute(
           'CREATE INDEX idx_transactions_relation '
@@ -446,6 +457,9 @@ asset_symbol TEXT,
         }
         if (oldVersion < 27) {
           await TransactionMetadataSchemaNative.upgradeToV27(db);
+        }
+        if (oldVersion < 28) {
+          await BrokerageSchemaNative.upgradeToV28(db);
         }
       },
     );
@@ -2094,6 +2108,19 @@ asset_symbol TEXT,
         if (currentRows.isNotEmpty &&
             !canonicalPayload.containsKey('reference'))
           'reference': currentRows.first['reference'],
+        if (currentRows.isNotEmpty &&
+            !canonicalPayload.containsKey('brokerage_account_id'))
+          'brokerage_account_id': currentRows.first['brokerage_account_id'],
+        if (currentRows.isNotEmpty &&
+            !canonicalPayload.containsKey('brokerage_activity_type'))
+          'brokerage_activity_type':
+              currentRows.first['brokerage_activity_type'],
+        if (currentRows.isNotEmpty &&
+            !canonicalPayload.containsKey('split_numerator'))
+          'split_numerator': currentRows.first['split_numerator'],
+        if (currentRows.isNotEmpty &&
+            !canonicalPayload.containsKey('split_denominator'))
+          'split_denominator': currentRows.first['split_denominator'],
         ...canonicalPayload,
         'sync_status': 'synced',
       };
@@ -2312,6 +2339,7 @@ asset_symbol TEXT,
     DatabaseExecutor executor,
     Map<String, Object?> transaction,
   ) async {
+    await _validateTransactionBrokerage(executor, transaction);
     final categoryId = transaction['category_id'] as String?;
     if (categoryId == null) return;
     final bookId = transaction['book_id'] as String?;
@@ -2333,6 +2361,61 @@ asset_symbol TEXT,
     }
   }
 
+  Future<void> _validateTransactionBrokerage(
+    DatabaseExecutor executor,
+    Map<String, Object?> transaction,
+  ) async {
+    final accountId = transaction['brokerage_account_id'] as String?;
+    final activity = transaction['brokerage_activity_type'] as String?;
+    if ((accountId == null) != (activity == null)) {
+      throw StateError(
+        'Brokerage account and activity type must be provided together.',
+      );
+    }
+    final numerator = (transaction['split_numerator'] as num?)?.toInt();
+    final denominator = (transaction['split_denominator'] as num?)?.toInt();
+    if (accountId == null) {
+      if (numerator != null || denominator != null) {
+        throw StateError('A split ratio requires brokerage attribution.');
+      }
+      return;
+    }
+    if (!const {
+      'buy',
+      'sell',
+      'dividend',
+      'fee',
+      'tax',
+      'deposit',
+      'withdrawal',
+      'split',
+    }.contains(activity)) {
+      throw StateError('The brokerage activity type is invalid.');
+    }
+    final account = await executor.query(
+      'accounts',
+      columns: const ['id'],
+      where: 'id = ? AND book_id = ? AND account_type = ?',
+      whereArgs: [accountId, transaction['book_id'], 'brokerage'],
+      limit: 1,
+    );
+    if (account.isEmpty) {
+      throw StateError(
+        'The brokerage account belongs to another household or type.',
+      );
+    }
+    if (activity == 'split') {
+      if (numerator == null ||
+          numerator <= 0 ||
+          denominator == null ||
+          denominator <= 0) {
+        throw StateError('A split requires a positive ratio.');
+      }
+    } else if (numerator != null || denominator != null) {
+      throw StateError('A split ratio is valid only for a split activity.');
+    }
+  }
+
   Future<void> _validateTransactionCategoriesInBook(
     DatabaseExecutor executor,
     String bookId,
@@ -2350,6 +2433,14 @@ asset_symbol TEXT,
       throw StateError(
         'A transaction category belongs to another household or type.',
       );
+    }
+    final transactions = await executor.query(
+      'transactions',
+      where: 'book_id = ?',
+      whereArgs: [bookId],
+    );
+    for (final transaction in transactions) {
+      await _validateTransactionBrokerage(executor, transaction);
     }
   }
 

@@ -5,6 +5,7 @@ import '../../master_data/domain/services/account_balance_calculator.dart';
 import '../../tithe/domain/tithe_policy.dart';
 import '../../transactions/domain/entities/internal_transfer_link.dart';
 import '../../transactions/domain/entities/transaction.dart';
+import '../../transactions/domain/entities/transaction_brokerage_metadata.dart';
 import '../../transactions/domain/entities/transaction_import_rule.dart';
 import '../../transactions/domain/services/internal_transfer_integrity_validator.dart';
 import 'health_check_models.dart';
@@ -179,6 +180,9 @@ class HealthCheckService {
       for (final row in accountRows)
         (row['name'] as String).trim().toLowerCase(),
     };
+    final accountsById = {
+      for (final row in accountRows) row['id'] as String: row,
+    };
     final categories = {
       for (final row in categoryRows) row['id'] as String: row,
     };
@@ -189,6 +193,7 @@ class HealthCheckService {
     final ids = <String>{};
     var invalidReferences = 0;
     var invalidIdentities = 0;
+    var invalidBrokerage = 0;
     final transactions = <Transaction>[];
     for (final row in activeRows) {
       final id = row['id'] as String?;
@@ -196,8 +201,14 @@ class HealthCheckService {
       try {
         final transaction = Transaction.fromRecord(row);
         transactions.add(transaction);
-        if (transaction.bookId != snapshot.bookId ||
-            !_accountReferenceExists(transaction, accountNames) ||
+        final brokerageValid = _brokerageReferenceValid(
+          transaction,
+          accountsById,
+        );
+        if (!brokerageValid) invalidBrokerage++;
+        if (!brokerageValid ||
+            transaction.bookId != snapshot.bookId ||
+            !_accountReferenceExists(transaction, accountNames, accountsById) ||
             !_categoryReferenceValid(transaction, categories) ||
             (transaction.projectId != null &&
                 !projects.containsKey(transaction.projectId)) ||
@@ -294,6 +305,19 @@ class HealthCheckService {
           summary: invalidIdentities == 0
               ? 'Live transaction identities are unique.'
               : '$invalidIdentities invalid or duplicate live transaction identities were found.',
+        ),
+        HealthCheckItem(
+          code: 'transactions.brokerage_integrity',
+          title: 'Brokerage activity integrity',
+          status: invalidBrokerage == 0
+              ? HealthCheckItemStatus.healthy
+              : HealthCheckItemStatus.error,
+          summary: invalidBrokerage == 0
+              ? 'Brokerage activities have valid account and activity attribution.'
+              : '$invalidBrokerage brokerage ${invalidBrokerage == 1 ? 'activity has' : 'activities have'} invalid attribution.',
+          suggestedAction: invalidBrokerage == 0
+              ? null
+              : 'Avoid editing affected investment records and keep a current encrypted backup.',
         ),
         HealthCheckItem(
           code: 'transactions.account_reconciliation',
@@ -796,7 +820,12 @@ class HealthCheckService {
   static bool _accountReferenceExists(
     Transaction transaction,
     Set<String> accountNames,
+    Map<String, Map<String, Object?>> accountsById,
   ) {
+    final brokerageAccountId = transaction.brokerageAccountId;
+    if (brokerageAccountId != null) {
+      return accountsById.containsKey(brokerageAccountId);
+    }
     final recordedAccount = transaction.account;
     final direct = recordedAccount.trim().toLowerCase();
     if (accountNames.contains(direct)) return true;
@@ -806,6 +835,7 @@ class HealthCheckService {
       final cashAccount = switch (transaction.assetAction) {
         AssetAction.buy => route.first,
         AssetAction.sell => route.last,
+        AssetAction.split => recordedAccount,
         null => recordedAccount,
       };
       return accountNames.contains(cashAccount.trim().toLowerCase());
@@ -813,6 +843,51 @@ class HealthCheckService {
     return route.length == 2 &&
         accountNames.contains(route.first.trim().toLowerCase()) &&
         accountNames.contains(route.last.trim().toLowerCase());
+  }
+
+  static bool _brokerageReferenceValid(
+    Transaction transaction,
+    Map<String, Map<String, Object?>> accountsById,
+  ) {
+    final accountId = transaction.brokerageAccountId;
+    final activity = transaction.brokerageActivityType;
+    final metadataError = TransactionBrokerageMetadataPolicy.validationMessage(
+      brokerageAccountId: accountId,
+      activityType: activity,
+      splitNumerator: transaction.splitNumerator,
+      splitDenominator: transaction.splitDenominator,
+    );
+    if (metadataError != null) return false;
+    if (accountId == null) return true;
+    final account = accountsById[accountId];
+    if (account == null ||
+        account['book_id'] != transaction.bookId ||
+        account['account_type'] != 'brokerage') {
+      return false;
+    }
+    return switch (activity) {
+      BrokerageActivityType.buy =>
+        transaction.type == TransactionType.assetConversion &&
+            transaction.assetAction == AssetAction.buy,
+      BrokerageActivityType.sell =>
+        transaction.type == TransactionType.assetConversion &&
+            transaction.assetAction == AssetAction.sell,
+      BrokerageActivityType.split =>
+        transaction.type == TransactionType.assetConversion &&
+            transaction.assetAction == AssetAction.split &&
+            transaction.amount == 0 &&
+            transaction.feeAmount == 0,
+      BrokerageActivityType.dividend ||
+      BrokerageActivityType.fee ||
+      BrokerageActivityType.tax =>
+        transaction.type == TransactionType.investment &&
+            transaction.amount > 0,
+      BrokerageActivityType.deposit =>
+        transaction.type == TransactionType.income,
+      BrokerageActivityType.withdrawal =>
+        transaction.type == TransactionType.expense,
+      null => false,
+    };
   }
 
   static bool _categoryReferenceValid(

@@ -31,6 +31,10 @@ import '../../../features/cloud_sharing/domain/cloud_sharing_repository.dart';
 import '../../../features/cloud_sharing/presentation/controllers/cloud_sharing_controller.dart';
 import '../../../features/cloud_sharing/presentation/widgets/cloud_sharing_section.dart';
 import '../../../features/master_data/presentation/screens/accounts_page.dart';
+import '../../../features/investments/domain/services/brokerage_activity_service.dart';
+import '../../../features/investments/domain/services/brokerage_performance_calculator.dart';
+import '../../../features/investments/presentation/controllers/brokerage_controller.dart';
+import '../../../features/investments/presentation/screens/investments_screen.dart';
 import '../../../features/master_data/presentation/screens/local_profile_setup_page.dart';
 import '../../../features/master_data/domain/entities/local_profile.dart';
 import '../../../features/master_data/domain/entities/financial_book.dart';
@@ -76,6 +80,7 @@ import '../../../features/transactions/data/supabase_document_extraction_provide
 import '../../../features/transactions/domain/extraction/document_extraction_models.dart';
 import '../../../features/transactions/domain/extraction/document_extraction_provider.dart';
 import '../../../features/transactions/domain/usecases/transaction_usecases.dart';
+import '../../../features/transactions/domain/usecases/internal_transfer_usecases.dart';
 import '../../../features/transactions/domain/import/transaction_import_models.dart';
 import '../../../features/transactions/domain/services/transaction_import_rule_engine.dart';
 import '../../../features/transactions/presentation/controllers/transaction_import_controller.dart';
@@ -243,6 +248,22 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     store,
     assetDefinitionResolver: assetDefinitionController.definitionById,
     afterMutation: assetDefinitionController.reload,
+  );
+  late final LocalTransactionRepository brokerageTransactionRepository =
+      LocalTransactionRepository(store);
+  late final InternalTransferService brokerageInternalTransfers =
+      InternalTransferService(brokerageTransactionRepository);
+  late final BrokerageController brokerageController = BrokerageController(
+    service: BrokerageActivityService(
+      createTransaction: CreateTransaction(
+        brokerageTransactionRepository,
+        assetDefinitionResolver: assetDefinitionController.definitionById,
+      ),
+      internalTransfers: brokerageInternalTransfers,
+    ),
+    accounts: () => masterDataController.accountRecords,
+    instruments: () => assetDefinitionController.definitions,
+    onRecorded: transactionController.load,
   );
   late final monthlyBudgetController = MonthlyBudgetController(
     repository: LocalMonthlyBudgetRepository(store),
@@ -1120,6 +1141,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     backupRecoveryController.dispose();
     restoreLifecycleController.dispose();
     healthCheckController.dispose();
+    brokerageController.dispose();
     assetPriceRepository?.close();
     store.close();
 
@@ -1143,6 +1165,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final referenceDate = DateTime.now();
 
     final assetPortfolio = AssetPortfolioCalculator.calculate(
+      transactions: transactions,
+      marketPrices: assetPriceController.prices,
+      assetDefinitions: assetDefinitionController.allDefinitions,
+    );
+    final brokeragePerformance = BrokeragePerformanceCalculator.calculate(
+      accounts: masterDataController.accountRecords,
       transactions: transactions,
       marketPrices: assetPriceController.prices,
       assetDefinitions: assetDefinitionController.allDefinitions,
@@ -1333,6 +1361,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onOpenBackup: () => setState(() => selected = 12),
         onOpenHousehold: () => setState(() => selected = 10),
       ),
+      if (financialBook != null)
+        InvestmentsScreen(
+          bookId: financialBook!.id,
+          memberId: activeMemberId,
+          performance: brokeragePerformance,
+          accounts: masterDataController.accountRecords,
+          instruments: assetDefinitionController.definitions,
+          transactions: transactions,
+          controller: brokerageController,
+          onOpenAccounts: () => setState(() => selected = 3),
+        )
+      else
+        const SizedBox.shrink(),
     ];
 
     if (loading || transactionController.isLoading) {

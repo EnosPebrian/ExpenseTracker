@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../../../master_data/domain/entities/account.dart';
 import '../entities/internal_transfer_link.dart';
 import '../entities/transaction.dart';
+import '../entities/transaction_brokerage_metadata.dart';
 import '../repositories/transaction_repository.dart';
 import '../services/internal_transfer_integrity_validator.dart';
 
@@ -57,6 +58,8 @@ class InternalTransferService {
     String? outgoingTransactionId,
     String? incomingTransactionId,
     String? linkId,
+    String? brokerageAccountId,
+    BrokerageActivityType? brokerageActivityType,
     String deviceId = 'local-device',
   }) async {
     final accounts = await repository.getAllAccounts();
@@ -79,6 +82,12 @@ class InternalTransferService {
       updatedAt: now,
       deviceId: deviceId,
       syncStatus: 'pending',
+      brokerageAccountId: source.id == brokerageAccountId
+          ? brokerageAccountId
+          : null,
+      brokerageActivityType: source.id == brokerageAccountId
+          ? brokerageActivityType
+          : null,
     );
     final incoming = Transaction(
       id: incomingTransactionId,
@@ -96,6 +105,12 @@ class InternalTransferService {
       updatedAt: now,
       deviceId: deviceId,
       syncStatus: 'pending',
+      brokerageAccountId: destination.id == brokerageAccountId
+          ? brokerageAccountId
+          : null,
+      brokerageActivityType: destination.id == brokerageAccountId
+          ? brokerageActivityType
+          : null,
     );
     final link = InternalTransferLink(
       id: linkId,

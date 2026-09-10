@@ -12,15 +12,15 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current state
 
-`READY`
+`IN_PROGRESS`
 
 ## Latest pushed engineering baseline
 
 ```text
 branch: main
 remote: origin
-commit: bf46d2b5cddf1a5d9f4a5e1452c6594c699db2c7
-message: docs: record BETA-08M completion and next blocker
+commit: 985f1df0b37604796d45592498b2b3cd430b4fc8
+message: docs: define BETA-08N investment brokerage contract
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -57,10 +57,11 @@ existing validation path.
 
 ## Exact next action
 
-After the architecture reconciliation commit is pushed, inspect D10–D13 and
-explicitly determine the eight N0 reuse questions in
-`docs/BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md` before designing schema.
-Owner/runtime acceptance for BETA-08M remains **NOT RUN**.
+The mandatory D10–D13 reuse analysis is complete in
+`docs/BETA08N0_ENGINEERING_ANALYSIS.md`; its architecture gate is PASS. Implement
+the additive v28 transaction brokerage metadata, account type, domain activity
+service, and focused persistence/accounting tests before UI or broad regression
+validation. Owner/runtime acceptance for BETA-08M remains **NOT RUN**.
 
 ---
 

@@ -147,6 +147,30 @@ class ConflictResolutionService {
         'Resolve the transaction category name and identity as one state.',
       );
     }
+    final mergedBrokerage = (
+      mergedPayload['brokerage_account_id'],
+      mergedPayload['brokerage_activity_type'],
+      mergedPayload['split_numerator'],
+      mergedPayload['split_denominator'],
+    );
+    final localBrokerage = (
+      local['brokerage_account_id'],
+      local['brokerage_activity_type'],
+      local['split_numerator'],
+      local['split_denominator'],
+    );
+    final serverBrokerage = (
+      shared['brokerage_account_id'],
+      shared['brokerage_activity_type'],
+      shared['split_numerator'],
+      shared['split_denominator'],
+    );
+    if (mergedBrokerage != localBrokerage &&
+        mergedBrokerage != serverBrokerage) {
+      throw StateError(
+        'Resolve brokerage activity identity and split state as one state.',
+      );
+    }
   }
 
   static void _validateImportReviewDraftMerge(

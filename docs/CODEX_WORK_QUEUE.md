@@ -178,7 +178,7 @@ accepted investment/brokerage sequence.
 ### PT-BETA-08N0 — Investment / Brokerage Ledger Foundation
 
 **Priority:** P0
-**State:** READY
+**State:** IN_PROGRESS
 **Type:** product foundation / additive local-first financial subledger
 **Architecture contract:** `docs/BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`
 

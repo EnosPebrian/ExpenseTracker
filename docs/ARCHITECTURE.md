@@ -1,5 +1,23 @@
 # Pilgrim Tracker Architecture
 
+## BETA-08N0 investment and brokerage ledger
+
+Investment activity reuses Pilgrim's existing accounting authorities rather
+than persisting a second ledger. `Transaction` remains the economic event,
+`Account` with `AccountType.brokerage` remains brokerage cash,
+`AssetDefinition` remains instrument identity, canonical transfers remain
+owned-account funding, and `AssetPortfolioCalculator` remains the
+weighted-average position and gain authority. Nullable transaction metadata
+adds stable brokerage-account/activity attribution and split ratio only.
+
+BUY/SELL use asset conversion, DIVIDEND/FEE/TAX use the investment transaction
+kind, DEPOSIT/WITHDRAWAL use canonical transfers, and SPLIT is a zero-cash asset
+event. Positions and performance are derived, grouped by currency, and excluded
+from ordinary budgets and Tithe Due. SQLite is v28, encrypted backup is v7, and
+the matching additive Supabase migration remains undeployed. See
+`BETA08N0_ENGINEERING_ANALYSIS.md` and
+`BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`.
+
 ## BETA-08M reviewed category resolution
 
 Unknown CSV category handling is review state, not master-data mutation.

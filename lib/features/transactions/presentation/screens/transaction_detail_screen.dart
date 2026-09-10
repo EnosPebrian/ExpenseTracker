@@ -330,6 +330,11 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
                   _DetailLine(label: 'Reference', value: reference),
                 if (transaction.note case final note?)
                   _DetailLine(label: 'Note', value: note),
+                if (transaction.brokerageActivityType case final activity?)
+                  _DetailLine(
+                    label: 'Investment activity',
+                    value: activity.label,
+                  ),
                 if (isManagedFeeExpense) ...[
                   const SizedBox(height: 12),
                   const Text(
@@ -337,7 +342,19 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
                     style: TextStyle(color: muted, fontSize: 11),
                   ),
                 ],
-                if (transaction.type == TransactionType.assetConversion) ...[
+                if (transaction.assetAction == AssetAction.split) ...[
+                  _DetailLine(
+                    label: 'Split ratio',
+                    value:
+                        '${transaction.splitNumerator}:${transaction.splitDenominator}',
+                  ),
+                  _DetailLine(
+                    label: 'Instrument',
+                    value: transaction.assetName ?? 'Unknown instrument',
+                  ),
+                  const _DetailLine(label: 'Cash effect', value: 'None'),
+                ] else if (transaction.type ==
+                    TransactionType.assetConversion) ...[
                   _DetailLine(
                     label: 'Quantity',
                     value: AssetQuantityFormatter.withUnit(
@@ -468,7 +485,11 @@ class _TransactionDetailDialogState extends State<_TransactionDetailDialog> {
             ),
           ),
           FilledButton(
-            onPressed: isManagedFeeExpense || widget.onEdit == null || deleting
+            onPressed:
+                isManagedFeeExpense ||
+                    currentTransaction.brokerageActivityType != null ||
+                    widget.onEdit == null ||
+                    deleting
                 ? null
                 : _edit,
             child: Text(
@@ -515,6 +536,7 @@ String _outcomeLabel(
   (AssetAction.sell, AssetExecutionOutcome.favorable) => 'Sold above reference',
   (AssetAction.sell, AssetExecutionOutcome.unfavorable) =>
     'Sold below reference',
+  (AssetAction.split, _) => 'No execution comparison',
 };
 
 String _quotedAtSuffix(DateTime? value) {

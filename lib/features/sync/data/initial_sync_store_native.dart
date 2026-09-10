@@ -808,12 +808,22 @@ class InitialSyncStoreAdapter {
       final validLegacyAsset =
           transaction['asset_name'] != null && transaction['unit'] != null;
       final categoryId = transaction['category_id'];
+      final brokerageAccountId = transaction['brokerage_account_id'];
+      final brokerageActivity = transaction['brokerage_activity_type'];
+      final brokerageAccount = accountsById[brokerageAccountId];
+      final validBrokerage =
+          (brokerageAccountId == null && brokerageActivity == null) ||
+          (brokerageAccountId != null &&
+              brokerageActivity != null &&
+              brokerageAccount != null &&
+              brokerageAccount['account_type'] == 'brokerage');
       final validCategory =
           categoryId == null ||
           (categoryIds.contains(categoryId) &&
               categoryTypes[categoryId] == transaction['transaction_type']);
       if (transaction['amount'] is! num ||
           !validCategory ||
+          !validBrokerage ||
           (member != null && !memberIds.contains(member)) ||
           (project != null && !projectIds.contains(project)) ||
           (related != null && !transactionIds.contains(related)) ||

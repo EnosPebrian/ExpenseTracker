@@ -9,6 +9,7 @@ enum StatementTransactionKind {
   transferOut,
   legacyTransfer,
   assetMovement,
+  investmentActivity,
 }
 
 class StatementPeriod {

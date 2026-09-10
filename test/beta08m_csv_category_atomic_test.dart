@@ -560,7 +560,7 @@ void main() {
         password: 'beta08m-password',
         exportedAt: DateTime(2026, 9, 9),
       );
-      expect(created.manifest.formatVersion, 6);
+      expect(created.manifest.formatVersion, portableBackupFormatVersion);
 
       final target = await _EmptyStore.create('backup-target');
       addTearDown(target.dispose);

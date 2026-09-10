@@ -1,12 +1,25 @@
 # Pilgrim Tracker Progress
 
+## BETA-08N0 Investment / Brokerage Ledger Foundation — 2026-09-10
+
+Engineering PASS. Added stable brokerage transaction attribution, brokerage
+accounts, eight explicit manual activity types, derived positions/cash/
+performance by currency, responsive Investments UI, backup/clone, sync/
+bootstrap, conflict, reporting, and read-only Health Check integration while
+reusing existing transaction, asset, transfer, budget, and Tithe authorities.
+SQLite is 28 and backup is v7. One additive Supabase migration passed local
+reset and pgTAP but remains undeployed. Focused N0 tests passed 14/14, affected
+regressions 203/203, full Flutter 969/969, full pgTAP 314/314; analyzer and
+Web/Windows/Android debug builds passed. Owner acceptance is **NOT RUN**.
+BETA-08N1 is next under the accepted contract.
+
 ## BETA-08N0/N1 Architecture Authorization — 2026-09-10
 
 `ARCH-20260910-01` resolved Option B. BETA-08M is complete. The accepted next
 sequence is BETA-08N0 Investment / Brokerage Ledger Foundation followed by
 BETA-08N1 Brokerage Statement CSV Import. Their authoritative contract is
-`BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`; N0 engineering has not started at
-this checkpoint. Human-editable Portable CSV remains neutral future backlog
+`BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`; N0 has now reached Engineering
+PASS and N1 is next. Human-editable Portable CSV remains neutral future backlog
 work and does not reopen BETA-08M. Owner acceptance remains **NOT RUN**.
 
 ## BETA-08M CSV Unknown-Category Resolution — 2026-09-09

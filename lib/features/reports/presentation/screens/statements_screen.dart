@@ -631,5 +631,6 @@ class _LedgerTable extends StatelessWidget {
         StatementTransactionKind.transferOut => 'Transfer out',
         StatementTransactionKind.legacyTransfer => 'Legacy transfer',
         StatementTransactionKind.assetMovement => 'Asset movement',
+        StatementTransactionKind.investmentActivity => 'Investment activity',
       };
 }

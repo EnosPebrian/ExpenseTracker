@@ -285,3 +285,25 @@ These limitations do not change the version-21 financial or accounting model.
 - BETA-08K owner runtime acceptance is **NOT RUN**. The owner temporarily
   lifted feature freeze through BETA-08N0 and BETA-08N1; freeze resumes after
   BETA-08N1 engineering completion unless a later explicit decision changes it.
+
+## BETA-08N0 investment limitations
+
+- Owner/runtime acceptance on Windows and Android is **NOT RUN**.
+- The additive BETA-08N0 Supabase migration is locally verified but remains
+  undeployed; hosted devices cannot synchronize the new brokerage metadata
+  until a separately authorized rollout.
+- Manual N0 supports only BUY, SELL, DIVIDEND, FEE, TAX, DEPOSIT, WITHDRAWAL,
+  and whole-result SPLIT. Cash-in-lieu, unsupported corporate actions, security
+  transfers between brokers, options, futures, margin, and shorts are excluded.
+- Performance is weighted-average realized/unrealized gain plus dividends less
+  investment fees/taxes. It does not claim IRR, CAGR, time-weighted return,
+  money-weighted return, or tax-law calculation.
+- Currency buckets are intentionally separate. N0 does not fabricate FX rates
+  or a cross-currency investment total.
+- Brokerage CSV import, broker APIs/order placement, PDF/image extraction, AI
+  interpretation, and automatic quote-provider expansion are BETA-08N0
+  non-goals. Reviewed brokerage CSV belongs to BETA-08N1.
+- Existing market-price unavailable/stale semantics remain; Pilgrim does not
+  fabricate current prices.
+- The existing `file_picker` forward-looking Kotlin compatibility warning is
+  unchanged and non-blocking for the validated Android debug build.

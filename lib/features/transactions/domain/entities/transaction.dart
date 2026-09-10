@@ -3,10 +3,11 @@ import 'package:uuid/uuid.dart';
 import 'transaction_relation_type.dart';
 import 'asset_market_reference_source.dart';
 import 'transaction_metadata.dart';
+import 'transaction_brokerage_metadata.dart';
 
-enum TransactionType { expense, income, transfer, assetConversion }
+enum TransactionType { expense, income, transfer, assetConversion, investment }
 
-enum AssetAction { buy, sell }
+enum AssetAction { buy, sell, split }
 
 enum AssetFeeTreatment {
   none,
@@ -39,6 +40,10 @@ class Transaction {
     this.assetName,
     this.assetSymbol,
     this.assetAction,
+    this.brokerageAccountId,
+    this.brokerageActivityType,
+    this.splitNumerator,
+    this.splitDenominator,
     this.marketReferenceUnitPrice,
     this.marketReferenceCurrencyCode,
     this.marketReferenceUnit,
@@ -128,6 +133,16 @@ class Transaction {
   /// Whether an asset-conversion transaction bought or sold the asset.
   final AssetAction? assetAction;
 
+  /// Stable brokerage cash-account identity for investment activity.
+  final String? brokerageAccountId;
+
+  /// Explicit investment activity semantics. Null for non-brokerage history.
+  final BrokerageActivityType? brokerageActivityType;
+
+  /// Positive ratio components used only by [AssetAction.split].
+  final int? splitNumerator;
+  final int? splitDenominator;
+
   /// Immutable market-reference snapshot selected explicitly by the user.
   final int? marketReferenceUnitPrice;
   final String? marketReferenceCurrencyCode;
@@ -176,6 +191,10 @@ class Transaction {
     Object? assetName = _unset,
     Object? assetSymbol = _unset,
     Object? assetAction = _unset,
+    Object? brokerageAccountId = _unset,
+    Object? brokerageActivityType = _unset,
+    Object? splitNumerator = _unset,
+    Object? splitDenominator = _unset,
     Object? marketReferenceUnitPrice = _unset,
     Object? marketReferenceCurrencyCode = _unset,
     Object? marketReferenceUnit = _unset,
@@ -236,6 +255,18 @@ class Transaction {
       assetAction: identical(assetAction, _unset)
           ? this.assetAction
           : assetAction as AssetAction?,
+      brokerageAccountId: identical(brokerageAccountId, _unset)
+          ? this.brokerageAccountId
+          : brokerageAccountId as String?,
+      brokerageActivityType: identical(brokerageActivityType, _unset)
+          ? this.brokerageActivityType
+          : brokerageActivityType as BrokerageActivityType?,
+      splitNumerator: identical(splitNumerator, _unset)
+          ? this.splitNumerator
+          : splitNumerator as int?,
+      splitDenominator: identical(splitDenominator, _unset)
+          ? this.splitDenominator
+          : splitDenominator as int?,
       marketReferenceUnitPrice: identical(marketReferenceUnitPrice, _unset)
           ? this.marketReferenceUnitPrice
           : marketReferenceUnitPrice as int?,
@@ -295,6 +326,10 @@ class Transaction {
       'asset_name': assetName,
       'asset_symbol': assetSymbol,
       'asset_action': assetAction?.name,
+      'brokerage_account_id': brokerageAccountId,
+      'brokerage_activity_type': brokerageActivityType?.name,
+      'split_numerator': splitNumerator,
+      'split_denominator': splitDenominator,
       'market_reference_unit_price': marketReferenceUnitPrice,
       'market_reference_currency_code': marketReferenceCurrencyCode,
       'market_reference_unit': marketReferenceUnit,
@@ -343,6 +378,12 @@ class Transaction {
       assetAction: storedAssetAction == null
           ? null
           : AssetAction.values.byName(storedAssetAction),
+      brokerageAccountId: record['brokerage_account_id'] as String?,
+      brokerageActivityType: BrokerageActivityType.fromStoredValue(
+        record['brokerage_activity_type'],
+      ),
+      splitNumerator: (record['split_numerator'] as num?)?.toInt(),
+      splitDenominator: (record['split_denominator'] as num?)?.toInt(),
       marketReferenceUnitPrice: (record['market_reference_unit_price'] as num?)
           ?.toInt(),
       marketReferenceCurrencyCode:

@@ -49,6 +49,15 @@ class AssetTradeValidator {
       );
     }
 
+    if (candidate.assetAction == AssetAction.split) {
+      final definitionError = _assetDefinitionError(candidate, definition);
+      return AssetTradeValidationResult(
+        isValid: sequence.isValid && definitionError == null,
+        sequenceValidation: sequence,
+        message: !sequence.isValid ? sequence.message : definitionError,
+      );
+    }
+
     final kind = AssetNumericPolicy.inferKind(
       unit: candidate.unit,
       symbol: candidate.assetSymbol,
@@ -106,6 +115,23 @@ class AssetTradeValidator {
     if (definition.lotSize < 1) {
       return '${definition.normalizedSymbol ?? definition.displayName} has an '
           'invalid lot size.';
+    }
+    return null;
+  }
+
+  static String? _assetDefinitionError(
+    Transaction candidate,
+    AssetDefinition? definition,
+  ) {
+    final definitionId = candidate.assetDefinitionId?.trim();
+    if (definitionId == null || definitionId.isEmpty) {
+      return 'Choose an active concrete asset definition.';
+    }
+    if (definition == null || definition.id != definitionId) {
+      return 'The selected asset definition could not be found.';
+    }
+    if (definition.isDeleted) {
+      return 'The selected asset definition is no longer active.';
     }
     return null;
   }

@@ -7,7 +7,7 @@ import '../master_data/system_category.dart';
 class LocalStore {
   LocalStore({String? databasePath});
 
-  static const schemaVersion = 27;
+  static const schemaVersion = 28;
   static final List<Map<String, Object?>> _records = [];
   static final List<Map<String, Object?>> _assetMarketPrices = [];
   static final List<Map<String, Object?>> _assetDefinitions = [];
@@ -2374,6 +2374,17 @@ class LocalStore {
           'note': current['note'],
         if (current != null && !canonicalPayload.containsKey('reference'))
           'reference': current['reference'],
+        if (current != null &&
+            !canonicalPayload.containsKey('brokerage_account_id'))
+          'brokerage_account_id': current['brokerage_account_id'],
+        if (current != null &&
+            !canonicalPayload.containsKey('brokerage_activity_type'))
+          'brokerage_activity_type': current['brokerage_activity_type'],
+        if (current != null && !canonicalPayload.containsKey('split_numerator'))
+          'split_numerator': current['split_numerator'],
+        if (current != null &&
+            !canonicalPayload.containsKey('split_denominator'))
+          'split_denominator': current['split_denominator'],
         ...canonicalPayload,
       };
       if (conflict['entity_type'] == 'transactions') {
@@ -2547,6 +2558,7 @@ class LocalStore {
   }
 
   void _validateTransactionCategory(Map<String, Object?> transaction) {
+    _validateTransactionBrokerage(transaction);
     final categoryId = transaction['category_id'] as String?;
     if (categoryId == null) return;
     final bookId = transaction['book_id'] as String?;
@@ -2565,6 +2577,57 @@ class LocalStore {
       throw StateError(
         'The transaction category belongs to another household or type.',
       );
+    }
+  }
+
+  void _validateTransactionBrokerage(Map<String, Object?> transaction) {
+    final accountId = transaction['brokerage_account_id'] as String?;
+    final activity = transaction['brokerage_activity_type'] as String?;
+    if ((accountId == null) != (activity == null)) {
+      throw StateError(
+        'Brokerage account and activity type must be provided together.',
+      );
+    }
+    final numerator = (transaction['split_numerator'] as num?)?.toInt();
+    final denominator = (transaction['split_denominator'] as num?)?.toInt();
+    if (accountId == null) {
+      if (numerator != null || denominator != null) {
+        throw StateError('A split ratio requires brokerage attribution.');
+      }
+      return;
+    }
+    if (!const {
+      'buy',
+      'sell',
+      'dividend',
+      'fee',
+      'tax',
+      'deposit',
+      'withdrawal',
+      'split',
+    }.contains(activity)) {
+      throw StateError('The brokerage activity type is invalid.');
+    }
+    final validAccount = _accounts.any(
+      (account) =>
+          account['id'] == accountId &&
+          account['book_id'] == transaction['book_id'] &&
+          account['account_type'] == 'brokerage',
+    );
+    if (!validAccount) {
+      throw StateError(
+        'The brokerage account belongs to another household or type.',
+      );
+    }
+    if (activity == 'split') {
+      if (numerator == null ||
+          numerator <= 0 ||
+          denominator == null ||
+          denominator <= 0) {
+        throw StateError('A split requires a positive ratio.');
+      }
+    } else if (numerator != null || denominator != null) {
+      throw StateError('A split ratio is valid only for a split activity.');
     }
   }
 

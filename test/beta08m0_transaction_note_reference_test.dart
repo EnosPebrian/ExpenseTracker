@@ -43,7 +43,7 @@ void main() {
     expect(TransactionMetadataPolicy.noteMaxLength, 4000);
   });
 
-  test('SQLite v26 to v27 preserves rows and adds null metadata', () async {
+  test('SQLite v26 upgrades to current and preserves null metadata', () async {
     final directory = await Directory.systemTemp.createTemp('beta08m0-');
     final path = '${directory.path}/test.db';
     final store = native.LocalStore(databasePath: path);
@@ -58,7 +58,7 @@ void main() {
     await store.close();
 
     await store.initialize();
-    expect(await store.getSchemaVersion(), 27);
+    expect(await store.getSchemaVersion(), native.LocalStore.schemaVersion);
     final columns = (await store.db.rawQuery(
       'PRAGMA table_info(transactions)',
     )).map((row) => row['name']).toSet();
@@ -146,6 +146,7 @@ void main() {
     final v6 = await codec.encode(
       snapshot: snapshot,
       password: 'test-password',
+      formatVersion: 6,
     );
     final restoredV6 = await codec.decode(v6.bytes, 'test-password');
     expect(v6.manifest.formatVersion, 6);

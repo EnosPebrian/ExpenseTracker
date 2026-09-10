@@ -183,7 +183,7 @@ void main() {
       final store = native.LocalStore(databasePath: fixture.path);
       await store.initialize();
       addTearDown(store.close);
-      expect(native.LocalStore.schemaVersion, 27);
+      expect(await store.getSchemaVersion(), native.LocalStore.schemaVersion);
 
       final categoryId = await _prepareStore(store);
       final first = _budgetRecord('budget-first', categoryId);

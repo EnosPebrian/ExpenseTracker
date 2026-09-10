@@ -10,6 +10,16 @@ is `BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`. Human-editable Portable CSV is a
 neutral future backlog capability and is not part of BETA-08M or BETA-08N.
 Feature freeze resumes after BETA-08N1 engineering completion.
 
+### BETA-08N0 engineering result
+
+**PASS.** The ledger foundation reuses authoritative transaction, account,
+asset, canonical-transfer, backup, and sync behavior. SQLite advances to 28,
+encrypted backup to v7, and one additive undeployed Supabase migration has full
+local reset/pgTAP coverage. Manual activities, currency-separated performance,
+responsive UI, recovery, bootstrap, conflicts, and read-only health diagnostics
+are implemented. Owner acceptance is **NOT RUN**. BETA-08N1 statement CSV import
+is the next accepted item; feature freeze has not yet resumed.
+
 ## BETA-08M CSV unknown-category resolution — 2026-09-09
 
 The reviewed CSV path now requires explicit Map, Create, or Ignore for unknown

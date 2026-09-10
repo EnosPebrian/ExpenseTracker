@@ -356,7 +356,7 @@ void main() {
         addTearDown(fixture.dispose);
         var store = native.LocalStore(databasePath: fixture.path);
         await store.initialize();
-        expect(native.LocalStore.schemaVersion, 27);
+        expect(await store.getSchemaVersion(), native.LocalStore.schemaVersion);
         final refs = await _prepareStore(store);
         await store.upsertTransactionImportRule(
           _ruleRecord('rule-1', refs.expenseCategoryId, refs.accountId),
@@ -479,10 +479,7 @@ void main() {
           isEmpty,
         );
         final version = await store.db.rawQuery('PRAGMA user_version');
-        expect(
-          version.single['user_version'],
-          native.LocalStore.schemaVersion,
-        );
+        expect(version.single['user_version'], native.LocalStore.schemaVersion);
       },
     );
 

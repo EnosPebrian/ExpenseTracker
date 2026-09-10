@@ -507,6 +507,8 @@ class FinancialStatementGenerator {
           TransactionType.transfer => StatementTransactionKind.legacyTransfer,
           TransactionType.assetConversion =>
             StatementTransactionKind.assetMovement,
+          TransactionType.investment =>
+            StatementTransactionKind.investmentActivity,
         };
       }
       if (running != null) running += effect;

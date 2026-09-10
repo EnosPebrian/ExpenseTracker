@@ -19,12 +19,13 @@ class TransactionTile extends StatelessWidget {
     final income = transaction.type == TransactionType.income;
     final transfer = transaction.type == TransactionType.transfer;
     final conversion = transaction.type == TransactionType.assetConversion;
+    final investment = transaction.type == TransactionType.investment;
 
     final iconColor = income
         ? violet
         : transfer
         ? success
-        : conversion
+        : conversion || investment
         ? const Color(0xFFD39B38)
         : const Color(0xFFE89377);
 
@@ -40,7 +41,7 @@ class TransactionTile extends StatelessWidget {
                   ? const Color(0xFFEEEAFE)
                   : transfer
                   ? const Color(0xFFE7F6EF)
-                  : conversion
+                  : conversion || investment
                   ? const Color(0xFFFFF4D9)
                   : const Color(0xFFFFF0EB),
               child: Icon(
@@ -48,7 +49,7 @@ class TransactionTile extends StatelessWidget {
                     ? Icons.north_east
                     : transfer
                     ? Icons.swap_horiz
-                    : conversion
+                    : conversion || investment
                     ? Icons.currency_exchange
                     : Icons.south_west,
                 size: 15,
@@ -77,13 +78,13 @@ class TransactionTile extends StatelessWidget {
             Text(
               '${income
                   ? '+ '
-                  : transfer || conversion
+                  : transfer || conversion || investment
                   ? ''
                   : '- '}Rp ${money(transaction.amount)}',
               style: TextStyle(
                 color: income
                     ? success
-                    : transfer || conversion
+                    : transfer || conversion || investment
                     ? ink
                     : const Color(0xFFE28068),
                 fontSize: 11,

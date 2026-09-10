@@ -4,6 +4,7 @@ enum AccountType {
   cash('cash', 'Cash'),
   bank('bank', 'Bank account'),
   eWallet('e_wallet', 'E-wallet'),
+  brokerage('brokerage', 'Brokerage'),
   asset('asset', 'Other asset'),
   liability('liability', 'Liability');
 

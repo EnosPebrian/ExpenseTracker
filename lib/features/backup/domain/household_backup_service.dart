@@ -147,6 +147,15 @@ class HouseholdBackupService {
         ],
       );
     }
+    if (backup.manifest.formatVersion < 7) {
+      result = _copyPreview(
+        result,
+        details: [
+          ...result.details,
+          'This backup was created before brokerage activity attribution was supported.',
+        ],
+      );
+    }
     if (result.invalidRecords == 0) {
       String? integrityError;
       try {

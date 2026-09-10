@@ -7,6 +7,7 @@ import 'package:pilgrim_tracker/features/transactions/domain/entities/import_rev
 import 'package:pilgrim_tracker/features/transactions/domain/entities/import_review_session.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/internal_transfer_link.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction_brokerage_metadata.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction_import_rule.dart';
 
 void main() {
@@ -371,6 +372,51 @@ void main() {
         HealthCheckItemStatus.error,
       );
     });
+
+    test(
+      'brokerage attribution is household-safe and remains read only',
+      () async {
+        final snapshot = _healthySnapshot();
+        final records = _copyRecords(snapshot);
+        final brokerage = Account(
+          id: 'brokerage-a',
+          bookId: 'book-a',
+          name: 'Brokerage',
+          accountType: AccountType.brokerage,
+          openingBalanceDate: DateTime(2026, 1, 1),
+        );
+        records['accounts']!.add(brokerage.toRecord());
+        records['transactions']!.add(
+          Transaction(
+            id: 'dividend-a',
+            bookId: 'book-a',
+            title: 'Dividend',
+            category: 'Investment',
+            account: brokerage.name,
+            date: DateTime(2026, 9, 1),
+            amount: 50000,
+            type: TransactionType.investment,
+            brokerageAccountId: brokerage.id,
+            brokerageActivityType: BrokerageActivityType.dividend,
+          ).toRecord(),
+        );
+        final before = records['transactions']!.length;
+        final healthy = await _run(_replace(snapshot, records: records));
+        expect(
+          _item(healthy, 'transactions.invalid_reference').status,
+          HealthCheckItemStatus.healthy,
+        );
+        expect(records['transactions'], hasLength(before));
+
+        records['accounts']!.last['book_id'] = 'foreign-book';
+        final invalid = await _run(_replace(snapshot, records: records));
+        expect(
+          _item(invalid, 'transactions.invalid_reference').status,
+          HealthCheckItemStatus.error,
+        );
+        expect(records['transactions'], hasLength(before));
+      },
+    );
   });
 }
 

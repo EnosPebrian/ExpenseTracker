@@ -12,6 +12,7 @@ class AssetSequenceValidationResult {
     this.invalidTransactionId,
     this.invalidTransactionDate,
     this.invalidatesLaterTransaction = false,
+    this.validationMessage,
   });
 
   final bool isValid;
@@ -22,8 +23,10 @@ class AssetSequenceValidationResult {
   final String? invalidTransactionId;
   final DateTime? invalidTransactionDate;
   final bool invalidatesLaterTransaction;
+  final String? validationMessage;
 
   String get message {
+    if (validationMessage case final message?) return message;
     final label = unit.trim().isEmpty ? 'units' : unit.trim().toUpperCase();
     final available = _formatQuantity(availableQuantity);
     final requested = _formatQuantity(requestedQuantity);
@@ -122,7 +125,8 @@ class AssetTransactionSequenceValidator {
                 (transaction) =>
                     transaction.type == TransactionType.assetConversion &&
                     transaction.deletedAt == null &&
-                    (transaction.quantity ?? 0) > 0 &&
+                    (transaction.assetAction == AssetAction.split ||
+                        (transaction.quantity ?? 0) > 0) &&
                     AssetTransactionIdentity.key(transaction) == key,
               )
               .toList()
@@ -141,6 +145,54 @@ class AssetTransactionSequenceValidator {
       for (final transaction in history) {
         final quantity = transaction.quantity ?? 0;
         final action = AssetTransactionIdentity.resolveAction(transaction);
+
+        if (action == AssetAction.split) {
+          final numerator = transaction.splitNumerator;
+          final denominator = transaction.splitDenominator;
+          if (runningQuantity <= 0 ||
+              numerator == null ||
+              numerator <= 0 ||
+              denominator == null ||
+              denominator <= 0) {
+            return AssetSequenceValidationResult(
+              isValid: false,
+              availableQuantity: runningQuantity,
+              requestedQuantity: 0,
+              shortfall: 0,
+              unit: transaction.unit ?? candidate.unit ?? 'unit',
+              invalidTransactionId: transaction.id,
+              invalidTransactionDate: transaction.date,
+              invalidatesLaterTransaction: transaction.id != candidate.id,
+              validationMessage:
+                  'A split requires an existing position and a positive ratio.',
+            );
+          }
+          final splitQuantity = AssetNumericPolicy.normalizeQuantity(
+            runningQuantity * numerator / denominator,
+            kind,
+          );
+          final precision = AssetNumericPolicy.validateQuantity(
+            quantity: splitQuantity,
+            kind: kind,
+            symbol: transaction.assetSymbol,
+          );
+          if (!precision.isValid) {
+            return AssetSequenceValidationResult(
+              isValid: false,
+              availableQuantity: runningQuantity,
+              requestedQuantity: splitQuantity,
+              shortfall: 0,
+              unit: transaction.unit ?? candidate.unit ?? 'unit',
+              invalidTransactionId: transaction.id,
+              invalidTransactionDate: transaction.date,
+              invalidatesLaterTransaction: transaction.id != candidate.id,
+              validationMessage:
+                  precision.message ?? 'The split quantity is not supported.',
+            );
+          }
+          runningQuantity = splitQuantity;
+          continue;
+        }
 
         if (action == AssetAction.buy) {
           runningQuantity = AssetNumericPolicy.normalizeQuantity(

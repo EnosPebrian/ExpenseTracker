@@ -59,7 +59,6 @@ void main() {
       addTearDown(store.close);
       final version = await store.db.rawQuery('PRAGMA user_version');
       expect(version.single['user_version'], native.LocalStore.schemaVersion);
-      expect(native.LocalStore.schemaVersion, 27);
       expect((await store.getTransactions()).single['id'], legacy.id);
       expect(
         (await store.getTransactions()).single['transaction_type'],

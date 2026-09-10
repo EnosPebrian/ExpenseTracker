@@ -69,12 +69,34 @@ class _ConflictReviewScreenState extends State<ConflictReviewScreen> {
                   )
                   .toSet()
             : fields.toSet();
+        if (conflict.entityType == 'transactions') {
+          for (final field in const {
+            'brokerage_activity_type',
+            'split_numerator',
+            'split_denominator',
+          }) {
+            mergeFields.remove(field);
+          }
+          if (fields.remove('brokerage_account_id')) {
+            fields.add('brokerage_account_id');
+          }
+        }
         final merged = {...?conflict.serverPayload};
         for (final field in mergeFields) {
           if (choices[field] ?? false) {
             merged[field] = conflict.localPayload?[field];
             if (conflict.entityType == 'transactions' && field == 'category') {
               merged['category_id'] = conflict.localPayload?['category_id'];
+            }
+            if (conflict.entityType == 'transactions' &&
+                field == 'brokerage_account_id') {
+              for (final linkedField in const {
+                'brokerage_activity_type',
+                'split_numerator',
+                'split_denominator',
+              }) {
+                merged[linkedField] = conflict.localPayload?[linkedField];
+              }
             }
           }
         }

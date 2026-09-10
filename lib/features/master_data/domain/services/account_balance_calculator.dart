@@ -1,6 +1,7 @@
 import '../../../transactions/domain/entities/transaction.dart';
 import '../../../transactions/domain/entities/transaction_relation_type.dart';
 import '../entities/account.dart';
+import '../../../transactions/domain/entities/transaction_brokerage_metadata.dart';
 
 class AccountBalanceCalculator {
   const AccountBalanceCalculator._();
@@ -70,9 +71,18 @@ class AccountBalanceCalculator {
                 ? transaction.feeAmount
                 : 0;
             return transaction.amount - deductedFee;
+          case AssetAction.split:
+            return 0;
           case null:
             return 0;
         }
+      case TransactionType.investment:
+        return switch (transaction.brokerageActivityType) {
+          BrokerageActivityType.dividend => transaction.amount,
+          BrokerageActivityType.fee ||
+          BrokerageActivityType.tax => -transaction.amount,
+          _ => 0,
+        };
     }
   }
 
@@ -94,6 +104,7 @@ class AccountBalanceCalculator {
   }
 
   static bool belongsToAccount(Account account, Transaction transaction) {
+    if (transaction.brokerageAccountId == account.id) return true;
     final recordedAccount = transaction.account.trim();
     var cashAccount = recordedAccount;
     if (transaction.type == TransactionType.assetConversion) {
@@ -102,6 +113,7 @@ class AccountBalanceCalculator {
         cashAccount = switch (transaction.assetAction) {
           AssetAction.buy => route.first.trim(),
           AssetAction.sell => route.last.trim(),
+          AssetAction.split => recordedAccount,
           null => recordedAccount,
         };
       }

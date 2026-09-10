@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-const portableBackupFormatVersion = 6;
+const portableBackupFormatVersion = 7;
 const portableBackupApplicationVersion = '1.0.0+1';
 
 const portableBackupEntityKeys = <String>[

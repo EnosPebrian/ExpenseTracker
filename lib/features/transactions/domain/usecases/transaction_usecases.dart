@@ -6,6 +6,7 @@ import '../../../assets/domain/services/asset_trade_validator.dart';
 import '../entities/transaction.dart';
 import '../entities/transaction_relation_type.dart';
 import '../entities/transaction_metadata.dart';
+import '../entities/transaction_brokerage_metadata.dart';
 import '../import/transaction_import_category_review.dart';
 import '../repositories/transaction_repository.dart';
 import 'save_asset_conversion_with_fee.dart';
@@ -41,6 +42,16 @@ void validateTransaction(Transaction transaction) {
   if (transaction.feeAmount < 0) {
     throw TransactionValidationException('Transaction fee cannot be negative.');
   }
+  final brokerageError = TransactionBrokerageMetadataPolicy.validationMessage(
+    brokerageAccountId: transaction.brokerageAccountId,
+    activityType: transaction.brokerageActivityType,
+    splitNumerator: transaction.splitNumerator,
+    splitDenominator: transaction.splitDenominator,
+  );
+  if (brokerageError != null) {
+    throw TransactionValidationException(brokerageError);
+  }
+  _validateBrokerageShape(transaction);
   if (transaction.relationType == TransactionRelationType.assetFeeExpense) {
     if (transaction.relatedTransactionId?.trim().isEmpty != false ||
         transaction.type != TransactionType.expense ||
@@ -56,6 +67,10 @@ void validateTransaction(Transaction transaction) {
     );
   }
   if (transaction.type == TransactionType.assetConversion) {
+    if (transaction.assetAction == AssetAction.split) {
+      _validateMarketReference(transaction);
+      return;
+    }
     final quantity = transaction.quantity;
     final kind = AssetNumericPolicy.inferKind(
       unit: transaction.unit,
@@ -110,6 +125,58 @@ void validateTransaction(Transaction transaction) {
   }
 }
 
+void _validateBrokerageShape(Transaction transaction) {
+  final activity = transaction.brokerageActivityType;
+  if (activity == null) return;
+  switch (activity) {
+    case BrokerageActivityType.buy:
+      if (transaction.type != TransactionType.assetConversion ||
+          transaction.assetAction != AssetAction.buy) {
+        throw TransactionValidationException(
+          'A brokerage buy must be an asset purchase.',
+        );
+      }
+    case BrokerageActivityType.sell:
+      if (transaction.type != TransactionType.assetConversion ||
+          transaction.assetAction != AssetAction.sell) {
+        throw TransactionValidationException(
+          'A brokerage sell must be an asset sale.',
+        );
+      }
+    case BrokerageActivityType.split:
+      if (transaction.type != TransactionType.assetConversion ||
+          transaction.assetAction != AssetAction.split ||
+          transaction.amount != 0 ||
+          transaction.feeAmount != 0) {
+        throw TransactionValidationException(
+          'A split must change quantity without cash or fees.',
+        );
+      }
+    case BrokerageActivityType.dividend:
+    case BrokerageActivityType.fee:
+    case BrokerageActivityType.tax:
+      if (transaction.type != TransactionType.investment ||
+          transaction.amount <= 0 ||
+          transaction.assetAction != null) {
+        throw TransactionValidationException(
+          'The investment cash activity is invalid.',
+        );
+      }
+    case BrokerageActivityType.deposit:
+      if (transaction.type != TransactionType.income) {
+        throw TransactionValidationException(
+          'A brokerage deposit must be the incoming canonical transfer leg.',
+        );
+      }
+    case BrokerageActivityType.withdrawal:
+      if (transaction.type != TransactionType.expense) {
+        throw TransactionValidationException(
+          'A brokerage withdrawal must be the outgoing canonical transfer leg.',
+        );
+      }
+  }
+}
+
 void _validateMarketReference(Transaction transaction) {
   final hasReferenceMetadata =
       transaction.marketReferenceUnitPrice != null ||
@@ -120,6 +187,7 @@ void _validateMarketReference(Transaction transaction) {
   if (!hasReferenceMetadata) return;
 
   if (transaction.type != TransactionType.assetConversion ||
+      transaction.assetAction == AssetAction.split ||
       transaction.relationType == TransactionRelationType.assetFeeExpense) {
     throw TransactionValidationException(
       'Execution references are supported only for parent asset trades.',
@@ -374,6 +442,10 @@ class DuplicateTransaction {
       assetName: original.assetName,
       assetSymbol: original.assetSymbol,
       assetAction: original.assetAction,
+      brokerageAccountId: original.brokerageAccountId,
+      brokerageActivityType: original.brokerageActivityType,
+      splitNumerator: original.splitNumerator,
+      splitDenominator: original.splitDenominator,
       feeAmount: original.feeAmount,
       feeTreatment: original.feeTreatment,
     );

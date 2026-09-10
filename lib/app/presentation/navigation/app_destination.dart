@@ -28,4 +28,5 @@ const appDestinations = <AppDestination>[
   AppDestination(label: 'Integrations', icon: Icons.hub_outlined),
   AppDestination(label: 'Backup & Export', icon: Icons.shield_outlined),
   AppDestination(label: 'Data & Sync', icon: Icons.health_and_safety_outlined),
+  AppDestination(label: 'Investments', icon: Icons.candlestick_chart_outlined),
 ];

@@ -221,6 +221,7 @@ class FinancialSummary {
 
         case TransactionType.transfer:
         case TransactionType.assetConversion:
+        case TransactionType.investment:
           break;
       }
     }
@@ -254,6 +255,7 @@ class FinancialSummary {
 
         case TransactionType.transfer:
         case TransactionType.assetConversion:
+        case TransactionType.investment:
           break;
       }
     }

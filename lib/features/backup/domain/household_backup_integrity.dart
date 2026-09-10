@@ -11,6 +11,7 @@ import '../../master_data/domain/services/account_balance_calculator.dart';
 import '../../tithe/domain/tithe_policy.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../../transactions/domain/entities/transaction_metadata.dart';
+import '../../transactions/domain/entities/transaction_brokerage_metadata.dart';
 import '../../transactions/domain/entities/internal_transfer_link.dart';
 import 'backup_models.dart';
 
@@ -213,6 +214,9 @@ class HouseholdBackupIntegrity {
     final assetDefinitionIds = _ids(snapshot['asset_definitions'] ?? const []);
     final transactions = snapshot['transactions'] ?? const [];
     final transactionIds = _ids(transactions);
+    final accountsById = {
+      for (final record in accounts) record['id'] as String: record,
+    };
 
     for (final record in transactions) {
       final id = _requiredString(record, 'id', 'transactions');
@@ -232,6 +236,35 @@ class HouseholdBackupIntegrity {
         throw BackupValidationException('Transaction $id: $metadataError');
       }
       final type = _requiredString(record, 'transaction_type', 'transactions');
+      final brokerageAccountId = record['brokerage_account_id'] as String?;
+      final brokerageActivity = BrokerageActivityType.fromStoredValue(
+        record['brokerage_activity_type'],
+      );
+      final splitNumerator = (record['split_numerator'] as num?)?.toInt();
+      final splitDenominator = (record['split_denominator'] as num?)?.toInt();
+      final brokerageError =
+          TransactionBrokerageMetadataPolicy.validationMessage(
+            brokerageAccountId: brokerageAccountId,
+            activityType: brokerageActivity,
+            splitNumerator: splitNumerator,
+            splitDenominator: splitDenominator,
+          );
+      if (brokerageError != null ||
+          (brokerageAccountId != null &&
+              (accountsById[brokerageAccountId] == null ||
+                  accountsById[brokerageAccountId]!['book_id'] !=
+                      record['book_id'] ||
+                  accountsById[brokerageAccountId]!['account_type'] !=
+                      'brokerage')) ||
+          !_brokerageShapeValid(
+            record,
+            brokerageActivity,
+            assetDefinitionIds,
+          )) {
+        throw BackupValidationException(
+          'Transaction $id has invalid brokerage attribution.',
+        );
+      }
       final categoryId = record['category_id'] as String?;
       if (categoryId != null &&
           (!categoryIds.contains(categoryId) ||
@@ -275,7 +308,8 @@ class HouseholdBackupIntegrity {
       }
       if (type == 'assetConversion') {
         final quantity = record['quantity'];
-        if (quantity is! num || quantity <= 0) {
+        final isSplit = brokerageActivity == BrokerageActivityType.split;
+        if (!isSplit && (quantity is! num || quantity <= 0)) {
           throw BackupValidationException(
             'Asset transaction $id has an invalid quantity.',
           );
@@ -305,9 +339,6 @@ class HouseholdBackupIntegrity {
 
     final transactionsById = {
       for (final record in transactions) record['id'] as String: record,
-    };
-    final accountsById = {
-      for (final record in accounts) record['id'] as String: record,
     };
     final activeLegIds = <String>{};
     for (final link in snapshot['transfer_links'] ?? const []) {
@@ -632,6 +663,9 @@ class HouseholdBackupIntegrity {
             if (key == 'transactions' && record['asset_definition_id'] != null)
               'asset_definition_id':
                   definitionIds[record['asset_definition_id']],
+            if (key == 'transactions' && record['brokerage_account_id'] != null)
+              'brokerage_account_id':
+                  accountIds[record['brokerage_account_id']],
           };
         })
         .toList(growable: false);
@@ -704,6 +738,39 @@ class HouseholdBackupIntegrity {
 
   static Set<String> _ids(List<Map<String, Object?>> records) =>
       records.map((record) => _requiredString(record, 'id', 'record')).toSet();
+
+  static bool _brokerageShapeValid(
+    Map<String, Object?> record,
+    BrokerageActivityType? activity,
+    Set<String> assetDefinitionIds,
+  ) {
+    if (activity == null) return true;
+    final type = record['transaction_type'];
+    final action = record['asset_action'];
+    final amount = (record['amount'] as num?)?.toInt();
+    final fee = (record['fee_amount'] as num?)?.toInt() ?? 0;
+    final definitionId = record['asset_definition_id'];
+    final hasInstrument =
+        definitionId is String && assetDefinitionIds.contains(definitionId);
+    return switch (activity) {
+      BrokerageActivityType.buy =>
+        type == 'assetConversion' && action == 'buy' && hasInstrument,
+      BrokerageActivityType.sell =>
+        type == 'assetConversion' && action == 'sell' && hasInstrument,
+      BrokerageActivityType.split =>
+        type == 'assetConversion' &&
+            action == 'split' &&
+            amount == 0 &&
+            fee == 0 &&
+            hasInstrument,
+      BrokerageActivityType.dividend ||
+      BrokerageActivityType.fee ||
+      BrokerageActivityType.tax => type == 'investment' && (amount ?? 0) > 0,
+      BrokerageActivityType.deposit => type == 'income' && (amount ?? 0) > 0,
+      BrokerageActivityType.withdrawal =>
+        type == 'expense' && (amount ?? 0) > 0,
+    };
+  }
 
   static String _requiredString(
     Map<String, Object?> record,
