@@ -307,3 +307,19 @@ These limitations do not change the version-21 financial or accounting model.
   fabricate current prices.
 - The existing `file_picker` forward-looking Kotlin compatibility warning is
   unchanged and non-blocking for the validated Android debug build.
+
+## BETA-08N1 brokerage statement limitations
+
+- Owner/runtime acceptance on Windows and Android is **NOT RUN**.
+- Import supports UTF-8 CSV only. Brokerage PDF/image extraction, AI/fuzzy
+  interpretation, broker APIs, scraping, trading/orders, and tax-law
+  calculation remain excluded.
+- Only BUY, SELL, DIVIDEND, FEE, TAX, DEPOSIT, WITHDRAWAL, and SPLIT are
+  supported. Unknown or unsupported activity stays unresolved.
+- Instrument matching is exact symbol plus currency. Unknown instruments need
+  explicit map/create review; no typo silently creates an asset.
+- Cross-currency source/account rows block because N1 does not fabricate FX.
+- Review state is not persisted across restart; committed authoritative N0
+  records are fully persisted, synchronized, and included in backup v7.
+- The additive BETA-08N0 hosted migration is still undeployed, so hosted sync of
+  N0/N1 brokerage metadata remains unavailable pending separate authorization.

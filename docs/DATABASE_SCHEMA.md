@@ -1,5 +1,12 @@
 # Pilgrim Tracker Database and Persistence Schema
 
+## BETA-08N1 schema impact
+
+BETA-08N1 adds no persisted review entity and no SQLite or Supabase schema
+change. Committed statement rows use the existing BETA-08N0 transaction
+brokerage fields, `asset_definitions`, canonical `transfer_links`, and ordinary
+`sync_outbox`. SQLite remains v28 and encrypted backup remains v7.
+
 ## BETA-08N0 brokerage attribution
 
 Current SQLite schema version: **28**. Version 28 additively adds nullable

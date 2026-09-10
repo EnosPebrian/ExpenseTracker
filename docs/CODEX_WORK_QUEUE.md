@@ -2,7 +2,7 @@
 
 **Queue protocol:** `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md`
 **Last architect seed:** 2026-09-09
-**Last reconciled:** 2026-09-10
+**Last reconciled:** 2026-09-11
 
 ## Queue rules
 
@@ -214,7 +214,7 @@ must pass. Owner acceptance is prepared but remains **NOT RUN**.
 ### PT-BETA-08N1 — Brokerage Statement CSV Import
 
 **Priority:** P1
-**State:** IN_PROGRESS
+**State:** COMPLETE
 **Depends on:** PT-BETA-08N0 COMPLETE
 **Architecture contract:** `docs/BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`
 
@@ -223,6 +223,25 @@ only after N0 completes. Preserve source identity, explicit unresolved activity
 and instrument review, atomic authoritative postings, and local-first sync.
 Do not implement any N1 out-of-scope provider, extraction, AI, trading, tax, or
 advanced instrument behavior.
+
+#### Completion
+
+Implemented reviewed UTF-8 CSV mapping for all eight N0 activities, explicit
+unresolved activity/instrument resolution, deterministic UUIDv5 event/child
+identity, indexed duplicate review, broker-P&L comparison, and atomic
+definition/transaction/transfer/outbox persistence. SQLite remains v28, backup
+remains v7, and no N1 migration was added. Focused tests passed 14/14; full
+Flutter passed 983/983; analyzer and Web/Windows/Android debug builds passed.
+Owner acceptance remains **NOT RUN**.
+
+### PT-FEATURE-FREEZE — Accepted roadmap exhausted
+
+**State:** COMPLETE
+
+BETA-08N0 and BETA-08N1 are complete. No further item is `READY`. Feature
+freeze is active; Portable CSV, Receivables/Advances, Account Reconciliation,
+additional investment work, and hosted deployment require a new accepted
+contract or explicit owner/architect authority.
 
 ---
 

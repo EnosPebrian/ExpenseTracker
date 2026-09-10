@@ -777,6 +777,73 @@ asset_symbol TEXT,
     return resolvedCategoryIds;
   }
 
+  Future<void> insertInvestmentImportAtomic({
+    required List<Map<String, Object?>> transactions,
+    required List<Map<String, Object?>> assetDefinitions,
+    required List<Map<String, Object?>> transferLinks,
+  }) async {
+    await db.transaction((txn) async {
+      for (final record in assetDefinitions) {
+        final prepared = _withActiveBook(record);
+        if (prepared['book_id'] == null ||
+            prepared['book_id'] != _activeBookId ||
+            prepared['deleted_at'] != null) {
+          throw StateError('The planned investment instrument is invalid.');
+        }
+        final collision = await txn.query(
+          'asset_definitions',
+          columns: const ['id'],
+          where: 'id = ?',
+          whereArgs: [prepared['id']],
+          limit: 1,
+        );
+        if (collision.isNotEmpty) {
+          throw StateError(
+            'The planned investment instrument identity is unavailable.',
+          );
+        }
+        await txn.insert(
+          'asset_definitions',
+          prepared,
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        await _enqueueSyncOperation(txn, 'asset_definitions', prepared);
+      }
+
+      final incomingIds = <Object?>{};
+      for (final record in transactions) {
+        if (!incomingIds.add(record['id'])) {
+          throw StateError('The import contains duplicate stable identities.');
+        }
+        final prepared = _withActiveBook(record);
+        await _validateTransactionCategory(txn, prepared);
+        await txn.insert(
+          'transactions',
+          prepared,
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        await _enqueueSyncOperation(txn, 'transactions', prepared);
+      }
+      for (final record in transferLinks) {
+        final prepared = _withActiveBook(record);
+        await txn.insert(
+          'transfer_links',
+          prepared,
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        await _enqueueSyncOperation(txn, 'transfer_links', prepared);
+      }
+      for (final bookId
+          in transferLinks
+              .map((link) => (link['book_id'] as String?) ?? _activeBookId)
+              .whereType<String>()
+              .toSet()) {
+        await _validateInternalTransfersInDatabase(txn, bookId);
+      }
+    });
+    onSyncMutation?.call();
+  }
+
   static String _normalizeImportCategory(String value) =>
       value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 

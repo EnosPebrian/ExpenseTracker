@@ -4,12 +4,14 @@ import '../../domain/entities/internal_transfer_link.dart';
 import '../../domain/import/transaction_import_category_review.dart';
 import '../../domain/repositories/transaction_repository.dart';
 import '../../../master_data/domain/entities/account.dart';
+import '../../../assets/domain/entities/asset_definition.dart';
 
 class LocalTransactionRepository
     implements
         TransactionRepository,
         TransactionBatchRepository,
         TransactionImportAtomicRepository,
+        InvestmentImportAtomicRepository,
         InternalTransferRepository {
   LocalTransactionRepository(this.store);
   final LocalStore store;
@@ -68,6 +70,19 @@ class LocalTransactionRepository
     requireNewTransactionIds: {
       for (final item in transferMutations) ...item.requireNewTransactionIds,
     },
+  );
+
+  @override
+  Future<void> saveInvestmentImportAtomic({
+    required List<Transaction> transactions,
+    required List<AssetDefinition> assetDefinitionCreations,
+    required List<InternalTransferLink> transferLinks,
+  }) => store.insertInvestmentImportAtomic(
+    transactions: transactions.map((item) => item.toRecord()).toList(),
+    assetDefinitions: assetDefinitionCreations
+        .map((item) => item.toRecord())
+        .toList(),
+    transferLinks: transferLinks.map((item) => item.toRecord()).toList(),
   );
 
   @override

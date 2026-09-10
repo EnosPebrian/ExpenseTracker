@@ -21,6 +21,7 @@ class InvestmentsScreen extends StatelessWidget {
     required this.transactions,
     required this.controller,
     required this.onOpenAccounts,
+    required this.onImportStatement,
   });
 
   final String bookId;
@@ -31,6 +32,7 @@ class InvestmentsScreen extends StatelessWidget {
   final List<Transaction> transactions;
   final BrokerageController controller;
   final VoidCallback onOpenAccounts;
+  final VoidCallback onImportStatement;
 
   Future<void> _add(BuildContext context) async {
     final request = await BrokerageActivityDialog.show(
@@ -89,13 +91,21 @@ class InvestmentsScreen extends StatelessWidget {
                   icon: const Icon(Icons.account_balance_wallet_outlined),
                   label: const Text('Open accounts'),
                 )
-              else
+              else ...[
+                OutlinedButton.icon(
+                  key: const Key('import-brokerage-statement'),
+                  onPressed: onImportStatement,
+                  icon: const Icon(Icons.upload_file_outlined),
+                  label: const Text('Import statement'),
+                ),
+                const SizedBox(width: 8),
                 FilledButton.icon(
                   key: const Key('add-brokerage-activity'),
                   onPressed: controller.saving ? null : () => _add(context),
                   icon: const Icon(Icons.add),
                   label: const Text('Add activity'),
                 ),
+              ],
             ],
           ),
           const SizedBox(height: 16),

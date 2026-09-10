@@ -1,5 +1,14 @@
 # Pilgrim Tracker Incremental Sync Protocol
 
+## BETA-08N1 statement imports
+
+Brokerage statement review is local and creates no remote authority. One atomic
+commit writes the same BETA-08N0 authoritative transactions, optional asset
+definitions, canonical transfer links, and ordinary outbox operations used by
+manual entry. Exact re-import creates no new outbox work. Reconnect, conflict,
+initial upload/download, and old-client handling therefore remain the N0/frozen
+sync architecture; N1 adds no migration, entity type, RPC, or change feed.
+
 ## BETA-08N0 brokerage metadata
 
 Ordinary transaction payloads, change feed, conflicts, and initial snapshots

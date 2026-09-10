@@ -1,5 +1,15 @@
 # D10–D14 Roadmap
 
+## BETA-08N1 implementation — 2026-09-11
+
+Reviewed brokerage-statement CSV import is implemented over the N0 ledger with
+explicit mapping, unresolved review, stable UUIDv5 identity, duplicate and P&L
+evidence, and one atomic local-first commit. SQLite stays v28, backup stays v7,
+and no N1 migration or hosted deployment is introduced. Engineering validation
+passed 14 focused N1 tests, 983 full Flutter tests, analyzer, and Web/Windows/
+Android debug builds. Owner acceptance remains **NOT RUN**. The accepted N0/N1
+sequence is complete and feature freeze resumes after Git completion.
+
 ## BETA-08N0/N1 accepted investment sequence — 2026-09-10
 
 `ARCH-20260910-01` Option B confirms BETA-08M is complete and authorizes

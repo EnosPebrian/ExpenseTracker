@@ -255,6 +255,77 @@ class LocalStore {
     return resolvedCategoryIds;
   }
 
+  Future<void> insertInvestmentImportAtomic({
+    required List<Map<String, Object?>> transactions,
+    required List<Map<String, Object?>> assetDefinitions,
+    required List<Map<String, Object?>> transferLinks,
+  }) async {
+    final transactionSnapshot = _records.map(Map<String, Object?>.of).toList();
+    final definitionSnapshot = _assetDefinitions
+        .map(Map<String, Object?>.of)
+        .toList();
+    final linkSnapshot = _transferLinks.map(Map<String, Object?>.of).toList();
+    final outboxSnapshot = _syncOutbox.map(Map<String, Object?>.of).toList();
+    try {
+      for (final record in assetDefinitions) {
+        final prepared = _withActiveBook(record);
+        if (prepared['book_id'] == null ||
+            prepared['book_id'] != _activeBookId ||
+            prepared['deleted_at'] != null) {
+          throw StateError('The planned investment instrument is invalid.');
+        }
+        if (_assetDefinitions.any((item) => item['id'] == prepared['id'])) {
+          throw StateError(
+            'The planned investment instrument identity is unavailable.',
+          );
+        }
+        _assetDefinitions.add(prepared);
+        _enqueueSyncOperation('asset_definitions', prepared);
+      }
+      final incomingIds = <Object?>{};
+      for (final record in transactions) {
+        if (!incomingIds.add(record['id']) ||
+            _records.any((item) => item['id'] == record['id'])) {
+          throw StateError('A transaction with this stable identity exists.');
+        }
+        final prepared = _withActiveBook(record);
+        _validateTransactionCategory(prepared);
+        _records.add(prepared);
+        _enqueueSyncOperation('transactions', prepared);
+      }
+      for (final record in transferLinks) {
+        final prepared = _withActiveBook(record);
+        if (_transferLinks.any((item) => item['id'] == prepared['id'])) {
+          throw StateError('A transfer with this stable identity exists.');
+        }
+        _transferLinks.add(prepared);
+        _enqueueSyncOperation('transfer_links', prepared);
+      }
+      for (final bookId
+          in transferLinks
+              .map((link) => (link['book_id'] as String?) ?? _activeBookId)
+              .whereType<String>()
+              .toSet()) {
+        _validateActiveTransferLinks(bookId);
+      }
+    } catch (_) {
+      _records
+        ..clear()
+        ..addAll(transactionSnapshot);
+      _assetDefinitions
+        ..clear()
+        ..addAll(definitionSnapshot);
+      _transferLinks
+        ..clear()
+        ..addAll(linkSnapshot);
+      _syncOutbox
+        ..clear()
+        ..addAll(outboxSnapshot);
+      rethrow;
+    }
+    onSyncMutation?.call();
+  }
+
   static String _normalizeImportCategory(String value) =>
       value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 

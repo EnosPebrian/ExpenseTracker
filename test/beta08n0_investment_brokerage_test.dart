@@ -637,6 +637,7 @@ void main() {
             transactions: const [],
             controller: controller,
             onOpenAccounts: () {},
+            onImportStatement: () {},
           ),
         ),
       ),

@@ -1,5 +1,17 @@
 # Pilgrim Tracker Progress
 
+## BETA-08N1 Brokerage Statement CSV Import — 2026-09-11
+
+Implementation adds explicit mapped/reviewed UTF-8 brokerage CSV ingestion for
+all eight N0 activities. Unknown activities and instruments block included rows
+until explicit resolution; deterministic event/child IDs make exact re-import
+inert; broker P&L remains comparison evidence; and approved definitions,
+transactions, canonical funding links, and normal outbox rows commit atomically.
+SQLite remains v28, backup remains v7, no N1 Supabase migration exists, and no
+hosted deployment was performed. Engineering validation passed 14 focused N1
+tests, 983 full-suite tests, analyzer, Web, Windows debug, Android debug APK,
+and diff gates. Owner acceptance is **NOT RUN** and feature freeze resumes.
+
 ## BETA-08N0 Investment / Brokerage Ledger Foundation — 2026-09-10
 
 Engineering PASS. Added stable brokerage transaction attribution, brokerage

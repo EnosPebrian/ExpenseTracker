@@ -2,6 +2,7 @@ import '../entities/transaction.dart';
 import '../entities/internal_transfer_link.dart';
 import '../import/transaction_import_category_review.dart';
 import '../../../master_data/domain/entities/account.dart';
+import '../../../assets/domain/entities/asset_definition.dart';
 
 abstract interface class TransactionRepository {
   Future<List<Transaction>> getAll({bool includeDeleted = false});
@@ -39,6 +40,14 @@ abstract interface class TransactionImportAtomicRepository {
     required List<Transaction> transactions,
     required List<TransactionImportCategoryCreation> categoryCreations,
     required List<TransactionImportTransferMutation> transferMutations,
+  });
+}
+
+abstract interface class InvestmentImportAtomicRepository {
+  Future<void> saveInvestmentImportAtomic({
+    required List<Transaction> transactions,
+    required List<AssetDefinition> assetDefinitionCreations,
+    required List<InternalTransferLink> transferLinks,
   });
 }
 

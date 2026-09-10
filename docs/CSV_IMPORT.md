@@ -1,5 +1,15 @@
 # CSV Transaction Import
 
+## BETA-08N1 brokerage statements
+
+Brokerage exports use the separate reviewed Investments → Import statement
+path because BUY, SELL, SPLIT, investment costs/income, and owned-account
+funding must retain BETA-08N0 semantics. It reuses the strict UTF-8 CSV parser
+but has explicit brokerage-field mapping, eight allowed activities, unresolved
+activity/instrument review, deterministic event identity, duplicate analysis,
+and atomic authoritative posting. It does not route rows through ordinary
+income/expense import. See `BROKERAGE_STATEMENT_IMPORT.md`.
+
 ## BETA-08M0 durable metadata
 
 The existing simple CSV adapter and Import Review editor continue to recognize

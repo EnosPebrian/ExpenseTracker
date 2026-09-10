@@ -1,5 +1,21 @@
 # Pilgrim Tracker Architecture
 
+## BETA-08N1 reviewed brokerage statement ingestion
+
+Brokerage CSV is a source adapter for the existing BETA-08N0 authorities, not
+an ordinary bank import and not a second investment ledger. Explicitly mapped
+rows become stable review drafts. Unknown activity or instrument meaning blocks
+an included row until explicit resolution. UUIDv5 event identity binds the
+household, brokerage account, file fingerprint, stable row identity, and row
+fingerprint; deterministic child IDs cover fees, taxes, funding legs, and links.
+
+Commit revalidates identity, duplicate evidence, definitions, and chronological
+asset quantity, then persists new definitions, authoritative transactions,
+canonical transfer links, and normal outbox entries atomically. The resulting
+records inherit N0 sync, backup v7, reporting, budget, Tithe, and Health Check
+semantics. SQLite remains v28 and no N1 Supabase migration is introduced. See
+`BROKERAGE_STATEMENT_IMPORT.md`.
+
 ## BETA-08N0 investment and brokerage ledger
 
 Investment activity reuses Pilgrim's existing accounting authorities rather

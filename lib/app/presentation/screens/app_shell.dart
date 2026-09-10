@@ -34,6 +34,9 @@ import '../../../features/master_data/presentation/screens/accounts_page.dart';
 import '../../../features/investments/domain/services/brokerage_activity_service.dart';
 import '../../../features/investments/domain/services/brokerage_performance_calculator.dart';
 import '../../../features/investments/presentation/controllers/brokerage_controller.dart';
+import '../../../features/investments/domain/import/brokerage_import_commit_service.dart';
+import '../../../features/investments/presentation/controllers/brokerage_import_controller.dart';
+import '../../../features/investments/presentation/screens/brokerage_import_screen.dart';
 import '../../../features/investments/presentation/screens/investments_screen.dart';
 import '../../../features/master_data/presentation/screens/local_profile_setup_page.dart';
 import '../../../features/master_data/domain/entities/local_profile.dart';
@@ -265,6 +268,21 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     instruments: () => assetDefinitionController.definitions,
     onRecorded: transactionController.load,
   );
+  late final BrokerageImportController brokerageImportController =
+      BrokerageImportController(
+        pickFile: TransactionImportFileService().pick,
+        commitService: BrokerageImportCommitService(
+          repository: brokerageTransactionRepository,
+        ),
+        accounts: () => masterDataController.accountRecords,
+        instruments: () => assetDefinitionController.definitions,
+        transactions: () => transactionController.transactions,
+        transferLinks: () => transactionController.transferLinks,
+        onImported: () async {
+          await assetDefinitionController.reload();
+          await transactionController.load();
+        },
+      );
   late final monthlyBudgetController = MonthlyBudgetController(
     repository: LocalMonthlyBudgetRepository(store),
   );
@@ -1142,6 +1160,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     restoreLifecycleController.dispose();
     healthCheckController.dispose();
     brokerageController.dispose();
+    brokerageImportController.dispose();
     assetPriceRepository?.close();
     store.close();
 
@@ -1371,6 +1390,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           transactions: transactions,
           controller: brokerageController,
           onOpenAccounts: () => setState(() => selected = 3),
+          onImportStatement: () => BrokerageImportScreen.show(
+            context,
+            bookId: financialBook!.id,
+            memberId: activeMemberId,
+            accounts: masterDataController.accountRecords,
+            instruments: assetDefinitionController.definitions,
+            controller: brokerageImportController,
+            remoteFreshnessVerified:
+                financialBook!.remoteLinkedAt == null ||
+                syncController.status == SyncStatus.synced,
+          ),
         )
       else
         const SizedBox.shrink(),
