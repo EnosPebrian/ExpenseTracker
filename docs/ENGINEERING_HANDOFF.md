@@ -8,7 +8,7 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-`PT-BETA-08N0 — Investment / Brokerage Ledger Foundation`
+`PT-BETA-08N1 — Brokerage Statement CSV Import`
 
 ## Current state
 
@@ -19,8 +19,8 @@ Update it whenever an engineering session materially changes state, especially b
 ```text
 branch: main
 remote: origin
-commit: 985f1df0b37604796d45592498b2b3cd430b4fc8
-message: docs: define BETA-08N investment brokerage contract
+commit: 403dde8383f9e9d6e49ed7faa5e360f172527cf9
+message: feat: add investment brokerage ledger foundation
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -29,43 +29,58 @@ post-push worktree: clean
 ## Latest completed engineering state
 
 ```text
-BETA-08M implementation: preserved
-SQLite: 27
-backup format: v6
-BETA-08M SQL/Supabase changes: none
-focused and historical corpus: 294/294 PASS
-full Flutter suite: 954/954 PASS
+BETA-08N0 implementation: COMPLETE
+SQLite: 28
+backup format: v7
+BETA-08N0 Supabase migration: one additive migration; locally verified; undeployed
+focused N0 tests: 14/14 PASS
+affected regression tranche: 203/203 PASS
+focused pgTAP: 24/24 PASS
+full Flutter suite: 969/969 PASS
+full pgTAP suite: 314/314 PASS
 analyzer: PASS
 builds: Web, Windows debug, Android debug APK PASS
 git diff --check: PASS
 remaining failures: 0
 ```
 
-Repaired compatibility point:
-
-```text
-_prepareCategoryCommit
-```
-
-Root cause and repair:
-
-`_prepareCategoryCommit` treated all category IDs as if they came from an
-explicit source-category Map choice. Explicit Map intent is now persisted and
-tracked separately, so only that path requires `ImportRuleCategory` stable-ID
-revalidation. Legacy, source-neutral, and manual assignments retain their
-existing validation path.
-
 ## Exact next action
 
-The mandatory D10–D13 reuse analysis is complete in
-`docs/BETA08N0_ENGINEERING_ANALYSIS.md`; its architecture gate is PASS. Implement
-the additive v28 transaction brokerage metadata, account type, domain activity
-service, and focused persistence/accounting tests before UI or broad regression
-validation. Owner/runtime acceptance for BETA-08M remains **NOT RUN**.
+Inspect the BETA-08N1 section of
+`docs/BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md` and the completed N0 pipeline,
+then implement only reviewed brokerage-statement CSV import: explicit mapping,
+unresolved activity/instrument review, deterministic identity, atomic commit,
+and existing local-first sync. Owner/runtime acceptance for N0 remains
+**NOT RUN**.
 
 ---
 
 ## Completed sprint records
+
+### PT-BETA-08N0 — Investment / Brokerage Ledger Foundation
+
+```text
+work item: PT-BETA-08N0
+verdict: COMPLETE
+root cause / implementation: added nullable brokerage attribution to the authoritative transaction ledger; reused existing asset, account, canonical-transfer, budget, Tithe, backup, and sync authorities
+files changed: brokerage domain/service/UI, transaction/account/asset/reporting/backup/sync/health integration, SQLite v28 migration, one undeployed Supabase migration, focused Flutter/pgTAP tests, and targeted docs
+schema/version changes: SQLite 27 -> 28; backup v6 -> v7; one additive Supabase migration remains undeployed
+focused tests: 14/14 PASS
+historical regressions: affected tranche 203/203 PASS
+full suite: 969/969 PASS
+analyzer: PASS
+builds: Web PASS; Windows debug PASS; Android debug APK PASS
+server/pgTAP if applicable: local reset PASS; focused 24/24 PASS; full 314/314 PASS; hosted deployment NOT RUN
+git diff --check: PASS
+owner acceptance status: NOT RUN
+branch: main
+implementation commit: 403dde8383f9e9d6e49ed7faa5e360f172527cf9
+status/documentation commit if any: follow-up durable-state commit containing this record
+push result: origin/main succeeded; HEAD == origin/main after implementation push
+final git status: clean after implementation push; durable-state update pending its follow-up commit
+remaining limitations: hosted migration undeployed; no broker CSV/API/extraction/trading/tax/advanced instruments; no cross-currency total; owner runtime acceptance pending
+next READY item: PT-BETA-08N1, moved to IN_PROGRESS
+```
 
 ### PT-BETA-08M-R1 — Category-commit compatibility repair
 

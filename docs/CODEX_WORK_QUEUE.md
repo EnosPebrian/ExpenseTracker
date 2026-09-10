@@ -178,7 +178,7 @@ accepted investment/brokerage sequence.
 ### PT-BETA-08N0 — Investment / Brokerage Ledger Foundation
 
 **Priority:** P0
-**State:** IN_PROGRESS
+**State:** COMPLETE
 **Type:** product foundation / additive local-first financial subledger
 **Architecture contract:** `docs/BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`
 
@@ -214,7 +214,7 @@ must pass. Owner acceptance is prepared but remains **NOT RUN**.
 ### PT-BETA-08N1 — Brokerage Statement CSV Import
 
 **Priority:** P1
-**State:** READY
+**State:** IN_PROGRESS
 **Depends on:** PT-BETA-08N0 COMPLETE
 **Architecture contract:** `docs/BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`
 
