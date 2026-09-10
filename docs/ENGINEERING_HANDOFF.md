@@ -8,19 +8,19 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-`PT-BETA-08N1 — Brokerage Statement CSV Import`
+`None — accepted roadmap exhausted; feature freeze active`
 
 ## Current state
 
-`IN_PROGRESS`
+`COMPLETE`
 
 ## Latest pushed engineering baseline
 
 ```text
 branch: main
 remote: origin
-commit: 403dde8383f9e9d6e49ed7faa5e360f172527cf9
-message: feat: add investment brokerage ledger foundation
+commit: 23a5e453c1856376b1b601859918134397d407e4
+message: feat: import brokerage statements
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -29,15 +29,14 @@ post-push worktree: clean
 ## Latest completed engineering state
 
 ```text
-BETA-08N0 implementation: COMPLETE
+BETA-08N1 implementation: COMPLETE
 SQLite: 28
 backup format: v7
-BETA-08N0 Supabase migration: one additive migration; locally verified; undeployed
-focused N0 tests: 14/14 PASS
-affected regression tranche: 203/203 PASS
-focused pgTAP: 24/24 PASS
-full Flutter suite: 969/969 PASS
-full pgTAP suite: 314/314 PASS
+BETA-08N1 Supabase migration: none
+focused N1 tests: 14/14 PASS
+focused N0 regression: 14/14 PASS
+affected import/investment tranche: 120/120 PASS
+full Flutter suite: 983/983 PASS
 analyzer: PASS
 builds: Web, Windows debug, Android debug APK PASS
 git diff --check: PASS
@@ -46,16 +45,40 @@ remaining failures: 0
 
 ## Exact next action
 
-Inspect the BETA-08N1 section of
-`docs/BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md` and the completed N0 pipeline,
-then implement only reviewed brokerage-statement CSV import: explicit mapping,
-unresolved activity/instrument review, deterministic identity, atomic commit,
-and existing local-first sync. Owner/runtime acceptance for N0 remains
-**NOT RUN**.
+Do not start another product milestone. The accepted BETA-08N0/N1 roadmap is
+exhausted and feature freeze is active. Wait for a new repository-backed
+accepted contract or explicit owner/architect authority. N0/N1 owner/runtime
+acceptance remains **NOT RUN** and the additive N0 hosted migration remains
+undeployed.
 
 ---
 
 ## Completed sprint records
+
+### PT-BETA-08N1 — Brokerage Statement CSV Import
+
+```text
+work item: PT-BETA-08N1
+verdict: COMPLETE
+root cause / implementation: added a brokerage-specific reviewed CSV adapter over the authoritative N0 ledger; explicit mapping and unresolved activity/instrument review feed deterministic event/child identities and one atomic definition/transaction/transfer/outbox commit
+files changed: brokerage import domain/planner/posting/commit/controller/UI, native/web atomic repositories, Investments entry point, focused tests, and targeted architecture/import/schema/sync/checkpoint/roadmap documentation
+schema/version changes: none; SQLite 28; backup v7; no N1 Supabase migration
+focused tests: 14/14 PASS
+historical regressions: focused N0 14/14 PASS; affected import/investment tranche 120/120 PASS; final full suite 983/983 PASS
+full suite: 983/983 PASS
+analyzer: PASS
+builds: Web PASS; Windows debug PASS; Android debug APK PASS with unchanged non-blocking file_picker warning
+server/pgTAP if applicable: not applicable; N1 adds no SQL; no hosted action
+git diff --check: PASS
+owner acceptance status: NOT RUN
+branch: main
+implementation commit: 23a5e453c1856376b1b601859918134397d407e4
+status/documentation commit if any: follow-up durable-state commit containing this record
+push result: origin/main succeeded
+final git status: clean after implementation push; durable-state update pending its follow-up commit
+remaining limitations: CSV only; explicit exact instrument mapping; no cross-currency conversion; review state is in-memory; N0 hosted migration remains undeployed; owner acceptance pending
+next READY item: none; accepted roadmap exhausted and feature freeze active
+```
 
 ### PT-BETA-08N0 — Investment / Brokerage Ledger Foundation
 
