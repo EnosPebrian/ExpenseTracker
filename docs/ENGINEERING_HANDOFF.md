@@ -19,8 +19,8 @@ Update it whenever an engineering session materially changes state, especially b
 ```text
 branch: main
 remote: origin
-commit: 21131d522f5bbcb2e96cd757f9214033d961c035
-message: docs: close BETA-08N1 engineering
+commit: 4e3e5384a2d37d7c44099a42af04aa1597acea47
+message: docs: close BETA-08N hosted rollout
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -74,6 +74,10 @@ RLS/ACL/sync verification: PASS
 new severe advisor finding: no
 owner acceptance: PENDING / NOT RUN
 state: BLOCKED_OWNER
+branch: main
+documentation commit: 4e3e5384a2d37d7c44099a42af04aa1597acea47
+push result: origin/main succeeded
+post-push git status: clean
 ```
 
 ---
