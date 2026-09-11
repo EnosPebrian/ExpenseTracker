@@ -19,8 +19,8 @@ Update it whenever an engineering session materially changes state, especially b
 ```text
 branch: main
 remote: origin
-commit: 4e3e5384a2d37d7c44099a42af04aa1597acea47
-message: docs: close BETA-08N hosted rollout
+commit: 83274479a3e00bda92d8e700a6fd983fbee736b9
+message: docs: record BETA-08N rollout handoff
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -29,6 +29,19 @@ post-push worktree: clean
 ## Latest completed engineering state
 
 ```text
+BETA-08N Investments UI navigation: COMPLETE
+first-class destination: after Assets on desktop and mobile
+sections: Overview, Brokerage Accounts, Holdings, Trades, Statements, Performance
+focused Flutter: 33/33 PASS
+full Flutter suite: 989/989 PASS
+analyzer: PASS
+builds: Web, Windows debug, Android debug APK PASS
+git diff --check: PASS
+SQLite: 28
+backup format: v7
+SQL/Supabase change: none
+owner visual acceptance: PENDING / NOT RUN
+feature freeze: active
 BETA-08N hosted rollout: PASS
 BETA-08M0 migration 20260908124412: DEPLOYED
 BETA-08N0 migration 20260910054452: DEPLOYED
@@ -54,9 +67,10 @@ remaining failures: 0
 
 ## Exact next action
 
-Owner runs `BETA08N_OWNER_ACCEPTANCE.md` on physical Windows and Android using
-disposable data and records each PASS/FAIL field. Hosted rollout is complete;
-do not add product features or mark owner acceptance PASS automatically.
+Owner runs `BETA08N_OWNER_ACCEPTANCE.md` on physical Windows and Android,
+including visual review of the first-class Investments destination and its six
+sections, then records each PASS/FAIL field. Do not add product features or mark
+owner acceptance PASS automatically.
 
 ## PT-BETA-08N-RC rollout result
 
@@ -83,6 +97,31 @@ post-push git status: clean
 ---
 
 ## Completed sprint records
+
+### PT-BETA-08N-UI-R1 — Investment / Brokerage UI Navigation Gap
+
+```text
+work item: PT-BETA-08N-UI-R1
+verdict: COMPLETE
+root cause / implementation: the complete N0/N1 ledger was buried behind the desktop overflow/mobile More route and rendered as one undifferentiated page; Investments is now first-class after Assets with six responsive sections over existing authorities
+files changed: application destination/router/shell/navigation composition, Investments presentation widgets, account-editor initial type support, focused navigation/investment regressions, and targeted architecture/progress/limitations/checkpoint/handoff docs
+schema/version changes: none; SQLite 28; backup v7; no SQL/Supabase migration
+focused tests: 33/33 PASS
+historical regressions: included app navigation, BETA-08H destination index, and BETA-08N0 investment coverage
+full suite: 989/989 PASS
+analyzer: PASS
+builds: Web PASS; Windows debug PASS; Android debug APK PASS with unchanged non-blocking file_picker warning
+server/pgTAP if applicable: not applicable; no SQL/Supabase change
+git diff --check: PASS
+owner acceptance status: NOT RUN
+branch: main
+implementation commit: pending Git completion
+status/documentation commit if any: this durable-state record is included in the sprint Git completion
+push result: pending Git completion
+final git status: pending Git completion
+remaining limitations: UTF-8 CSV statements only; no broker institution metadata, APIs, advanced return metrics, or cross-currency aggregation; owner visual/runtime acceptance pending
+next READY item: none; PT-BETA-08N-RC remains BLOCKED_OWNER and feature freeze is active
+```
 
 ### PT-BETA-08N1 — Brokerage Statement CSV Import
 

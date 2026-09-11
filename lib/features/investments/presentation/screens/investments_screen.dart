@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/design/app_colors.dart';
-import '../../../../core/shared/formatters/thousands_formatter.dart';
 import '../../../../core/shared/widgets/page_layout.dart';
 import '../../../assets/domain/entities/asset_definition.dart';
 import '../../../master_data/domain/entities/account.dart';
@@ -9,8 +7,9 @@ import '../../../transactions/domain/entities/transaction.dart';
 import '../../../transactions/domain/entities/transaction_brokerage_metadata.dart';
 import '../../domain/entities/brokerage_performance.dart';
 import '../controllers/brokerage_controller.dart';
+import '../widgets/investment_tab_content.dart';
 
-class InvestmentsScreen extends StatelessWidget {
+class InvestmentsScreen extends StatefulWidget {
   const InvestmentsScreen({
     super.key,
     required this.bookId,
@@ -20,7 +19,7 @@ class InvestmentsScreen extends StatelessWidget {
     required this.instruments,
     required this.transactions,
     required this.controller,
-    required this.onOpenAccounts,
+    required this.onAddBrokerageAccount,
     required this.onImportStatement,
   });
 
@@ -31,253 +30,111 @@ class InvestmentsScreen extends StatelessWidget {
   final List<AssetDefinition> instruments;
   final List<Transaction> transactions;
   final BrokerageController controller;
-  final VoidCallback onOpenAccounts;
+  final VoidCallback onAddBrokerageAccount;
   final VoidCallback onImportStatement;
+
+  @override
+  State<InvestmentsScreen> createState() => _InvestmentsScreenState();
+}
+
+class _InvestmentsScreenState extends State<InvestmentsScreen> {
+  InvestmentSection selectedSection = InvestmentSection.overview;
 
   Future<void> _add(BuildContext context) async {
     final request = await BrokerageActivityDialog.show(
       context,
-      accounts: accounts,
-      instruments: instruments,
+      accounts: widget.accounts,
+      instruments: widget.instruments,
     );
     if (request == null || !context.mounted) return;
     try {
-      await controller.record(
-        bookId: bookId,
-        memberId: memberId,
+      await widget.controller.record(
+        bookId: widget.bookId,
+        memberId: widget.memberId,
         request: request,
       );
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(controller.error ?? 'Could not save activity.')),
+        SnackBar(
+          content: Text(widget.controller.error ?? 'Could not save activity.'),
+        ),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final brokerageAccounts = accounts
+    final brokerageAccounts = widget.accounts
         .where((account) => account.accountType == AccountType.brokerage)
         .toList(growable: false);
     final activity =
-        transactions
+        widget.transactions
             .where((transaction) => transaction.brokerageActivityType != null)
             .toList(growable: false)
           ..sort((left, right) => right.date.compareTo(left.date));
+    final content = switch (selectedSection) {
+      InvestmentSection.overview => InvestmentOverviewTab(
+        performance: widget.performance,
+        activity: activity,
+        onAddBrokerageAccount: widget.onAddBrokerageAccount,
+      ),
+      InvestmentSection.brokerageAccounts => BrokerageAccountsTab(
+        performance: widget.performance,
+        onAdd: widget.onAddBrokerageAccount,
+      ),
+      InvestmentSection.holdings => InvestmentHoldingsTab(
+        performance: widget.performance,
+      ),
+      InvestmentSection.trades => InvestmentTradesTab(
+        transactions: activity,
+        accounts: brokerageAccounts,
+      ),
+      InvestmentSection.statements => InvestmentStatementsTab(
+        hasBrokerageAccount: brokerageAccounts.isNotEmpty,
+        onImport: widget.onImportStatement,
+        onAddBrokerageAccount: widget.onAddBrokerageAccount,
+      ),
+      InvestmentSection.performance => InvestmentPerformanceTab(
+        performance: widget.performance,
+      ),
+    };
     return PageFrame(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const PageHeading(
             kicker: 'INVESTMENTS',
-            title: 'Brokerage',
+            title: 'Investments',
             subtitle:
-                'Cash, positions, and performance without mixing currencies.',
+                'Track brokerage accounts, holdings, trades, and investment performance.',
           ),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  brokerageAccounts.isEmpty
-                      ? 'Create a brokerage account before recording activity.'
-                      : 'Trades reuse Pilgrim’s weighted-average asset ledger.',
-                ),
-              ),
-              const SizedBox(width: 12),
-              if (brokerageAccounts.isEmpty)
-                OutlinedButton.icon(
-                  onPressed: onOpenAccounts,
-                  icon: const Icon(Icons.account_balance_wallet_outlined),
-                  label: const Text('Open accounts'),
-                )
-              else ...[
-                OutlinedButton.icon(
-                  key: const Key('import-brokerage-statement'),
-                  onPressed: onImportStatement,
-                  icon: const Icon(Icons.upload_file_outlined),
-                  label: const Text('Import statement'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  key: const Key('add-brokerage-activity'),
-                  onPressed: controller.saving ? null : () => _add(context),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add activity'),
-                ),
-              ],
-            ],
+          InvestmentSectionSelector(
+            selected: selectedSection,
+            onSelected: (section) => setState(() => selectedSection = section),
           ),
           const SizedBox(height: 16),
-          if (performance.currencies.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text('No brokerage balances or positions yet.'),
-              ),
-            )
-          else
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 900 ? 3 : 1;
-                return GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: columns,
-                  crossAxisSpacing: 14,
-                  mainAxisSpacing: 14,
-                  childAspectRatio: columns == 1 ? 2.2 : 1.35,
-                  children: [
-                    for (final summary in performance.currencies)
-                      _CurrencyCard(summary: summary),
-                  ],
-                );
-              },
-            ),
-          const SizedBox(height: 16),
-          for (final account in performance.accounts) ...[
-            _AccountCard(result: account),
-            const SizedBox(height: 14),
-          ],
-          if (activity.isNotEmpty)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Recent investment activity',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 12),
-                    for (final transaction in activity.take(12))
-                      ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(
-                          Icons.show_chart_rounded,
-                          color: violet,
-                        ),
-                        title: Text(transaction.title),
-                        subtitle: Text(
-                          '${transaction.brokerageActivityType!.label} · '
-                          '${_date(transaction.date)}',
-                        ),
-                        trailing: transaction.amount == 0
-                            ? const Text('No cash')
-                            : Text(money(transaction.amount)),
-                      ),
-                  ],
-                ),
+          if (brokerageAccounts.isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                key: const Key('add-brokerage-activity'),
+                onPressed: widget.controller.saving
+                    ? null
+                    : () => _add(context),
+                icon: const Icon(Icons.add),
+                label: const Text('Add activity'),
               ),
             ),
+          if (brokerageAccounts.isNotEmpty) const SizedBox(height: 14),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: KeyedSubtree(key: ValueKey(selectedSection), child: content),
+          ),
         ],
       ),
     );
   }
-}
-
-class _CurrencyCard extends StatelessWidget {
-  const _CurrencyCard({required this.summary});
-  final BrokerageCurrencyPerformance summary;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            summary.currencyCode,
-            style: const TextStyle(fontWeight: FontWeight.w800, color: violet),
-          ),
-          const SizedBox(height: 8),
-          _Metric(label: 'Investment net worth', value: summary.netWorth),
-          _Metric(label: 'Brokerage cash', value: summary.cashBalance),
-          _Metric(label: 'Positions', value: summary.positionMarketValue),
-          _Metric(
-            label: 'Realized performance',
-            value: summary.realizedPerformance,
-          ),
-          _Metric(label: 'Unrealized gain/loss', value: summary.unrealizedGain),
-        ],
-      ),
-    ),
-  );
-}
-
-class _AccountCard extends StatelessWidget {
-  const _AccountCard({required this.result});
-  final BrokerageAccountPerformance result;
-
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            result.account.name,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          Text('${result.account.currencyCode} settlement account'),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 24,
-            runSpacing: 8,
-            children: [
-              _Metric(label: 'Cash', value: result.cashBalance),
-              _Metric(
-                label: 'Positions',
-                value: result.portfolio.totalMarketValue,
-              ),
-              _Metric(label: 'Realized', value: result.realizedPerformance),
-              _Metric(
-                label: 'Unrealized',
-                value: result.portfolio.totalUnrealizedGain,
-              ),
-            ],
-          ),
-          if (result.portfolio.holdings.isEmpty) ...[
-            const SizedBox(height: 12),
-            const Text('No open positions.'),
-          ] else ...[
-            const Divider(height: 28),
-            for (final holding in result.portfolio.holdings)
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(holding.name),
-                subtitle: Text(
-                  '${holding.quantity} ${holding.unit} · '
-                  '${holding.currentPrice == null
-                      ? 'Current price unavailable'
-                      : holding.isPriceDelayed
-                      ? 'Price delayed'
-                      : 'Current price available'}',
-                ),
-                trailing: Text(money(holding.marketValue)),
-              ),
-          ],
-        ],
-      ),
-    ),
-  );
-}
-
-class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value});
-  final String label;
-  final int value;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 2),
-    child: Text('$label: ${money(value)}'),
-  );
 }
 
 class BrokerageActivityDialog extends StatefulWidget {

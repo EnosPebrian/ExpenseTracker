@@ -26,8 +26,8 @@ void main() {
   });
 
   test('Integrations is a stable navigation destination before Backup', () {
-    expect(appDestinations[11].label, 'Integrations');
-    expect(appDestinations[12].label, 'Backup & Export');
+    expect(appDestinations[12].label, 'Integrations');
+    expect(appDestinations[13].label, 'Backup & Export');
   });
 
   test(

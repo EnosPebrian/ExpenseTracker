@@ -1,5 +1,20 @@
 # Pilgrim Tracker Architecture
 
+## BETA-08N Investments navigation and presentation
+
+Investments is a first-class application destination immediately after Assets.
+Its Overview, Brokerage Accounts, Holdings, Trades, Statements, and Performance
+sections are presentation over the existing BETA-08N0/N1 authorities. Account
+creation reuses the account editor with Brokerage preselected; activity entry
+reuses `BrokerageActivityService`; holdings and performance reuse
+`AssetPortfolioCalculator` and `BrokeragePerformanceCalculator`; and Statements
+opens the reviewed brokerage CSV importer.
+
+No additional ledger, financial calculation, persistence field, migration,
+backup format, synchronization rule, parser, or quote provider is introduced.
+The module reports currency buckets separately and gives honest empty states
+when brokerage accounts, holdings, trades, or import targets do not yet exist.
+
 ## BETA-08N1 reviewed brokerage statement ingestion
 
 Brokerage CSV is a source adapter for the existing BETA-08N0 authorities, not
@@ -174,13 +189,19 @@ Current navigation indices:
 ```text
 0 Overview
 1 Assets
-2 Transactions
-3 Accounts
-4 Categories
-5 Asset Conversion
-6 Projects
-7 Tithe
-8 Reports
+2 Investments
+3 Transactions
+4 Accounts
+5 Categories
+6 Asset Conversion
+7 Projects
+8 Budgets
+9 Tithe
+10 Reports
+11 Household
+12 Integrations
+13 Backup & Export
+14 Data & Sync
 ```
 
 ## 5. Transaction feature

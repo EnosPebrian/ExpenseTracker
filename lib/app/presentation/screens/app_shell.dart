@@ -31,6 +31,7 @@ import '../../../features/cloud_sharing/domain/cloud_sharing_repository.dart';
 import '../../../features/cloud_sharing/presentation/controllers/cloud_sharing_controller.dart';
 import '../../../features/cloud_sharing/presentation/widgets/cloud_sharing_section.dart';
 import '../../../features/master_data/presentation/screens/accounts_page.dart';
+import '../../../features/master_data/presentation/widgets/account_editor_dialog.dart';
 import '../../../features/investments/domain/services/brokerage_activity_service.dart';
 import '../../../features/investments/domain/services/brokerage_performance_calculator.dart';
 import '../../../features/investments/presentation/controllers/brokerage_controller.dart';
@@ -40,6 +41,7 @@ import '../../../features/investments/presentation/screens/brokerage_import_scre
 import '../../../features/investments/presentation/screens/investments_screen.dart';
 import '../../../features/master_data/presentation/screens/local_profile_setup_page.dart';
 import '../../../features/master_data/domain/entities/local_profile.dart';
+import '../../../features/master_data/domain/entities/account.dart';
 import '../../../features/master_data/domain/entities/financial_book.dart';
 import '../../../features/master_data/domain/entities/household_member.dart';
 import '../../../features/master_data/domain/entities/financial_project.dart';
@@ -109,6 +111,7 @@ import '../../services/app_bootstrap_service.dart';
 import '../../data/default_asset_definitions.dart';
 import '../widgets/app_navigation_scaffold.dart';
 import '../widgets/app_bootstrap_error_view.dart';
+import '../navigation/app_destination.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({
@@ -130,7 +133,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
-  int selected = 0;
+  int selected = AppDestinationIndex.overview;
   bool loading = true;
   String? bootstrapError;
   LocalProfile? localProfile;
@@ -164,7 +167,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         fileService: const PortableFileService(),
         onRecovered: _refreshSyncedData,
         onViewTransactions: () {
-          if (mounted) setState(() => selected = 2);
+          if (mounted) {
+            setState(() => selected = AppDestinationIndex.transactions);
+          }
         },
       );
 
@@ -892,8 +897,21 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       context,
       transactionController: transactionController,
       config: quickAddConfig,
-      onAddAccount: () => setState(() => selected = 3),
-      onAddCategory: () => setState(() => selected = 4),
+      onAddAccount: () =>
+          setState(() => selected = AppDestinationIndex.accounts),
+      onAddCategory: () =>
+          setState(() => selected = AppDestinationIndex.categories),
+    );
+  }
+
+  Future<void> addBrokerageAccount(BuildContext context) {
+    return AccountEditorDialog.show(
+      context,
+      initialAccountType: AccountType.brokerage,
+      defaultCurrencyCode: localProfile?.defaultCurrencyCode ?? 'IDR',
+      transactions: transactionController.displayTransactions,
+      members: householdMembers,
+      onSave: masterDataController.saveAccount,
     );
   }
 
@@ -908,7 +926,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         Navigator.of(context).pop();
         setState(() {
           currentSessionImportedTransactionIds = ids.toSet();
-          selected = 2;
+          selected = AppDestinationIndex.transactions;
         });
       },
     );
@@ -1016,7 +1034,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         Navigator.of(context).popUntil((route) => route.isFirst);
         setState(() {
           currentSessionImportedTransactionIds = ids.toSet();
-          selected = 2;
+          selected = AppDestinationIndex.transactions;
         });
       },
     );
@@ -1128,7 +1146,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         Navigator.of(context).pop();
         setState(() {
           currentSessionImportedTransactionIds = ids.toSet();
-          selected = 2;
+          selected = AppDestinationIndex.transactions;
         });
       },
     );
@@ -1229,7 +1247,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onOpen: (transaction) {
           _openTransactionDetail(context, transaction);
         },
-        onAddAccount: () => setState(() => selected = 3),
+        onAddAccount: () =>
+            setState(() => selected = AppDestinationIndex.accounts),
         onAddTransaction: () => openQuickAdd(context),
       ),
       AssetsDashboardScreen(
@@ -1242,6 +1261,30 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           );
         },
       ),
+      if (financialBook != null)
+        InvestmentsScreen(
+          bookId: financialBook!.id,
+          memberId: activeMemberId,
+          performance: brokeragePerformance,
+          accounts: masterDataController.accountRecords,
+          instruments: assetDefinitionController.definitions,
+          transactions: transactions,
+          controller: brokerageController,
+          onAddBrokerageAccount: () => addBrokerageAccount(context),
+          onImportStatement: () => BrokerageImportScreen.show(
+            context,
+            bookId: financialBook!.id,
+            memberId: activeMemberId,
+            accounts: masterDataController.accountRecords,
+            instruments: assetDefinitionController.definitions,
+            controller: brokerageImportController,
+            remoteFreshnessVerified:
+                financialBook!.remoteLinkedAt == null ||
+                syncController.status == SyncStatus.synced,
+          ),
+        )
+      else
+        const SizedBox.shrink(),
       TransactionListScreen(
         controller: transactionController,
         importedTransactionIds: currentSessionImportedTransactionIds,
@@ -1345,7 +1388,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             initialSyncController: initialSyncController,
             backupExportController: backupExportController,
             restoreLifecycleController: restoreLifecycleController,
-            onOpenRecovery: () => setState(() => selected = 12),
+            onOpenRecovery: () =>
+                setState(() => selected = AppDestinationIndex.backupExport),
             onReviewConflicts: syncConflictController == null
                 ? null
                 : () => ConflictReviewScreen.show(
@@ -1369,7 +1413,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         recoveryController: backupRecoveryController,
         restoreLifecycleController: restoreLifecycleController,
         authenticatedEmail: cloudSharingController.user?.email,
-        onOpenHousehold: () => setState(() => selected = 10),
+        onOpenHousehold: () =>
+            setState(() => selected = AppDestinationIndex.household),
       ),
       HealthCheckScreen(
         controller: healthCheckController,
@@ -1377,33 +1422,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             ? null
             : () => ConflictReviewScreen.show(context, syncConflictController!),
         onOpenImportInbox: () => openImportInbox(context),
-        onOpenBackup: () => setState(() => selected = 12),
-        onOpenHousehold: () => setState(() => selected = 10),
+        onOpenBackup: () =>
+            setState(() => selected = AppDestinationIndex.backupExport),
+        onOpenHousehold: () =>
+            setState(() => selected = AppDestinationIndex.household),
       ),
-      if (financialBook != null)
-        InvestmentsScreen(
-          bookId: financialBook!.id,
-          memberId: activeMemberId,
-          performance: brokeragePerformance,
-          accounts: masterDataController.accountRecords,
-          instruments: assetDefinitionController.definitions,
-          transactions: transactions,
-          controller: brokerageController,
-          onOpenAccounts: () => setState(() => selected = 3),
-          onImportStatement: () => BrokerageImportScreen.show(
-            context,
-            bookId: financialBook!.id,
-            memberId: activeMemberId,
-            accounts: masterDataController.accountRecords,
-            instruments: assetDefinitionController.definitions,
-            controller: brokerageImportController,
-            remoteFreshnessVerified:
-                financialBook!.remoteLinkedAt == null ||
-                syncController.status == SyncStatus.synced,
-          ),
-        )
-      else
-        const SizedBox.shrink(),
     ];
 
     if (loading || transactionController.isLoading) {

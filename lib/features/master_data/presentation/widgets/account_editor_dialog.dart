@@ -14,6 +14,7 @@ class AccountEditorDialog extends StatefulWidget {
     required this.transactions,
     required this.members,
     required this.onSave,
+    this.initialAccountType,
   });
 
   final Account? account;
@@ -21,6 +22,7 @@ class AccountEditorDialog extends StatefulWidget {
   final List<Transaction> transactions;
   final List<HouseholdMember> members;
   final Future<void> Function(Account account) onSave;
+  final AccountType? initialAccountType;
 
   static Future<void> show(
     BuildContext context, {
@@ -29,6 +31,7 @@ class AccountEditorDialog extends StatefulWidget {
     required List<Transaction> transactions,
     List<HouseholdMember> members = const [],
     required Future<void> Function(Account account) onSave,
+    AccountType? initialAccountType,
   }) {
     return showDialog<void>(
       context: context,
@@ -38,6 +41,7 @@ class AccountEditorDialog extends StatefulWidget {
         transactions: transactions,
         members: members,
         onSave: onSave,
+        initialAccountType: initialAccountType,
       ),
     );
   }
@@ -68,7 +72,8 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
     _balanceController = TextEditingController(
       text: account == null ? '' : money(account.openingBalance),
     );
-    _type = account?.accountType ?? AccountType.bank;
+    _type =
+        account?.accountType ?? widget.initialAccountType ?? AccountType.bank;
     _ownerMemberId = account?.ownerMemberId;
     _openingEnabled = account?.hasOpeningBalance ?? false;
     _openingDate = account?.openingBalanceDate;

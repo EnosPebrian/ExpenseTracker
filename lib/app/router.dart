@@ -1,3 +1,5 @@
+import 'presentation/navigation/app_destination.dart';
+
 /// Transitional route registry.
 ///
 /// The current application shell uses indexed navigation so desktop and
@@ -9,15 +11,7 @@
 /// - appDestinations
 /// - the pages list in AppShell
 class AppRouter {
-  static const destinations = <String>[
-    'Overview',
-    'Assets',
-    'Transactions',
-    'Accounts',
-    'Categories',
-    'Asset Conversion',
-    'Projects',
-    'Tithe',
-    'Reports',
-  ];
+  static final destinations = List<String>.unmodifiable(
+    appDestinations.map((destination) => destination.label),
+  );
 }

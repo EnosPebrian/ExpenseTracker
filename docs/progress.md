@@ -1,5 +1,21 @@
 # Pilgrim Tracker Progress
 
+## BETA-08N Investments UI Navigation Gap — 2026-09-11
+
+The existing BETA-08N0/N1 brokerage ledger is now exposed as a first-class
+Investments destination immediately after Assets on desktop and mobile. The
+responsive page organizes existing capabilities into Overview, Brokerage
+Accounts, Holdings, Trades, Statements, and Performance sections. It reuses
+the brokerage account editor, manual activity service, derived portfolio and
+performance models, and reviewed brokerage CSV importer without adding a
+second ledger or new financial semantics.
+
+Engineering validation passed 33 focused tests, all 989 Flutter tests,
+`flutter analyze`, Web, Windows debug, Android debug APK, and diff checks. The
+known `file_picker` Kotlin compatibility warning remains non-blocking. SQLite
+remains v28, backup remains v7, and no SQL/Supabase migration exists for this
+presentation sprint. Owner visual/runtime acceptance is **NOT RUN**.
+
 ## BETA-08N1 Brokerage Statement CSV Import — 2026-09-11
 
 Implementation adds explicit mapped/reviewed UTF-8 brokerage CSV ingestion for

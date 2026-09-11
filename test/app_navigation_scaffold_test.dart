@@ -41,6 +41,8 @@ void main() {
     expect(find.text('Projects'), findsNothing);
     expect(find.text('Tithe'), findsNothing);
     expect(find.text('Reports'), findsNothing);
+    expect(find.text('Investments'), findsOneWidget);
+    expect(find.text('Transactions'), findsOneWidget);
 
     await tester.tap(find.text('More'));
     await tester.pumpAndSettle();
@@ -55,7 +57,7 @@ void main() {
     expect(find.text('Data & Sync'), findsOneWidget);
   });
 
-  testWidgets('Selecting Reports from More returns destination index 9', (
+  testWidgets('Selecting Reports from More returns destination index 10', (
     tester,
   ) async {
     int? selectedIndex;
@@ -73,7 +75,7 @@ void main() {
     await tester.tap(find.text('Reports'));
     await tester.pumpAndSettle();
 
-    expect(selectedIndex, 9);
+    expect(selectedIndex, 10);
     expect(find.text('Reports'), findsNothing);
   });
 
@@ -105,7 +107,7 @@ void main() {
       find.byType(NavigationBar),
     );
 
-    expect(navigationBar.selectedIndex, 3);
+    expect(navigationBar.selectedIndex, 4);
   });
 
   testWidgets(

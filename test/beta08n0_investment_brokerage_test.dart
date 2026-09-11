@@ -636,13 +636,13 @@ void main() {
             instruments: [instrument],
             transactions: const [],
             controller: controller,
-            onOpenAccounts: () {},
+            onAddBrokerageAccount: () {},
             onImportStatement: () {},
           ),
         ),
       ),
     );
-    expect(find.text('Brokerage'), findsOneWidget);
+    expect(find.text('Investments'), findsOneWidget);
     expect(find.text('No open positions.'), findsOneWidget);
     await tester.tap(find.byKey(const Key('add-brokerage-activity')));
     await tester.pumpAndSettle();

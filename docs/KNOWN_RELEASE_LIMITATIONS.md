@@ -322,3 +322,16 @@ These limitations do not change the version-21 financial or accounting model.
   records are fully persisted, synchronized, and included in backup v7.
 - Hosted schema support for N0/N1 brokerage metadata is deployed. Real-device
   synchronization and bootstrap acceptance remain **NOT RUN**.
+
+## BETA-08N Investments UI limitations
+
+- Owner visual/runtime acceptance of the first-class Investments destination
+  on Windows and Android is **NOT RUN**.
+- Brokerage account creation reuses the existing account model. There is no
+  separate broker/institution field or broker-supplied last-updated timestamp.
+- Statements supports the existing reviewed UTF-8 CSV workflow only; it does
+  not add PDF/image extraction, APIs, scraping, or automatic broker mapping.
+- Performance remains the existing weighted-average realized/unrealized view;
+  it does not claim IRR, CAGR, time-weighted, or money-weighted returns.
+- Mobile tabs scroll horizontally on narrow screens; real-device visual review
+  is still required even though widget overflow coverage passes.

@@ -147,6 +147,40 @@ Record in `docs/ENGINEERING_HANDOFF.md`:
 
 ## ACTIVE
 
+### PT-BETA-08N-UI-R1 — Investment / Brokerage UI Navigation Gap
+
+**Priority:** P0
+**State:** COMPLETE
+**Type:** bounded navigation / presentation repair
+**Authority:** explicit owner sprint contract, 2026-09-11
+
+Expose the already-complete BETA-08N0/N1 brokerage ledger as a first-class
+`Investments` destination immediately after `Assets`, with responsive internal
+Overview, Brokerage Accounts, Holdings, Trades, Statements, and Performance
+tabs. Reuse the existing account editor, brokerage activity service,
+performance calculator, and reviewed brokerage CSV importer. Do not introduce
+new financial calculations, persistence, migrations, price APIs, parsers, or a
+second investment ledger. Validate navigation order/selection, zero-data and
+existing-data states, responsive behavior, focused/full Flutter tests,
+analyzer, required platform builds, and Git diff before commit/push. Owner
+visual acceptance remains **NOT RUN**.
+
+Completion:
+
+```text
+focused Flutter: 33/33 PASS
+full Flutter: 989/989 PASS
+analyzer: PASS
+builds: Web, Windows debug, Android debug APK PASS
+SQLite: 28
+backup: v7
+SQL/Supabase change: none
+owner visual acceptance: NOT RUN
+next READY item: none; feature freeze active
+```
+
+---
+
 ### PT-BETA-08N-RC — BETA-08N Hosted Rollout & Owner Acceptance Preparation
 
 **Priority:** P0

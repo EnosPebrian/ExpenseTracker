@@ -23,7 +23,7 @@ class AppNavigationScaffold extends StatelessWidget {
   final VoidCallback onQuickAdd;
 
   int get _mobileSelectedIndex {
-    return selected < 3 ? selected : 3;
+    return selected < 4 ? selected : 4;
   }
 
   Future<void> _showMoreDestinations(BuildContext context) async {
@@ -43,7 +43,7 @@ class AppNavigationScaffold extends StatelessWidget {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
               ),
-              for (var index = 3; index < appDestinations.length; index++)
+              for (var index = 4; index < appDestinations.length; index++)
                 ListTile(
                   selected: selected == index,
                   selectedColor: violet,
@@ -101,7 +101,7 @@ class AppNavigationScaffold extends StatelessWidget {
               height: 66,
               selectedIndex: _mobileSelectedIndex,
               onDestinationSelected: (index) {
-                if (index == 3) {
+                if (index == 4) {
                   _showMoreDestinations(context);
                   return;
                 }
@@ -120,6 +120,10 @@ class AppNavigationScaffold extends StatelessWidget {
                 NavigationDestination(
                   icon: Icon(appDestinations[2].icon),
                   label: appDestinations[2].label,
+                ),
+                NavigationDestination(
+                  icon: Icon(appDestinations[3].icon),
+                  label: appDestinations[3].label,
                 ),
                 const NavigationDestination(
                   icon: Icon(Icons.more_horiz),
