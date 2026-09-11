@@ -18,8 +18,8 @@ client preserves the current stored value on update; explicit null clears it.
 Local and server validation reject cross-household/non-brokerage account
 attribution and incoherent activity shapes. Remote apply and bootstrap remain
 echo-free, and no new sync entity, cursor, outbox, or conflict architecture is
-introduced. The additive BETA-08N0 migration is locally verified and remains
-undeployed.
+introduced. The additive BETA-08N0 migration is locally verified and has been
+deployed to the linked hosted project as of 2026-09-11.
 
 ## BETA-08M category creation
 

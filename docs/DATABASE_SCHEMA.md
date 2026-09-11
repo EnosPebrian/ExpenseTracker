@@ -19,8 +19,8 @@ uses the existing text column, so no account-table rebuild is needed.
 
 The matching additive Supabase migration is
 `20260910054452_beta08n0_brokerage_metadata.sql`. It preserves transaction RLS,
-uses presence-sensitive sync handling for mixed clients, and was verified only
-against the local Supabase stack; it has not been deployed to hosted Supabase.
+uses presence-sensitive sync handling for mixed clients, and is deployed to the
+linked hosted project as of 2026-09-11.
 
 ## BETA-08M0 transaction note and reference
 
@@ -29,7 +29,8 @@ Current SQLite schema version: **27**. Version 27 additively adds nullable
 no financial value, identity, version, lifecycle state, or outbox row is
 rewritten. SQLite constraints reject notes longer than 4,000 characters and
 references longer than 256 characters. The matching hosted migration is
-`20260908124412_beta08m0_transaction_note_reference.sql`.
+`20260908124412_beta08m0_transaction_note_reference.sql`, deployed to the linked
+hosted project on 2026-09-11 immediately before BETA-08N0.
 
 ## BETA-08L0A hosted category guard
 

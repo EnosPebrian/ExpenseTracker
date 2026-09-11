@@ -11,8 +11,8 @@ analysis, chronological quantity validation, broker-P&L comparison, and atomic
 definition/financial/transfer/outbox persistence are implemented.
 
 No schema or backup-format change is required: SQLite remains v28 and encrypted
-backup remains v7. N1 adds no Supabase migration and performs no hosted
-deployment. The existing additive N0 hosted migration remains undeployed.
+backup remains v7. N1 adds no Supabase migration. The existing additive N0
+hosted migration was deployed and verified by PT-BETA-08N-RC on 2026-09-11.
 
 Validation completed:
 

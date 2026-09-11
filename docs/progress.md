@@ -7,8 +7,9 @@ all eight N0 activities. Unknown activities and instruments block included rows
 until explicit resolution; deterministic event/child IDs make exact re-import
 inert; broker P&L remains comparison evidence; and approved definitions,
 transactions, canonical funding links, and normal outbox rows commit atomically.
-SQLite remains v28, backup remains v7, no N1 Supabase migration exists, and no
-hosted deployment was performed. Engineering validation passed 14 focused N1
+SQLite remains v28, backup remains v7, and no N1 Supabase migration exists.
+The N0 hosted prerequisite was deployed by PT-BETA-08N-RC on 2026-09-11.
+Engineering validation passed 14 focused N1
 tests, 983 full-suite tests, analyzer, Web, Windows debug, Android debug APK,
 and diff gates. Owner acceptance is **NOT RUN** and feature freeze resumes.
 
@@ -19,11 +20,12 @@ accounts, eight explicit manual activity types, derived positions/cash/
 performance by currency, responsive Investments UI, backup/clone, sync/
 bootstrap, conflict, reporting, and read-only Health Check integration while
 reusing existing transaction, asset, transfer, budget, and Tithe authorities.
-SQLite is 28 and backup is v7. One additive Supabase migration passed local
-reset and pgTAP but remains undeployed. Focused N0 tests passed 14/14, affected
+SQLite is 28 and backup is v7. Its additive Supabase migration passed local
+reset/pgTAP and was deployed with full recovery and hosted verification on
+2026-09-11. Focused N0 tests passed 14/14, affected
 regressions 203/203, full Flutter 969/969, full pgTAP 314/314; analyzer and
 Web/Windows/Android debug builds passed. Owner acceptance is **NOT RUN**.
-BETA-08N1 is next under the accepted contract.
+BETA-08N1 subsequently completed under the accepted contract.
 
 ## BETA-08N0/N1 Architecture Authorization — 2026-09-10
 

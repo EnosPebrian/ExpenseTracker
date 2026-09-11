@@ -147,6 +147,35 @@ Record in `docs/ENGINEERING_HANDOFF.md`:
 
 ## ACTIVE
 
+### PT-BETA-08N-RC — BETA-08N Hosted Rollout & Owner Acceptance Preparation
+
+**Priority:** P0
+**State:** BLOCKED_OWNER
+**Type:** release engineering / hosted rollout / owner-acceptance preparation
+**Feature scope:** frozen; no new product features
+
+Deploy only the explicitly authorized ordered BETA-08M0 prerequisite and
+BETA-08N0 Supabase migrations after clean local replay, focused/full pgTAP,
+privacy-safe hosted baseline checks, a verified logical recovery point,
+migration-history/dry-run review, destructive-operation review, and project-
+identity confirmation. After deployment, verify schema, RLS, ACLs, household
+isolation, ordinary sync compatibility, hosted row preservation, and security
+advisors. Prepare one practical Windows/Android BETA-08N acceptance checklist
+without marking owner acceptance as run.
+
+Stop as `BLOCKED_OWNER` after successful rollout and Git completion because
+physical-device/runtime acceptance remains owner-only. Preserve the feature
+freeze and do not create another product `READY` item.
+
+#### Current blocker
+
+Hosted rollout is complete: the exact ordered BETA-08M0 then BETA-08N0 chain
+passed clean replay, focused/full pgTAP, recovery, dry-run, deployment, hosted
+schema/data/RLS/ACL/sync checks, and advisor comparison. BETA-08N owner runtime
+acceptance is now the only remaining step and is **PENDING / NOT RUN**. Execute
+`BETA08N_OWNER_ACCEPTANCE.md` on physical Windows and Android devices; feature
+freeze remains active.
+
 ### PT-AUTO-NEXT — Derive the next accepted milestone
 
 **Priority:** P1
@@ -238,10 +267,10 @@ Owner acceptance remains **NOT RUN**.
 
 **State:** COMPLETE
 
-BETA-08N0 and BETA-08N1 are complete. No further item is `READY`. Feature
-freeze is active; Portable CSV, Receivables/Advances, Account Reconciliation,
-additional investment work, and hosted deployment require a new accepted
-contract or explicit owner/architect authority.
+BETA-08N0 and BETA-08N1 are complete. Feature freeze remains active while the
+non-feature PT-BETA-08N-RC item awaits owner runtime acceptance. Portable CSV,
+Receivables/Advances, Account Reconciliation, and additional investment work
+still require a new accepted contract or explicit owner/architect authority.
 
 ---
 

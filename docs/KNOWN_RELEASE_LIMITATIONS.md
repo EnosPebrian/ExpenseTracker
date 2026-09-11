@@ -16,8 +16,8 @@
 - Reference is limited to 256 characters and note to 4,000 characters; values
   are rejected rather than silently truncated.
 - Web continues to be an in-memory development preview.
-- Owner runtime acceptance is **NOT RUN** until the engineering gates and
-  hosted migration complete.
+- Owner runtime acceptance is **NOT RUN**. The hosted migration completed on
+  2026-09-11; physical Windows/Android checks remain owner-only.
 
 ## BETA-08L limitations
 
@@ -289,9 +289,8 @@ These limitations do not change the version-21 financial or accounting model.
 ## BETA-08N0 investment limitations
 
 - Owner/runtime acceptance on Windows and Android is **NOT RUN**.
-- The additive BETA-08N0 Supabase migration is locally verified but remains
-  undeployed; hosted devices cannot synchronize the new brokerage metadata
-  until a separately authorized rollout.
+- The additive BETA-08N0 Supabase migration was deployed and verified on
+  2026-09-11; Windows/Android owner runtime acceptance remains pending.
 - Manual N0 supports only BUY, SELL, DIVIDEND, FEE, TAX, DEPOSIT, WITHDRAWAL,
   and whole-result SPLIT. Cash-in-lieu, unsupported corporate actions, security
   transfers between brokers, options, futures, margin, and shorts are excluded.
@@ -321,5 +320,5 @@ These limitations do not change the version-21 financial or accounting model.
 - Cross-currency source/account rows block because N1 does not fabricate FX.
 - Review state is not persisted across restart; committed authoritative N0
   records are fully persisted, synchronized, and included in backup v7.
-- The additive BETA-08N0 hosted migration is still undeployed, so hosted sync of
-  N0/N1 brokerage metadata remains unavailable pending separate authorization.
+- Hosted schema support for N0/N1 brokerage metadata is deployed. Real-device
+  synchronization and bootstrap acceptance remain **NOT RUN**.

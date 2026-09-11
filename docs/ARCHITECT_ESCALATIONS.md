@@ -45,6 +45,18 @@ List any safe independent work, or `none`.
 
 ## Resolved escalations
 
+### ARCH-20260911-01 — Ordered hosted chain includes undeployed BETA-08M0
+
+**Resolved:** 2026-09-11
+**Decision:** Deploy BETA-08M0 then BETA-08N0 in exact repository order
+**Affected work item:** PT-BETA-08N-RC
+
+The owner/architect explicitly authorized the two-migration chain
+`20260908124412` then `20260910054452`, with no history manipulation, skipping,
+or later migration. Preflight confirmed that these were the only two pending
+versions. After Docker became available, local and hosted gates passed and the
+ordered deployment completed on 2026-09-11.
+
 ### ARCH-20260910-01 — Select the post-BETA-08M milestone
 
 **Resolved:** 2026-09-10

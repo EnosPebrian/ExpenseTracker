@@ -8,19 +8,19 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-`None — accepted roadmap exhausted; feature freeze active`
+`PT-BETA-08N-RC — BETA-08N Hosted Rollout & Owner Acceptance Preparation`
 
 ## Current state
 
-`COMPLETE`
+`BLOCKED_OWNER`
 
 ## Latest pushed engineering baseline
 
 ```text
 branch: main
 remote: origin
-commit: 23a5e453c1856376b1b601859918134397d407e4
-message: feat: import brokerage statements
+commit: 21131d522f5bbcb2e96cd757f9214033d961c035
+message: docs: close BETA-08N1 engineering
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -29,6 +29,15 @@ post-push worktree: clean
 ## Latest completed engineering state
 
 ```text
+BETA-08N hosted rollout: PASS
+BETA-08M0 migration 20260908124412: DEPLOYED
+BETA-08N0 migration 20260910054452: DEPLOYED
+local focused pgTAP: M0 23/23; N0 24/24 PASS
+local full pgTAP: 314/314 PASS
+hosted business counts preserved: yes
+new severe advisor finding: no
+owner acceptance: PENDING / NOT RUN
+feature freeze: active
 BETA-08N1 implementation: COMPLETE
 SQLite: 28
 backup format: v7
@@ -45,11 +54,27 @@ remaining failures: 0
 
 ## Exact next action
 
-Do not start another product milestone. The accepted BETA-08N0/N1 roadmap is
-exhausted and feature freeze is active. Wait for a new repository-backed
-accepted contract or explicit owner/architect authority. N0/N1 owner/runtime
-acceptance remains **NOT RUN** and the additive N0 hosted migration remains
-undeployed.
+Owner runs `BETA08N_OWNER_ACCEPTANCE.md` on physical Windows and Android using
+disposable data and records each PASS/FAIL field. Hosted rollout is complete;
+do not add product features or mark owner acceptance PASS automatically.
+
+## PT-BETA-08N-RC rollout result
+
+```text
+project: pilgrim-tracker-dev (jylclfebdeaywfdwabph)
+authorized deployed chain: 20260908124412 -> 20260910054452
+clean local replay: PASS
+focused pgTAP: M0 23/23; N0 24/24 PASS
+full pgTAP: 314/314 PASS across 15 files
+recovery point: pre-beta08nrc-20260911-172323 (five non-empty hashed artifacts)
+hosted deployment: PASS
+hosted migration history: exact through 20260910054452
+business row preservation: PASS
+RLS/ACL/sync verification: PASS
+new severe advisor finding: no
+owner acceptance: PENDING / NOT RUN
+state: BLOCKED_OWNER
+```
 
 ---
 

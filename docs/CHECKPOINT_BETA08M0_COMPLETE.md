@@ -2,7 +2,7 @@
 
 **Milestone:** Durable Transaction Note & Reference Foundation
 **Date:** 2026-09-08
-**Engineering status:** Local engineering PASS; hosted rollout pending
+**Engineering status:** PASS; hosted migration deployed
 **Owner acceptance:** NOT RUN
 
 ## Implemented boundary
@@ -27,10 +27,12 @@ One ordered Supabase migration is present:
 - Local Supabase full migration replay: PASS.
 - BETA-08M0 pgTAP: 23/23 PASS.
 - Full local pgTAP: 290/290 PASS across 14 files.
-- External logical recovery point: pending.
-- Hosted dry-run / deployment / verification: pending.
-- Git finalization: pending.
+- External logical recovery point: PASS; see
+  `CHECKPOINT_BETA08N_RC_COMPLETE.md`.
+- Hosted dry-run / ordered deployment / verification: PASS on 2026-09-11.
+- Hosted migration history records `20260908124412` exactly once.
+- Git engineering finalization was completed before this rollout; rollout
+  documentation is recorded by PT-BETA-08N-RC.
 
-Future Portable CSV, BETA-08M category resolution, and BETA-08N0/N1 were not
-implemented. Owner runtime acceptance remains deferred until after engineering
-completion.
+Owner runtime acceptance remains deferred. Feature additions outside the
+accepted BETA-08N work remain frozen.

@@ -20,9 +20,9 @@ budgets or `TithePolicy`. Currency totals remain separated.
 SQLite advances from 27 to 28 with four nullable transaction fields:
 `brokerage_account_id`, `brokerage_activity_type`, `split_numerator`, and
 `split_denominator`. Encrypted backup advances from v6 to v7; v1-v6 remain
-readable. One additive, locally verified Supabase migration was created but was
-not deployed. Existing transaction RLS and the frozen sync architecture remain
-in force.
+readable. The additive Supabase migration was deployed and verified on
+2026-09-11 by PT-BETA-08N-RC. Existing transaction RLS and the frozen sync
+architecture remain in force.
 
 The responsive Investments page shows per-currency investment net worth,
 brokerage cash, position value, realized/unrealized performance, account
@@ -44,8 +44,7 @@ Validation completed:
 - Android debug APK build: PASS;
 - `git diff --check`: PASS.
 
-No hosted migration, Edge Function, secret, broker API, trading/order flow,
-broker CSV import, AI extraction, tax calculation, margin, short, option,
-future, or unsupported corporate-action feature was added. BETA-08N1 is the
-separate accepted statement CSV milestone. Owner/runtime acceptance remains
-**NOT RUN**.
+No Edge Function, secret, broker API, trading/order flow, broker CSV import, AI
+extraction, tax calculation, margin, short, option, future, or unsupported
+corporate-action feature was added. BETA-08N1 is the separate accepted
+statement CSV milestone. Owner/runtime acceptance remains **NOT RUN**.
