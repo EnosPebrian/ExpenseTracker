@@ -29,6 +29,12 @@ post-push worktree: clean
 ## Latest completed engineering state
 
 ```text
+BETA-08N1 brokerage CSV compatibility repair: LOCALLY VALIDATED / COMMITTED
+repair commit: 2684254d4b3ab79f51f88e72cdcd406bbd89befd
+focused Flutter: CSV parser 27/27; brokerage import 15/15 PASS
+full Flutter suite: 992/992 PASS
+analyzer/builds/diff: PASS
+push: PENDING explicit external authorization
 BETA-08N Investments UI navigation: COMPLETE
 first-class destination: after Assets on desktop and mobile
 sections: Overview, Brokerage Accounts, Holdings, Trades, Statements, Performance
@@ -207,9 +213,10 @@ timestamp: 2026-09-12
 work item: PT-BETA-08N1-R1
 state: BLOCKED_OWNER
 branch: main
-HEAD: fd5c03d42c4949eb8db9818ab01cd605da073eec (origin/main 83274479a3e00bda92d8e700a6fd983fbee736b9)
-dirty files intentionally belonging to task: brokerage header mapper, shared exact-money parser, two focused tests, and targeted import/progress/limitations/queue/handoff docs
-last completed substep: analyzer, 992/992 full Flutter tests, Web/Windows/Android debug builds, and git diff --check passed
+implementation commit: 2684254d4b3ab79f51f88e72cdcd406bbd89befd
+current branch tip: follow-up durable-state commit containing this record; origin/main remains 83274479a3e00bda92d8e700a6fd983fbee736b9
+dirty files intentionally belonging to task: none expected after the durable-state commit
+last completed substep: validated implementation committed locally as 2684254d4b3ab79f51f88e72cdcd406bbd89befd
 tests already run: beta08b 27/27; beta08n1 15/15; full Flutter 992/992 PASS
 current failing tests: none
 root cause known?: yes; zero-decimal parser rejected exact .00 notation and canonical header recognition accepted only snake_case
