@@ -729,18 +729,21 @@ class _BrokerageExistingTransactionIndex {
 }
 
 BrokerageStatementMapping? canonicalBrokerageMappingFor(List<String> headers) {
-  final normalized = headers
-      .map((header) => header.trim().toLowerCase())
-      .toList();
-  int? index(String name) {
-    final found = normalized.indexOf(name);
-    return found < 0 ? null : found;
+  final normalized = headers.map(_canonicalBrokerageHeaderKey).toList();
+  int? indexAny(Iterable<String> names) {
+    for (final name in names) {
+      final found = normalized.indexOf(name);
+      if (found >= 0) return found;
+    }
+    return null;
   }
+
+  int? index(String name) => indexAny([name]);
 
   final date = index('date');
   final activity = index('activity');
-  final instrument = index('symbol') ?? index('instrument');
-  final gross = index('gross_amount') ?? index('amount');
+  final instrument = indexAny(['symbol', 'instrument', 'symbol_instrument']);
+  final gross = indexAny(['gross_amount', 'amount']);
   if (date == null || activity == null || instrument == null || gross == null) {
     return null;
   }
@@ -756,8 +759,18 @@ BrokerageStatementMapping? canonicalBrokerageMappingFor(List<String> headers) {
     currencyColumn: index('currency'),
     referenceColumn: index('reference'),
     noteColumn: index('note'),
-    realizedPnlColumn: index('realized_pnl'),
+    realizedPnlColumn: indexAny([
+      'realized_pnl',
+      'broker_realized_pnl',
+      'broker_realized_p_l',
+    ]),
     splitNumeratorColumn: index('split_numerator'),
     splitDenominatorColumn: index('split_denominator'),
   );
 }
+
+String _canonicalBrokerageHeaderKey(String header) => header
+    .trim()
+    .toLowerCase()
+    .replaceAll(RegExp('[^a-z0-9]+'), '_')
+    .replaceAll(RegExp(r'^_+|_+$'), '');

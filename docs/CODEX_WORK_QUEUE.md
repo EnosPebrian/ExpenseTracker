@@ -147,6 +147,37 @@ Record in `docs/ENGINEERING_HANDOFF.md`:
 
 ## ACTIVE
 
+### PT-BETA-08N1-R1 — Brokerage CSV Exact-Money/Header Compatibility
+
+**Priority:** P0
+**State:** BLOCKED_OWNER
+**Type:** bounded owner-reported import compatibility repair
+**Authority:** explicit owner instruction, 2026-09-12
+
+Accept lossless trailing-zero decimal notation for zero-decimal currencies and
+recognize Pilgrim's own human-readable brokerage header labels. Preserve exact
+integer accounting, the eight accepted brokerage activity types, explicit
+unknown activity/instrument review, and all existing atomic/idempotent commit
+behavior. Do not infer rounding or map settlement/interest activity to a
+different financial meaning.
+
+Local engineering validation:
+
+```text
+focused Flutter: CSV parser 27/27; brokerage import 15/15 PASS
+full Flutter: 992/992 PASS
+analyzer: PASS
+builds: Web, Windows debug, Android debug APK PASS
+SQLite: 28
+backup: v7
+SQL/Supabase change: none
+git diff --check: PASS
+owner runtime re-test: NOT RUN
+Git completion: pending explicit external push authorization
+```
+
+---
+
 ### PT-BETA-08N-UI-R1 — Investment / Brokerage UI Navigation Gap
 
 **Priority:** P0

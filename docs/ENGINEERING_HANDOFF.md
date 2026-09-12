@@ -8,7 +8,7 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-`PT-BETA-08N-RC — BETA-08N Hosted Rollout & Owner Acceptance Preparation`
+`PT-BETA-08N1-R1 — Brokerage CSV Exact-Money/Header Compatibility`
 
 ## Current state
 
@@ -68,9 +68,9 @@ remaining failures: 0
 ## Exact next action
 
 Owner runs `BETA08N_OWNER_ACCEPTANCE.md` on physical Windows and Android,
-including visual review of the first-class Investments destination and its six
-sections, then records each PASS/FAIL field. Do not add product features or mark
-owner acceptance PASS automatically.
+including a re-test of the reported Stockbit CSV after installing the repaired
+build. External Git push awaits explicit authorization. Do not infer rounding
+for fractional IDR or reinterpret unsupported settlement/interest activities.
 
 ## PT-BETA-08N-RC rollout result
 
@@ -115,10 +115,10 @@ server/pgTAP if applicable: not applicable; no SQL/Supabase change
 git diff --check: PASS
 owner acceptance status: NOT RUN
 branch: main
-implementation commit: pending Git completion
+implementation commit: fd5c03d42c4949eb8db9818ab01cd605da073eec
 status/documentation commit if any: this durable-state record is included in the sprint Git completion
-push result: pending Git completion
-final git status: pending Git completion
+push result: pending explicit external push authorization; local main is ahead of origin/main
+final git status: clean at implementation commit before PT-BETA-08N1-R1 repair began
 remaining limitations: UTF-8 CSV statements only; no broker institution metadata, APIs, advanced return metrics, or cross-currency aggregation; owner visual/runtime acceptance pending
 next READY item: none; PT-BETA-08N-RC remains BLOCKED_OWNER and feature freeze is active
 ```
@@ -202,22 +202,20 @@ next READY item: none; PT-AUTO-NEXT is BLOCKED_ARCHITECT by ARCH-20260910-01
 
 ## Codex session update template
 
-Replace this section during active work:
-
 ```text
-timestamp:
-work item:
-state:
-branch:
-HEAD:
-dirty files intentionally belonging to task:
-last completed substep:
-tests already run:
-current failing tests:
-root cause known?:
-next exact command/action:
-architecture escalation needed?:
-owner action needed?:
+timestamp: 2026-09-12
+work item: PT-BETA-08N1-R1
+state: BLOCKED_OWNER
+branch: main
+HEAD: fd5c03d42c4949eb8db9818ab01cd605da073eec (origin/main 83274479a3e00bda92d8e700a6fd983fbee736b9)
+dirty files intentionally belonging to task: brokerage header mapper, shared exact-money parser, two focused tests, and targeted import/progress/limitations/queue/handoff docs
+last completed substep: analyzer, 992/992 full Flutter tests, Web/Windows/Android debug builds, and git diff --check passed
+tests already run: beta08b 27/27; beta08n1 15/15; full Flutter 992/992 PASS
+current failing tests: none
+root cause known?: yes; zero-decimal parser rejected exact .00 notation and canonical header recognition accepted only snake_case
+next exact command/action: obtain explicit GitHub push authorization, complete Git record, then owner installs repaired build and repeats the CSV review
+architecture escalation needed?: no for the implemented lossless repair; a rounding policy or new settlement/interest semantics would require separate explicit authority
+owner action needed?: yes; external push authorization and runtime acceptance remain pending
 ```
 
 ---

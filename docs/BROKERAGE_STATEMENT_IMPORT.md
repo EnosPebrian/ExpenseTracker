@@ -16,7 +16,14 @@ corporate actions are not guessed.
 The review screen explicitly maps date, activity, symbol/instrument, quantity,
 execution price, gross amount, fee, tax, currency, reference, note, optional
 broker realized P&L, and split ratio. The canonical header preset is only a
-deterministic convenience; external layouts require explicit mapping.
+deterministic convenience; it recognizes both canonical snake-case labels and
+Pilgrim's exported human-readable labels (for example, `Symbol / instrument`
+and `Broker realized P&L`). External layouts require explicit mapping.
+
+Money remains exact integer minor-unit accounting. For zero-decimal currencies
+such as IDR, decimal notation containing only trailing zeroes (for example,
+`639000.00`) is accepted without rounding. A non-zero fractional IDR value is
+rejected because Pilgrim does not invent a rounding policy during import.
 
 An exact active symbol-and-currency match may map automatically. Any other
 instrument stays unresolved until the user chooses **Map to existing** or
@@ -62,5 +69,7 @@ backup section, remote authority, or special synchronization channel.
 - No options, futures, margin, shorts, security transfer between brokers, or
   unsupported corporate action.
 - Account currency and source currency must match; no FX rate is fabricated.
+- Non-zero fractional values for a zero-decimal currency require correction at
+  source; import does not round them silently.
 - Review state is in-memory for this bounded importer; only committed
   authoritative financial records persist.

@@ -110,6 +110,43 @@ void main() {
     expect(preview.drafts[1].issues, isEmpty);
   });
 
+  test('Pilgrim human-readable brokerage headers map every source field', () {
+    const headers = [
+      'Date',
+      'Activity',
+      'Symbol / instrument',
+      'Gross amount',
+      'Quantity',
+      'Execution price',
+      'Fee',
+      'Tax',
+      'Currency',
+      'Reference',
+      'Note',
+      'Broker realized P&L',
+      'Split numerator',
+      'Split denominator',
+    ];
+
+    final mapping = canonicalBrokerageMappingFor(headers);
+
+    expect(mapping, isNotNull);
+    expect(mapping!.dateColumn, 0);
+    expect(mapping.activityColumn, 1);
+    expect(mapping.instrumentColumn, 2);
+    expect(mapping.grossAmountColumn, 3);
+    expect(mapping.quantityColumn, 4);
+    expect(mapping.executionPriceColumn, 5);
+    expect(mapping.feeColumn, 6);
+    expect(mapping.taxColumn, 7);
+    expect(mapping.currencyColumn, 8);
+    expect(mapping.referenceColumn, 9);
+    expect(mapping.noteColumn, 10);
+    expect(mapping.realizedPnlColumn, 11);
+    expect(mapping.splitNumeratorColumn, 12);
+    expect(mapping.splitDenominatorColumn, 13);
+  });
+
   test(
     'external headers require explicit mapping and preserve source fields',
     () async {

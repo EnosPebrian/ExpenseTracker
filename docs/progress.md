@@ -1,5 +1,20 @@
 # Pilgrim Tracker Progress
 
+## BETA-08N1 Brokerage CSV Compatibility Repair — 2026-09-12
+
+Pilgrim's human-readable brokerage CSV headers now activate the complete
+canonical field mapping, including optional quantity, price, fee, tax,
+reference, note, broker P&L, and split fields. Exact trailing-zero decimal
+notation is accepted for zero-decimal currencies without changing value;
+non-zero fractional IDR remains rejected rather than rounded. Supported
+activity semantics are unchanged, so `BUY_SETTLEMENT`, `SELL_SETTLEMENT`, and
+`INTEREST` remain explicit review items instead of being guessed.
+
+Engineering validation passed 27 CSV parser tests, 15 brokerage-import tests,
+all 992 Flutter tests, `flutter analyze`, Web, Windows debug, Android debug APK,
+and diff checks. SQLite remains v28, backup remains v7, and no SQL/Supabase
+change exists for this repair. Owner runtime re-test is **NOT RUN**.
+
 ## BETA-08N Investments UI Navigation Gap — 2026-09-11
 
 The existing BETA-08N0/N1 brokerage ledger is now exposed as a first-class

@@ -168,11 +168,15 @@ class CsvMoneyParser {
       );
     }
     final digits = _fractionDigits(currencyCode);
-    final fraction = parts.length == 1 ? '' : parts[1];
+    var fraction = parts.length == 1 ? '' : parts[1];
     if (fraction.length > digits) {
-      throw const TransactionImportException(
-        'The monetary value has too many decimal places.',
-      );
+      final excess = fraction.substring(digits);
+      if (excess.contains(RegExp('[1-9]'))) {
+        throw const TransactionImportException(
+          'The monetary value has too many decimal places.',
+        );
+      }
+      fraction = fraction.substring(0, digits);
     }
     final scale = _pow10(digits);
     final minor =

@@ -163,6 +163,16 @@ void main() {
         125050,
       ),
     );
+    test('zero-decimal currency accepts exact trailing zero notation', () {
+      expect(value('639000.00', decimal: CsvSeparator.period), 639000);
+      expect(value('639000,00', decimal: CsvSeparator.comma), 639000);
+    });
+    test('zero-decimal currency rejects a non-zero fractional amount', () {
+      expect(
+        () => value('42563.75', decimal: CsvSeparator.period),
+        throwsA(isA<TransactionImportException>()),
+      );
+    });
     test(
       'ambiguous separator is rejected',
       () => expect(
