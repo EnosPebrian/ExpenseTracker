@@ -9,6 +9,7 @@ enum BrokerageImportClassification {
   alreadyImported,
   semanticDuplicate,
   possibleDuplicate,
+  needsReview,
   invalid,
 }
 
@@ -32,6 +33,7 @@ class BrokerageStatementMapping {
     this.decimalSeparator = CsvSeparator.none,
     this.thousandsSeparator = CsvSeparator.none,
     this.stripCurrencySymbols = false,
+    this.trustedIdx = false,
   });
 
   final int dateColumn;
@@ -52,6 +54,7 @@ class BrokerageStatementMapping {
   final CsvSeparator decimalSeparator;
   final CsvSeparator thousandsSeparator;
   final bool stripCurrencySymbols;
+  final bool trustedIdx;
 
   void validate() {
     final requiredColumns = {
@@ -109,13 +112,15 @@ class BrokerageImportDraft {
     required this.included,
     required this.issues,
     this.matchedTransactionId,
+    this.rawDate = '',
   });
 
   final int sourceRowNumber;
   final String sourceRowIdentity;
   final String sourceRowFingerprint;
   final String eventId;
-  final DateTime date;
+  final DateTime? date;
+  final String rawDate;
   final String rawActivity;
   final BrokerageActivityType? activityType;
   final String sourceInstrument;
@@ -141,16 +146,17 @@ class BrokerageImportDraft {
   bool get requiresInstrument =>
       activityType == BrokerageActivityType.buy ||
       activityType == BrokerageActivityType.sell ||
+      activityType == BrokerageActivityType.dividend ||
       activityType == BrokerageActivityType.split;
 
   bool get needsInstrumentResolution =>
-      (requiresInstrument || sourceInstrument.trim().isNotEmpty) &&
-      instrumentId == null;
+      requiresInstrument && instrumentId == null;
 
   bool get hasBlockingIssue => issues.any((issue) => issue.blocking);
 
   bool get canCommit =>
       included &&
+      date != null &&
       !hasBlockingIssue &&
       activityType != null &&
       !needsInstrumentResolution &&
@@ -158,6 +164,7 @@ class BrokerageImportDraft {
       classification != BrokerageImportClassification.invalid;
 
   bool get canChangeInclusion =>
+      classification == BrokerageImportClassification.needsReview ||
       classification == BrokerageImportClassification.newRecord ||
       classification == BrokerageImportClassification.semanticDuplicate ||
       classification == BrokerageImportClassification.possibleDuplicate;
@@ -181,6 +188,7 @@ class BrokerageImportDraft {
     sourceRowFingerprint: sourceRowFingerprint,
     eventId: eventId,
     date: date,
+    rawDate: rawDate,
     rawActivity: rawActivity,
     activityType: clearActivityType ? null : activityType ?? this.activityType,
     sourceInstrument: sourceInstrument,
@@ -214,16 +222,27 @@ class BrokerageImportPreview {
     required this.source,
     required this.drafts,
     required this.remoteFreshnessVerified,
+    this.detectedDateFormat,
   });
 
   final CsvParsedSource source;
   final List<BrokerageImportDraft> drafts;
   final bool remoteFreshnessVerified;
+  final CsvDateFormat? detectedDateFormat;
 
   int count(BrokerageImportClassification value) =>
       drafts.where((draft) => draft.classification == value).length;
 
   int get readyCount => drafts.where((draft) => draft.canCommit).length;
+  int get instrumentsToCreate => drafts
+      .where(
+        (draft) =>
+            draft.canCommit &&
+            draft.instrumentResolution == BrokerageInstrumentResolution.create,
+      )
+      .map((draft) => draft.instrumentId)
+      .toSet()
+      .length;
   int get unresolvedCount => drafts
       .where(
         (draft) =>

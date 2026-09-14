@@ -1,0 +1,337 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:pilgrim_tracker/features/investments/presentation/controllers/brokerage_import_controller.dart';
+import 'package:pilgrim_tracker/features/investments/presentation/screens/brokerage_import_screen.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_definition.dart';
+import 'package:pilgrim_tracker/features/assets/domain/services/asset_portfolio_calculator.dart';
+import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_date_detection.dart';
+import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_models.dart';
+import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_planner.dart';
+import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_posting.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction_brokerage_metadata.dart';
+import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_commit_service.dart';
+import 'package:pilgrim_tracker/features/master_data/domain/entities/account.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/entities/internal_transfer_link.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/repositories/transaction_repository.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/import/transaction_import_models.dart';
+
+final broker = Account(
+  id: 'broker',
+  bookId: 'book',
+  name: 'Broker',
+  accountType: AccountType.brokerage,
+  currencyCode: 'IDR',
+);
+final cash = Account(
+  id: 'cash',
+  bookId: 'book',
+  name: 'Cash',
+  accountType: AccountType.bank,
+  currencyCode: 'IDR',
+);
+const planner = BrokerageImportPlanner();
+const mapping = BrokerageStatementMapping(
+  dateColumn: 0,
+  activityColumn: 1,
+  instrumentColumn: 2,
+  grossAmountColumn: 3,
+  trustedIdx: true,
+);
+CsvParsedSource source(List<List<String>> rows) => CsvParsedSource(
+  fileName: 'synthetic.csv',
+  fileFingerprint: 'synthetic-source',
+  delimiter: ',',
+  headers: const ['date', 'activity', 'symbol', 'amount'],
+  rows: [
+    for (var i = 0; i < rows.length; i++)
+      CsvSourceRow(rowNumber: i + 2, identityKey: 'row-$i', values: rows[i]),
+  ],
+  headerMode: CsvHeaderMode.firstRowHeaders,
+);
+Future<BrokerageImportPreview> analyze(
+  List<List<String>> rows, {
+  Iterable<AssetDefinition> instruments = const [],
+  Iterable<Transaction> transactions = const [],
+  BrokerageStatementMapping selectedMapping = mapping,
+}) => planner.build(
+  source: source(rows),
+  mapping: selectedMapping,
+  brokerageAccount: broker,
+  activeBookId: 'book',
+  instruments: instruments,
+  existingTransactions: transactions,
+  existingTransferLinks: const [],
+  counterpartyAccount: cash,
+);
+
+void main() {
+  testWidgets(
+    'trusted review shows staged summary without per-row create or writes',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 2200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = RecordingRepository();
+      final controller =
+          BrokerageImportController(
+              pickFile: () async => null,
+              commitService: BrokerageImportCommitService(
+                repository: repository,
+              ),
+              accounts: () => [broker, cash],
+              instruments: () => const [],
+              transactions: () => const [],
+              transferLinks: () => const [],
+              onImported: () async {},
+            )
+            ..source = source([
+              ['23/02/2026', 'DIVIDEND', 'DMAS', '100'],
+              ['24/02/2026', 'DIVIDEND', 'DMAS', '200'],
+            ])
+            ..mapping = mapping
+            ..brokerageAccountId = broker.id
+            ..counterpartyAccountId = cash.id;
+      addTearDown(controller.dispose);
+      await controller.analyze(bookId: 'book');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: BrokerageImportScreen(
+            bookId: 'book',
+            memberId: null,
+            accounts: [broker, cash],
+            instruments: const [],
+            controller: controller,
+            remoteFreshnessVerified: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('1 instruments will be created'), findsOneWidget);
+      expect(find.text('Ready · New instrument'), findsNWidgets(2));
+      expect(find.text('Create DMAS'), findsNothing);
+      expect(repository.calls, 0);
+      await tester.tap(find.byKey(const Key('commit-brokerage-import')));
+      await tester.pumpAndSettle();
+      expect(repository.calls, 1);
+      expect(repository.definitions, hasLength(1));
+    },
+  );
+  test('DD/MM detected using all rows, including a later decisive day', () {
+    expect(
+      BrokerageDateDetection.detect(['01/02/2026', '', '23/02/2026']),
+      CsvDateFormat.ddMmYyyySlash,
+    );
+  });
+  test('ISO is preferred and month-first is detected', () {
+    expect(
+      BrokerageDateDetection.detect(['2026-01-02', '2026-02-03']),
+      CsvDateFormat.yyyyMmDd,
+    );
+    expect(
+      BrokerageDateDetection.detect(['01/23/2026', '02/03/2026']),
+      CsvDateFormat.mmDdYyyySlash,
+    );
+  });
+  test('ambiguous column requests explicit format', () async {
+    final preview = await analyze([
+      ['01/02/2026', 'FEE', '', '100'],
+    ]);
+    expect(preview.detectedDateFormat, isNull);
+    expect(preview.drafts.single.date, isNull);
+    expect(preview.canCommit, isFalse);
+    final explicit = await analyze(
+      [
+        ['01/02/2026', 'FEE', '', '100'],
+      ],
+      selectedMapping: const BrokerageStatementMapping(
+        dateColumn: 0,
+        activityColumn: 1,
+        instrumentColumn: 2,
+        grossAmountColumn: 3,
+        dateFormat: CsvDateFormat.ddMmYyyySlash,
+      ),
+    );
+    expect(explicit.drafts.single.date, DateTime(2026, 2, 1));
+    expect(explicit.canCommit, isTrue);
+  });
+  test(
+    'invalid date is retained unresolved and commit cannot write epoch',
+    () async {
+      final preview = await analyze([
+        ['2026-02-30', 'FEE', '', '100'],
+      ]);
+      expect(preview.drafts.single.date, isNull);
+      expect(preview.drafts.single.rawDate, '2026-02-30');
+      expect(preview.detectedDateFormat, CsvDateFormat.yyyyMmDd);
+      final repo = RecordingRepository();
+      await expectLater(
+        BrokerageImportCommitService(repository: repo).commit(
+          preview: preview,
+          bookId: 'book',
+          memberId: null,
+          brokerageAccount: broker,
+          counterpartyAccount: cash,
+          existingInstruments: const [],
+          existingTransactions: const [],
+        ),
+        throwsStateError,
+      );
+      expect(repo.calls, 0);
+    },
+  );
+  test(
+    'trusted unknown dividends share one staged IDX instrument and commit once',
+    () async {
+      final rows = [
+        ['23/02/2026', 'DIVIDEND', 'dmas', '100'],
+        ['24/02/2026', 'DIVIDEND', ' DMAS ', '200'],
+      ];
+      final preview = await analyze(rows);
+      expect(preview.readyCount, 2);
+      expect(preview.instrumentsToCreate, 1);
+      final definition = preview.drafts.first.plannedInstrument!;
+      expect(
+        identical(definition, preview.drafts.last.plannedInstrument),
+        isTrue,
+      );
+      expect(definition.symbol, 'DMAS');
+      expect(definition.displayName, 'DMAS');
+      expect(definition.exchangeCode, 'IDX');
+      expect(definition.lotSize, 100);
+      expect(definition.currencyCode, 'IDR');
+      final repo = RecordingRepository();
+      final result = await BrokerageImportCommitService(repository: repo)
+          .commit(
+            preview: preview,
+            bookId: 'book',
+            memberId: null,
+            brokerageAccount: broker,
+            counterpartyAccount: cash,
+            existingInstruments: const [],
+            existingTransactions: const [],
+          );
+      expect(result.instrumentsCreated, 1);
+      expect(repo.calls, 1);
+      expect(repo.transactions.map((t) => t.assetDefinitionId).toSet(), {
+        definition.id,
+      });
+      final repeated = await analyze(
+        rows,
+        instruments: repo.definitions,
+        transactions: repo.transactions,
+      );
+      expect(repeated.readyCount, 0);
+      expect(repeated.instrumentsToCreate, 0);
+      expect(repeated.count(BrokerageImportClassification.alreadyImported), 2);
+    },
+  );
+  test(
+    'existing exact symbol auto-matches and preserves canonical casing',
+    () async {
+      final first = await analyze([
+        ['2026-02-01', 'DIVIDEND', 'DMAS', '100'],
+      ]);
+      final definition = first.drafts.single.plannedInstrument!;
+      final preview = await analyze(
+        [
+          ['2026-02-01', 'DIVIDEND', ' dmas ', '100'],
+        ],
+        instruments: [definition],
+      );
+      expect(preview.readyCount, 1);
+      expect(preview.instrumentsToCreate, 0);
+      expect(preview.drafts.single.instrumentId, definition.id);
+      expect(preview.drafts.single.plannedInstrument!.symbol, 'DMAS');
+    },
+  );
+  test('untrusted ticker and blank dividend require review', () async {
+    final untrusted = await analyze(
+      [
+        ['2026-01-01', 'DIVIDEND', 'DMAS', '100'],
+      ],
+      selectedMapping: const BrokerageStatementMapping(
+        dateColumn: 0,
+        activityColumn: 1,
+        instrumentColumn: 2,
+        grossAmountColumn: 3,
+      ),
+    );
+    expect(untrusted.canCommit, isFalse);
+    expect(untrusted.instrumentsToCreate, 0);
+    final blank = await analyze([
+      ['2026-01-01', 'DIVIDEND', '', '100'],
+    ]);
+    expect(blank.canCommit, isFalse);
+    expect(blank.drafts.single.needsInstrumentResolution, isTrue);
+  });
+  test(
+    'deposit fee and tax need no instrument even with source memo symbol',
+    () async {
+      final preview = await analyze([
+        ['2026-01-01', 'DEPOSIT', '', '100'],
+        ['2026-01-02', 'FEE', 'Cash', '10'],
+        ['2026-01-03', 'TAX', '', '10'],
+      ]);
+      expect(preview.readyCount, 3);
+      expect(preview.instrumentsToCreate, 0);
+    },
+  );
+  test('settlement cannot become a trade or modify holdings', () async {
+    final preview = await analyze([
+      ['2026-01-01', 'BUY_SETTLEMENT', '', '100'],
+      ['2026-01-02', 'SELL_SETTLEMENT', '', '100'],
+    ]);
+    expect(preview.instrumentsToCreate, 0);
+    expect(preview.drafts.every((d) => !d.requiresInstrument), isTrue);
+    expect(preview.canCommit, isFalse);
+    final repo = RecordingRepository();
+    expect(
+      () => BrokerageImportPosting.materialize(
+        draft: preview.drafts.first.copyWith(
+          activityType: BrokerageActivityType.buy,
+        ),
+        bookId: 'book',
+        memberId: null,
+        brokerageAccount: broker,
+        counterpartyAccount: cash,
+        instrument: null,
+      ),
+      throwsStateError,
+    );
+    await expectLater(
+      BrokerageImportCommitService(repository: repo).commit(
+        preview: preview,
+        bookId: 'book',
+        memberId: null,
+        brokerageAccount: broker,
+        counterpartyAccount: cash,
+        existingInstruments: const [],
+        existingTransactions: const [],
+      ),
+      throwsStateError,
+    );
+    expect(repo.calls, 0);
+    expect(
+      AssetPortfolioCalculator.calculate(
+        transactions: repo.transactions,
+      ).totalRealizedGain,
+      0,
+    );
+  });
+}
+
+class RecordingRepository implements InvestmentImportAtomicRepository {
+  int calls = 0;
+  List<Transaction> transactions = [];
+  List<AssetDefinition> definitions = [];
+  @override
+  Future<void> saveInvestmentImportAtomic({
+    required List<Transaction> transactions,
+    required List<AssetDefinition> assetDefinitionCreations,
+    required List<InternalTransferLink> transferLinks,
+  }) async {
+    calls++;
+    this.transactions = transactions;
+    definitions = assetDefinitionCreations;
+  }
+}

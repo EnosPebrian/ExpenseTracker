@@ -8,11 +8,11 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-`PT-BETA-08N1-R1 — Brokerage CSV Exact-Money/Header Compatibility`
+`PT-BETA-08N1-R2 — Trusted Brokerage Review Automation`
 
 ## Current state
 
-`BLOCKED_OWNER`
+`BLOCKED_ARCHITECT` — date/instrument review validated; settlement/interest posting decision remains open.
 
 ## Latest pushed engineering baseline
 
@@ -30,7 +30,7 @@ post-push worktree: clean
 
 ```text
 BETA-08N1 brokerage CSV compatibility repair: LOCALLY VALIDATED / COMMITTED
-repair commit: 2684254d4b3ab79f51f88e72cdcd406bbd89befd
+repair commit: 2684254c814d1bef781ffe707ab3e625c08c2f60
 focused Flutter: CSV parser 27/27; brokerage import 15/15 PASS
 full Flutter suite: 992/992 PASS
 analyzer/builds/diff: PASS
@@ -73,10 +73,10 @@ remaining failures: 0
 
 ## Exact next action
 
-Owner runs `BETA08N_OWNER_ACCEPTANCE.md` on physical Windows and Android,
-including a re-test of the reported Stockbit CSV after installing the repaired
-build. External Git push awaits explicit authorization. Do not infer rounding
-for fractional IDR or reinterpret unsupported settlement/interest activities.
+Publish validated date/instrument review changes under the owner's 2026-09-14
+commit/push instruction. Settlement and
+Interest posting remains pending ARCH-20260914-01; do not reinterpret these
+labels as trades, dividends or fees. Owner runtime acceptance remains NOT RUN.
 
 ## PT-BETA-08N-RC rollout result
 
@@ -209,20 +209,20 @@ next READY item: none; PT-AUTO-NEXT is BLOCKED_ARCHITECT by ARCH-20260910-01
 ## Codex session update template
 
 ```text
-timestamp: 2026-09-12
-work item: PT-BETA-08N1-R1
-state: BLOCKED_OWNER
+timestamp: 2026-09-14
+work item: PT-BETA-08N1-R2
+state: BLOCKED_ARCHITECT (posting behavior only; independent review work validated)
 branch: main
-implementation commit: 2684254d4b3ab79f51f88e72cdcd406bbd89befd
+prior implementation commit: 2684254c814d1bef781ffe707ab3e625c08c2f60
 current branch tip: follow-up durable-state commit containing this record; origin/main remains 83274479a3e00bda92d8e700a6fd983fbee736b9
-dirty files intentionally belonging to task: none expected after the durable-state commit
-last completed substep: validated implementation committed locally as 2684254d4b3ab79f51f88e72cdcd406bbd89befd
-tests already run: beta08b 27/27; beta08n1 15/15; full Flutter 992/992 PASS
+dirty files intentionally belonging to task: brokerage review date/model/planner/posting/commit/controller/UI, focused tests and targeted documentation
+last completed substep: focused 25/25, analyzer and full suite 1002/1002 PASS; diff review complete
+tests already run: brokerage automation 10/10; existing N1 15/15; full Flutter 1002/1002 PASS
 current failing tests: none
-root cause known?: yes; zero-decimal parser rejected exact .00 notation and canonical header recognition accepted only snake_case
-next exact command/action: obtain explicit GitHub push authorization, complete Git record, then owner installs repaired build and repeats the CSV review
-architecture escalation needed?: no for the implemented lossless repair; a rounding policy or new settlement/interest semantics would require separate explicit authority
-owner action needed?: yes; external push authorization and runtime acceptance remain pending
+root cause known?: date analysis was per-row with an epoch fallback; instrument creation required repeated row actions
+next exact command/action: commit and push validated review changes; resolve ARCH-20260914-01 before new posting semantics
+architecture escalation needed?: ARCH-20260914-01 for settlement/interest posting only
+owner action needed?: accounting decision and runtime acceptance; Git push is authorized
 ```
 
 ---

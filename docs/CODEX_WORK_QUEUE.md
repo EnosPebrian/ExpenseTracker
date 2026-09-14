@@ -147,6 +147,23 @@ Record in `docs/ENGINEERING_HANDOFF.md`:
 
 ## ACTIVE
 
+### PT-BETA-08N1-R2 — Trusted Brokerage Review Automation
+
+**State:** BLOCKED_ARCHITECT (settlement/interest posting only)
+**Authority:** owner request, 2026-09-14, including normal commit/push.
+
+Implement whole-column date detection, nullable unresolved review dates,
+case-insensitive catalog matching, statement-level trusted IDX staging,
+activity-dependent instrument requirements and clear review states. Preserve
+atomic creation, offline operation and deterministic duplicate protection.
+Focused tests: 25/25 PASS. Analyzer PASS; full suite 1002/1002 PASS.
+Date/instrument review implementation is validated; final Git publication is
+pending below. No platform builds were required or rerun for this bounded item.
+No schema or hosted changes. Settlement/Interest posting semantics remain an
+open decision in ARCH-20260914-01; all independent review work may continue.
+
+---
+
 ### PT-BETA-08N1-R1 — Brokerage CSV Exact-Money/Header Compatibility
 
 **Priority:** P0

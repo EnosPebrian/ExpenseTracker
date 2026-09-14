@@ -95,7 +95,7 @@ class _BrokerageImportScreenState extends State<BrokerageImportScreen> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Map columns explicitly. Unknown activities and instruments stay unresolved until you choose what they mean.',
+              'Review detected dates and instruments before importing. Trusted IDX statements can stage new tickers together.',
             ),
             const SizedBox(height: 16),
             _AccountSelection(widget: widget),
@@ -292,121 +292,157 @@ class _MappingPanel extends StatelessWidget {
     final source = controller.source!;
     final mapping = controller.mapping!;
     return Card(
-      child: ExpansionTile(
-        initiallyExpanded: canonicalBrokerageMappingFor(source.headers) == null,
-        title: const Text('Column mapping'),
-        subtitle: const Text('Review every source field before analysis.'),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
         children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _column('Date', mapping.dateColumn, (value) {
-                _update(mapping, dateColumn: value!);
-              }),
-              _column('Activity', mapping.activityColumn, (value) {
-                _update(mapping, activityColumn: value!);
-              }),
-              _column('Symbol / instrument', mapping.instrumentColumn, (value) {
-                _update(mapping, instrumentColumn: value!);
-              }),
-              _column('Gross amount', mapping.grossAmountColumn, (value) {
-                _update(mapping, grossAmountColumn: value!);
-              }),
-              _column('Quantity', mapping.quantityColumn, (value) {
-                _update(mapping, quantityColumn: value);
-              }, optional: true),
-              _column('Execution price', mapping.executionPriceColumn, (value) {
-                _update(mapping, executionPriceColumn: value);
-              }, optional: true),
-              _column('Fee', mapping.feeColumn, (value) {
-                _update(mapping, feeColumn: value);
-              }, optional: true),
-              _column('Tax', mapping.taxColumn, (value) {
-                _update(mapping, taxColumn: value);
-              }, optional: true),
-              _column('Currency', mapping.currencyColumn, (value) {
-                _update(mapping, currencyColumn: value);
-              }, optional: true),
-              _column('Reference', mapping.referenceColumn, (value) {
-                _update(mapping, referenceColumn: value);
-              }, optional: true),
-              _column('Note', mapping.noteColumn, (value) {
-                _update(mapping, noteColumn: value);
-              }, optional: true),
-              _column('Broker realized P&L', mapping.realizedPnlColumn, (
-                value,
-              ) {
-                _update(mapping, realizedPnlColumn: value);
-              }, optional: true),
-              _column('Split numerator', mapping.splitNumeratorColumn, (value) {
-                _update(mapping, splitNumeratorColumn: value);
-              }, optional: true),
-              _column('Split denominator', mapping.splitDenominatorColumn, (
-                value,
-              ) {
-                _update(mapping, splitDenominatorColumn: value);
-              }, optional: true),
-            ],
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<CsvDateFormat>(
-            initialValue: mapping.dateFormat,
-            decoration: const InputDecoration(labelText: 'Date format'),
-            items: [
-              for (final value in CsvDateFormat.values)
-                DropdownMenuItem(value: value, child: Text(value.name)),
-            ],
-            onChanged: (value) {
-              if (value != null) _update(mapping, dateFormat: value);
-            },
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<CsvSeparator>(
-                  initialValue: mapping.decimalSeparator,
-                  decoration: const InputDecoration(
-                    labelText: 'Decimal separator',
-                  ),
-                  items: [
-                    for (final value in CsvSeparator.values)
-                      DropdownMenuItem(value: value, child: Text(value.name)),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      _update(mapping, decimalSeparator: value);
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: DropdownButtonFormField<CsvSeparator>(
-                  initialValue: mapping.thousandsSeparator,
-                  decoration: const InputDecoration(
-                    labelText: 'Thousands separator',
-                  ),
-                  items: [
-                    for (final value in CsvSeparator.values)
-                      DropdownMenuItem(value: value, child: Text(value.name)),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      _update(mapping, thousandsSeparator: value);
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
           SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Strip currency symbols'),
-            value: mapping.stripCurrencySymbols,
-            onChanged: (value) => _update(mapping, stripCurrencySymbols: value),
+            title: const Text('Trusted Stockbit / IDX statement'),
+            subtitle: const Text(
+              'Stage unknown equity tickers as IDX / IDR instruments, with 100 shares per lot. Review before importing.',
+            ),
+            value: mapping.trustedIdx,
+            onChanged: controller.busy
+                ? null
+                : (value) => _update(mapping, trustedIdx: value),
+          ),
+          ExpansionTile(
+            initiallyExpanded:
+                canonicalBrokerageMappingFor(source.headers) == null,
+            title: const Text('Column mapping'),
+            subtitle: const Text('Review every source field before analysis.'),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _column('Date', mapping.dateColumn, (value) {
+                    _update(mapping, dateColumn: value!);
+                  }),
+                  _column('Activity', mapping.activityColumn, (value) {
+                    _update(mapping, activityColumn: value!);
+                  }),
+                  _column('Symbol / instrument', mapping.instrumentColumn, (
+                    value,
+                  ) {
+                    _update(mapping, instrumentColumn: value!);
+                  }),
+                  _column('Gross amount', mapping.grossAmountColumn, (value) {
+                    _update(mapping, grossAmountColumn: value!);
+                  }),
+                  _column('Quantity', mapping.quantityColumn, (value) {
+                    _update(mapping, quantityColumn: value);
+                  }, optional: true),
+                  _column('Execution price', mapping.executionPriceColumn, (
+                    value,
+                  ) {
+                    _update(mapping, executionPriceColumn: value);
+                  }, optional: true),
+                  _column('Fee', mapping.feeColumn, (value) {
+                    _update(mapping, feeColumn: value);
+                  }, optional: true),
+                  _column('Tax', mapping.taxColumn, (value) {
+                    _update(mapping, taxColumn: value);
+                  }, optional: true),
+                  _column('Currency', mapping.currencyColumn, (value) {
+                    _update(mapping, currencyColumn: value);
+                  }, optional: true),
+                  _column('Reference', mapping.referenceColumn, (value) {
+                    _update(mapping, referenceColumn: value);
+                  }, optional: true),
+                  _column('Note', mapping.noteColumn, (value) {
+                    _update(mapping, noteColumn: value);
+                  }, optional: true),
+                  _column('Broker realized P&L', mapping.realizedPnlColumn, (
+                    value,
+                  ) {
+                    _update(mapping, realizedPnlColumn: value);
+                  }, optional: true),
+                  _column('Split numerator', mapping.splitNumeratorColumn, (
+                    value,
+                  ) {
+                    _update(mapping, splitNumeratorColumn: value);
+                  }, optional: true),
+                  _column(
+                    'Split denominator',
+                    mapping.splitDenominatorColumn,
+                    (value) {
+                      _update(mapping, splitDenominatorColumn: value);
+                    },
+                    optional: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<CsvDateFormat>(
+                key: ValueKey(
+                  controller.preview?.detectedDateFormat ?? mapping.dateFormat,
+                ),
+                initialValue:
+                    controller.preview?.detectedDateFormat ??
+                    mapping.dateFormat,
+                decoration: const InputDecoration(labelText: 'Date format'),
+                items: [
+                  for (final value in CsvDateFormat.values)
+                    DropdownMenuItem(value: value, child: Text(value.name)),
+                ],
+                onChanged: (value) {
+                  if (value != null) _update(mapping, dateFormat: value);
+                },
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<CsvSeparator>(
+                      initialValue: mapping.decimalSeparator,
+                      decoration: const InputDecoration(
+                        labelText: 'Decimal separator',
+                      ),
+                      items: [
+                        for (final value in CsvSeparator.values)
+                          DropdownMenuItem(
+                            value: value,
+                            child: Text(value.name),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          _update(mapping, decimalSeparator: value);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DropdownButtonFormField<CsvSeparator>(
+                      initialValue: mapping.thousandsSeparator,
+                      decoration: const InputDecoration(
+                        labelText: 'Thousands separator',
+                      ),
+                      items: [
+                        for (final value in CsvSeparator.values)
+                          DropdownMenuItem(
+                            value: value,
+                            child: Text(value.name),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          _update(mapping, thousandsSeparator: value);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Strip currency symbols'),
+                value: mapping.stripCurrencySymbols,
+                onChanged: (value) =>
+                    _update(mapping, stripCurrencySymbols: value),
+              ),
+            ],
           ),
         ],
       ),
@@ -455,9 +491,11 @@ class _MappingPanel extends StatelessWidget {
     CsvDateFormat? dateFormat,
     CsvSeparator? decimalSeparator,
     CsvSeparator? thousandsSeparator,
+    bool? trustedIdx,
     bool? stripCurrencySymbols,
   }) => controller.setMapping(
     BrokerageStatementMapping(
+      trustedIdx: trustedIdx ?? current.trustedIdx,
       dateColumn: dateColumn ?? current.dateColumn,
       activityColumn: activityColumn ?? current.activityColumn,
       instrumentColumn: instrumentColumn ?? current.instrumentColumn,
@@ -514,6 +552,9 @@ class _PreviewSummary extends StatelessWidget {
         runSpacing: 8,
         children: [
           Text('Ready: ${preview.readyCount}'),
+          Text('${preview.instrumentsToCreate} instruments will be created'),
+          if (preview.detectedDateFormat != null)
+            Text('Date format: ${preview.detectedDateFormat!.name}'),
           Text('Unresolved: ${preview.unresolvedCount}'),
           Text(
             'Already present: ${preview.count(BrokerageImportClassification.alreadyImported)}',
@@ -572,11 +613,28 @@ class _DraftCard extends StatelessWidget {
                 ),
                 Expanded(
                   child: Text(
-                    'Row ${draft.sourceRowNumber} · ${draft.sourceInstrument.isEmpty ? 'No instrument' : draft.sourceInstrument}',
+                    'Row ${draft.sourceRowNumber} · ${draft.plannedInstrument?.normalizedSymbol ?? (draft.sourceInstrument.isEmpty ? 'No instrument' : draft.sourceInstrument)}',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
-                Text(draft.classification.name),
+                Text(
+                  draft.classification ==
+                          BrokerageImportClassification.alreadyImported
+                      ? 'Already present'
+                      : draft.canCommit
+                      ? draft.instrumentResolution ==
+                                BrokerageInstrumentResolution.create
+                            ? 'Ready · New instrument'
+                            : 'Ready'
+                      : draft.date == null ||
+                            draft.issues.any(
+                              (issue) =>
+                                  issue.blocking &&
+                                  issue.message.startsWith('CSV:'),
+                            )
+                      ? 'Invalid'
+                      : 'Needs review',
+                ),
               ],
             ),
             DropdownButtonFormField<BrokerageActivityType>(
@@ -644,10 +702,15 @@ class _DraftCard extends StatelessWidget {
                 ],
               ),
             ],
+            if (draft.instrumentResolution ==
+                BrokerageInstrumentResolution.create)
+              Text(
+                'New equity: ${draft.plannedInstrument?.displayName} · ${draft.plannedInstrument?.exchangeCode ?? 'Market unspecified'} · ${draft.currencyCode} · ${draft.plannedInstrument?.lotSize} shares per lot',
+              ),
             const SizedBox(height: 8),
             Text(
               '${draft.currencyCode} ${draft.grossAmount} · '
-              '${draft.date.year}-${draft.date.month.toString().padLeft(2, '0')}-${draft.date.day.toString().padLeft(2, '0')}',
+              '${draft.date == null ? 'Unresolved date: ${draft.rawDate}' : '${draft.date!.year}-${draft.date!.month.toString().padLeft(2, '0')}-${draft.date!.day.toString().padLeft(2, '0')}'}',
             ),
             if (draft.quantity != null)
               Text(

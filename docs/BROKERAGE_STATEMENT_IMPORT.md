@@ -25,11 +25,29 @@ such as IDR, decimal notation containing only trailing zeroes (for example,
 `639000.00`) is accepted without rounding. A non-zero fractional IDR value is
 rejected because Pilgrim does not invent a rounding policy during import.
 
-An exact active symbol-and-currency match may map automatically. Any other
-instrument stays unresolved until the user chooses **Map to existing** or
-**Create compatible asset definition**. No fuzzy match and no silent
-instrument or category creation occurs. Funding rows require an explicit
-active, same-currency counterparty account.
+The Date column is inspected as a whole when automatic format is selected.
+ISO dates prefer yyyy-MM-dd; slash dates select DD/MM/YYYY or MM/DD/YYYY only
+when one interpretation fits the entire column. Ambiguity requires a format
+choice. Invalid dates retain their source text and a null review date; no epoch
+date is fabricated and unresolved dates cannot commit.
+
+An exact active symbol-and-currency match maps automatically, case-insensitively.
+Buy, Sell, Dividend and Split require an instrument. Funding, Fee and Tax do not.
+In **Trusted Stockbit / IDX statement** mode, unknown four-letter equity symbols
+are staged once per normalized symbol with symbol-as-name, IDX exchange, IDR
+currency and lot size 100. The summary counts included ready instrument
+creations. Definitions remain in memory until final atomic import. Existing,
+archived or ambiguous catalog identities cannot be silently duplicated. Generic
+statements retain explicit map/create review. Funding rows require an active,
+same-currency counterparty account.
+
+Rows show Ready, Ready · New instrument, Needs review or Invalid. Needs-review
+rows may be explicitly excluded so the valid selected rows can proceed.
+
+Settlement and Interest labels do not request an instrument but still have no
+accepted persisted activity type in the eight-type ledger. They remain Needs
+review; settlement-to-Buy/Sell/Split conversion is prohibited at planning and
+posting. Their cash/income treatment is pending ARCH-20260914-01.
 
 Pilgrim's weighted-average asset ledger remains authoritative. Broker-provided
 realized P&L is comparison evidence only; a difference is shown as a

@@ -1,5 +1,24 @@
 # Pilgrim Tracker Progress
 
+## Trusted Brokerage Review Automation — 2026-09-14
+
+Implemented whole-column date detection (ISO preference, unambiguous day/month
+or month/day slash dates), nullable invalid review dates with retained source
+text, and statement-level trusted Stockbit/IDX instrument staging. Repeated
+unknown tickers share one planned IDR equity definition (IDX, lot size 100),
+created only at final atomic import. Reimport reuses the existing catalog.
+Dividend now requires an instrument; funding and cost rows do not. UI shows
+Ready / Ready · New instrument / Needs review / Invalid and creation totals.
+
+Focused regression tests passed 25/25; analyzer is clean; full Flutter suite
+passed 1002/1002. Git diff reviewed. SQLite remains 28 and backup v7; no migration
+or hosted changes. Builds and owner runtime acceptance were not run this sprint.
+
+Settlement-to-trade conversion is prohibited. Settlement and Interest labels
+remain Needs review because they have no accepted persisted posting types;
+their cash/income semantics are pending ARCH-20260914-01. This is a partial
+completion of the owner's overall import request, not full settlement support.
+
 ## BETA-08N1 Brokerage CSV Compatibility Repair — 2026-09-12
 
 Pilgrim's human-readable brokerage CSV headers now activate the complete

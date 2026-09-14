@@ -38,10 +38,13 @@ class BrokerageImportCommitService {
         brokerageAccount.accountType != AccountType.brokerage) {
       throw StateError('Choose an active brokerage account in this household.');
     }
+    if (preview.drafts.any((draft) => draft.included && !draft.canCommit)) {
+      throw StateError('Resolve every included statement row before import.');
+    }
     final included =
         preview.drafts.where((draft) => draft.included).toList(growable: false)
           ..sort((left, right) {
-            final byDate = left.date.compareTo(right.date);
+            final byDate = left.date!.compareTo(right.date!);
             return byDate != 0
                 ? byDate
                 : left.sourceRowNumber.compareTo(right.sourceRowNumber);

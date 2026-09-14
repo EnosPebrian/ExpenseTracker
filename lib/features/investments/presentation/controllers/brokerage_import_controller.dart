@@ -210,6 +210,7 @@ class BrokerageImportController extends ChangeNotifier {
           if (draft.sourceRowNumber == rowNumber) update(draft) else draft,
       ],
       remoteFreshnessVerified: current.remoteFreshnessVerified,
+      detectedDateFormat: current.detectedDateFormat,
     );
     result = null;
     error = null;

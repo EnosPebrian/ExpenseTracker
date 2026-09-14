@@ -32,8 +32,21 @@ class BrokerageImportPosting {
     String deviceId = 'local-device',
   }) {
     final activity = draft.activityType;
-    if (activity == null) {
+    if (activity == null || draft.date == null) {
       throw StateError('Resolve the brokerage activity before importing.');
+    }
+    final sourceActivity = draft.rawActivity.trim().toUpperCase().replaceAll(
+      ' ',
+      '_',
+    );
+    if ((sourceActivity == 'BUY_SETTLEMENT' ||
+            sourceActivity == 'SELL_SETTLEMENT') &&
+        (activity == BrokerageActivityType.buy ||
+            activity == BrokerageActivityType.sell ||
+            activity == BrokerageActivityType.split)) {
+      throw StateError(
+        'Settlement rows cannot create trades or change holdings.',
+      );
     }
     final transactions = <Transaction>[];
     InternalTransferLink? link;
@@ -61,7 +74,7 @@ class BrokerageImportPosting {
           title: deposit ? 'Brokerage deposit' : 'Brokerage withdrawal',
           category: 'Transfer',
           account: source.name,
-          date: draft.date,
+          date: draft.date!,
           amount: draft.grossAmount,
           type: TransactionType.expense,
           note: draft.note,
@@ -82,7 +95,7 @@ class BrokerageImportPosting {
           title: deposit ? 'Brokerage deposit' : 'Brokerage withdrawal',
           category: 'Transfer',
           account: destination.name,
-          date: draft.date,
+          date: draft.date!,
           amount: draft.grossAmount,
           type: TransactionType.income,
           note: draft.note,
@@ -122,7 +135,7 @@ class BrokerageImportPosting {
           account: buy
               ? '${brokerageAccount.name} -> ${draft.sourceInstrument}'
               : '${draft.sourceInstrument} -> ${brokerageAccount.name}',
-          date: draft.date,
+          date: draft.date!,
           amount: draft.grossAmount,
           type: TransactionType.assetConversion,
           quantity: draft.quantity,
@@ -158,7 +171,7 @@ class BrokerageImportPosting {
               '${draft.sourceInstrument} split ${draft.splitNumerator}:${draft.splitDenominator}',
           category: 'Investment',
           account: brokerageAccount.name,
-          date: draft.date,
+          date: draft.date!,
           amount: 0,
           type: TransactionType.assetConversion,
           unit: instrument?.normalizedUnit,
@@ -246,7 +259,7 @@ class BrokerageImportPosting {
         '${activity.label}${draft.sourceInstrument.trim().isEmpty ? '' : ' · ${draft.sourceInstrument}'}',
     category: 'Investment',
     account: brokerageAccount.name,
-    date: draft.date,
+    date: draft.date!,
     amount: amount ?? draft.grossAmount,
     type: TransactionType.investment,
     assetDefinitionId: draft.instrumentId,

@@ -16,6 +16,7 @@ import '../../../transactions/domain/services/transaction_duplicate_detector.dar
 import 'brokerage_import_identity.dart';
 import 'brokerage_import_models.dart';
 import 'brokerage_import_posting.dart';
+import 'brokerage_date_detection.dart';
 
 class BrokerageImportPlanner {
   const BrokerageImportPlanner({
@@ -42,37 +43,79 @@ class BrokerageImportPlanner {
     bool remoteFreshnessVerified = true,
   }) async {
     mapping.validate();
+    final effectiveDateFormat = mapping.dateFormat == CsvDateFormat.automatic
+        ? BrokerageDateDetection.detect(
+            source.rows.map((row) => row.values[mapping.dateColumn]),
+          )
+        : mapping.dateFormat;
+    final dateIssue =
+        effectiveDateFormat == null &&
+            BrokerageDateDetection.matchingFormats(
+                  source.rows.map((row) => row.values[mapping.dateColumn]),
+                ).length >
+                1
+        ? 'Dates are ambiguous. Choose DD/MM/YYYY or MM/DD/YYYY.'
+        : 'Date column contains invalid or inconsistent dates. Correct the source dates.';
     _validateAccounts(activeBookId, brokerageAccount, counterpartyAccount);
     final activeInstruments = instruments
         .where(
           (instrument) =>
               !instrument.isDeleted && instrument.bookId == activeBookId,
         )
-        .toList(growable: false);
+        .toList(growable: true);
     final transactions = existingTransactions.toList(growable: false);
     final links = existingTransferLinks.toList(growable: false);
     final existingIndex = _BrokerageExistingTransactionIndex(transactions);
     final existingLinkIds = links.map((link) => link.id).toSet();
     final drafts = <BrokerageImportDraft>[];
+    final staged = <String, AssetDefinition>{};
     for (final row in source.rows) {
-      drafts.add(
-        await _buildRow(
-          source: source,
-          row: row,
-          mapping: mapping,
-          brokerageAccount: brokerageAccount,
-          activeBookId: activeBookId,
-          instruments: activeInstruments,
-          existingTransactions: transactions,
-          existingIndex: existingIndex,
-          existingTransferLinkIds: existingLinkIds,
-          counterpartyAccount: counterpartyAccount,
-        ),
+      var draft = await _buildRow(
+        source: source,
+        row: row,
+        mapping: mapping,
+        effectiveDateFormat: effectiveDateFormat,
+        dateIssue: dateIssue,
+        brokerageAccount: brokerageAccount,
+        activeBookId: activeBookId,
+        instruments: activeInstruments,
+        existingTransactions: transactions,
+        existingIndex: existingIndex,
+        existingTransferLinkIds: existingLinkIds,
+        counterpartyAccount: counterpartyAccount,
       );
+      final symbol = draft.sourceInstrument.trim().toUpperCase();
+      if (mapping.trustedIdx &&
+          brokerageAccount.currencyCode == 'IDR' &&
+          draft.currencyCode == 'IDR' &&
+          draft.needsInstrumentResolution &&
+          RegExp(r'^[A-Z]{4}$').hasMatch(symbol) &&
+          !instruments.any(
+            (item) =>
+                item.bookId == activeBookId && item.normalizedSymbol == symbol,
+          )) {
+        final definition = staged.putIfAbsent(
+          symbol,
+          () => _newInstrument(draft, activeBookId, idx: true),
+        );
+        draft = draft.copyWith(
+          instrumentId: definition.id,
+          plannedInstrument: definition,
+          instrumentResolution: BrokerageInstrumentResolution.create,
+        );
+      }
+      drafts.add(draft);
     }
+    activeInstruments.addAll(staged.values);
     final ordered = List<int>.generate(drafts.length, (index) => index)
       ..sort((left, right) {
-        final byDate = drafts[left].date.compareTo(drafts[right].date);
+        final leftDate = drafts[left].date;
+        final rightDate = drafts[right].date;
+        final byDate = leftDate == null
+            ? (rightDate == null ? 0 : 1)
+            : rightDate == null
+            ? -1
+            : leftDate.compareTo(rightDate);
         return byDate != 0
             ? byDate
             : drafts[left].sourceRowNumber.compareTo(
@@ -115,6 +158,7 @@ class BrokerageImportPlanner {
       source: source,
       drafts: List.unmodifiable(drafts),
       remoteFreshnessVerified: remoteFreshnessVerified,
+      detectedDateFormat: effectiveDateFormat,
     );
   }
 
@@ -185,31 +229,7 @@ class BrokerageImportPlanner {
     if (symbol.isEmpty) {
       throw StateError('An instrument symbol is required.');
     }
-    final now = DateTime.now();
-    final instrument = AssetDefinition(
-      id: BrokerageImportIdentity.instrument(
-        bookId: activeBookId,
-        symbol: symbol,
-        currencyCode: draft.currencyCode,
-      ),
-      bookId: activeBookId,
-      displayName: symbol,
-      kind: AssetKind.stock,
-      symbol: symbol,
-      providerCode: null,
-      providerSymbol: null,
-      exchangeCode: null,
-      currencyCode: draft.currencyCode,
-      unit: 'share',
-      lotSize: 1,
-      onlinePricingEnabled: false,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-      version: 1,
-      deviceId: 'local-device',
-      syncStatus: 'pending',
-    );
+    final instrument = _newInstrument(draft, activeBookId);
     final transactions = existingTransactions.toList(growable: false);
     return _finish(
       draft.copyWith(
@@ -229,10 +249,45 @@ class BrokerageImportPlanner {
     );
   }
 
+  AssetDefinition _newInstrument(
+    BrokerageImportDraft draft,
+    String activeBookId, {
+    bool idx = false,
+  }) {
+    final symbol = draft.sourceInstrument.trim().toUpperCase();
+    final now = DateTime.now();
+    return AssetDefinition(
+      id: BrokerageImportIdentity.instrument(
+        bookId: activeBookId,
+        symbol: symbol,
+        currencyCode: draft.currencyCode,
+      ),
+      bookId: activeBookId,
+      displayName: symbol,
+      kind: AssetKind.stock,
+      symbol: symbol,
+      providerCode: null,
+      providerSymbol: null,
+      exchangeCode: idx ? 'IDX' : null,
+      currencyCode: draft.currencyCode,
+      unit: 'share',
+      lotSize: idx ? 100 : 1,
+      onlinePricingEnabled: false,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      version: 1,
+      deviceId: 'local-device',
+      syncStatus: 'pending',
+    );
+  }
+
   Future<BrokerageImportDraft> _buildRow({
     required CsvParsedSource source,
     required CsvSourceRow row,
     required BrokerageStatementMapping mapping,
+    required CsvDateFormat? effectiveDateFormat,
+    required String dateIssue,
     required Account brokerageAccount,
     required String activeBookId,
     required List<AssetDefinition> instruments,
@@ -271,7 +326,7 @@ class BrokerageImportPlanner {
       sourceRowFingerprint: rowFingerprint,
     );
     final parseIssues = <BrokerageImportIssue>[];
-    var date = DateTime(1970);
+    DateTime? date;
     final rawActivity = at(mapping.activityColumn).trim();
     final activity = _activity(rawActivity);
     final sourceInstrument = at(mapping.instrumentColumn).trim();
@@ -320,7 +375,10 @@ class BrokerageImportPlanner {
       parseIssues,
     );
     try {
-      date = dateParser.parse(at(mapping.dateColumn), mapping.dateFormat);
+      if (effectiveDateFormat == null) {
+        throw TransactionImportException(dateIssue);
+      }
+      date = dateParser.parse(at(mapping.dateColumn), effectiveDateFormat);
     } on Object catch (error) {
       parseIssues.add(BrokerageImportIssue('CSV: $error', blocking: true));
     }
@@ -356,6 +414,7 @@ class BrokerageImportPlanner {
         sourceRowFingerprint: rowFingerprint,
         eventId: eventId,
         date: date,
+        rawDate: at(mapping.dateColumn),
         rawActivity: rawActivity,
         activityType: activity,
         sourceInstrument: sourceInstrument,
@@ -405,6 +464,22 @@ class BrokerageImportPlanner {
         .where((issue) => issue.message.startsWith('CSV:'))
         .toList();
     final activity = draft.activityType;
+    final sourceActivity = draft.rawActivity.trim().toUpperCase().replaceAll(
+      ' ',
+      '_',
+    );
+    if ((sourceActivity == 'BUY_SETTLEMENT' ||
+            sourceActivity == 'SELL_SETTLEMENT') &&
+        (activity == BrokerageActivityType.buy ||
+            activity == BrokerageActivityType.sell ||
+            activity == BrokerageActivityType.split)) {
+      issues.add(
+        const BrokerageImportIssue(
+          'Settlement rows cannot change holdings. Use the underlying trade statement for Buy, Sell or Split.',
+          blocking: true,
+        ),
+      );
+    }
     if (activity == null) {
       issues.add(
         BrokerageImportIssue(
@@ -496,10 +571,18 @@ class BrokerageImportPlanner {
 
     var candidate = draft.copyWith(issues: issues);
     var classification = issues.any((issue) => issue.blocking)
-        ? BrokerageImportClassification.invalid
+        ? (draft.date != null &&
+                  draft.grossAmount > 0 &&
+                  !issues.any(
+                    (issue) =>
+                        issue.blocking && issue.message.startsWith('CSV:'),
+                  ) &&
+                  (activity == null || draft.needsInstrumentResolution))
+              ? BrokerageImportClassification.needsReview
+              : BrokerageImportClassification.invalid
         : BrokerageImportClassification.newRecord;
     String? matchedId;
-    if (classification != BrokerageImportClassification.invalid) {
+    if (classification == BrokerageImportClassification.newRecord) {
       final posting = BrokerageImportPosting.materialize(
         draft: candidate,
         bookId: activeBookId,

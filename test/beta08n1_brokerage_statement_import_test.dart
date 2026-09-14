@@ -433,6 +433,13 @@ void main() {
     final activity = find.byKey(const Key('brokerage-row-2-activity'));
     await tester.scrollUntilVisible(activity, 300);
     expect(activity, findsOneWidget);
+    expect(find.text('Unknown instrument: MSFT'), findsNothing);
+    controller.resolveActivity(
+      2,
+      BrokerageActivityType.dividend,
+      bookId: 'book',
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Unknown instrument: MSFT'), findsOneWidget);
     expect(find.text('Map to existing'), findsOneWidget);
     expect(find.text('Create MSFT'), findsOneWidget);
@@ -640,8 +647,13 @@ void main() {
     () async {
       final rows = List.generate(
         5000,
-        (index) =>
-            _row(index + 2, '2026-01-01', 'DIVIDEND', gross: '${index + 1}'),
+        (index) => _row(
+          index + 2,
+          '2026-01-01',
+          'DIVIDEND',
+          symbol: 'AAPL',
+          gross: '${index + 1}',
+        ),
       );
       final stopwatch = Stopwatch()..start();
       final preview = await _plan(planner, _source(rows), broker, cash, [
