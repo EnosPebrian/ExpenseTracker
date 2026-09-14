@@ -19,8 +19,8 @@ Update it whenever an engineering session materially changes state, especially b
 ```text
 branch: main
 remote: origin
-commit: 83274479a3e00bda92d8e700a6fd983fbee736b9
-message: docs: record BETA-08N rollout handoff
+commit: b4f954db39a78045c2bd271386508283343086b1
+message: feat: automate trusted brokerage CSV review
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -29,12 +29,20 @@ post-push worktree: clean
 ## Latest completed engineering state
 
 ```text
-BETA-08N1 brokerage CSV compatibility repair: LOCALLY VALIDATED / COMMITTED
+BETA-08N1-R2 date/instrument review: VALIDATED / PUSHED
+focused Flutter: 25/25 PASS
+full Flutter suite: 1002/1002 PASS
+analyzer: PASS
+diff checks: PASS
+builds: not required/rerun for this bounded item
+remaining scope: settlement/interest posting BLOCKED_ARCHITECT
+owner runtime acceptance: NOT RUN
+BETA-08N1 brokerage CSV compatibility repair: VALIDATED / PUSHED
 repair commit: 2684254c814d1bef781ffe707ab3e625c08c2f60
 focused Flutter: CSV parser 27/27; brokerage import 15/15 PASS
 full Flutter suite: 992/992 PASS
 analyzer/builds/diff: PASS
-push: PENDING explicit external authorization
+push: origin/main succeeded on 2026-09-14 (included in R2 publication)
 BETA-08N Investments UI navigation: COMPLETE
 first-class destination: after Assets on desktop and mobile
 sections: Overview, Brokerage Accounts, Holdings, Trades, Statements, Performance
@@ -73,9 +81,10 @@ remaining failures: 0
 
 ## Exact next action
 
-Publish validated date/instrument review changes under the owner's 2026-09-14
-commit/push instruction. Settlement and
-Interest posting remains pending ARCH-20260914-01; do not reinterpret these
+Date/instrument review changes are published under the owner's 2026-09-14
+commit/push instruction. This documentation-only follow-up records the verified
+implementation push and clean post-push status. Await resolution of settlement and
+Interest posting in ARCH-20260914-01; do not reinterpret these
 labels as trades, dividends or fees. Owner runtime acceptance remains NOT RUN.
 
 ## PT-BETA-08N-RC rollout result

@@ -2,7 +2,7 @@
 
 **Queue protocol:** `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md`
 **Last architect seed:** 2026-09-09
-**Last reconciled:** 2026-09-11
+**Last reconciled:** 2026-09-14
 
 ## Queue rules
 
@@ -157,8 +157,9 @@ case-insensitive catalog matching, statement-level trusted IDX staging,
 activity-dependent instrument requirements and clear review states. Preserve
 atomic creation, offline operation and deterministic duplicate protection.
 Focused tests: 25/25 PASS. Analyzer PASS; full suite 1002/1002 PASS.
-Date/instrument review implementation is validated; final Git publication is
-pending below. No platform builds were required or rerun for this bounded item.
+Date/instrument review implementation is validated and pushed to origin/main:
+`b4f954db39a78045c2bd271386508283343086b1`; post-push worktree clean.
+No platform builds were required or rerun for this bounded item.
 No schema or hosted changes. Settlement/Interest posting semantics remain an
 open decision in ARCH-20260914-01; all independent review work may continue.
 
