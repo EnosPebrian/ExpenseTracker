@@ -31,6 +31,9 @@ class BrokerageImportPosting {
     required AssetDefinition? instrument,
     String deviceId = 'local-device',
   }) {
+    if (draft.isSettlement) {
+      throw StateError('Settlement evidence never creates financial postings.');
+    }
     final activity = draft.activityType;
     if (activity == null || draft.date == null) {
       throw StateError('Resolve the brokerage activity before importing.');

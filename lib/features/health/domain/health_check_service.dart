@@ -1,4 +1,5 @@
 import '../../backup/domain/backup_models.dart';
+import '../../../core/database/brokerage_settlement_integrity.dart';
 import '../../budgets/domain/entities/monthly_category_budget.dart';
 import '../../master_data/domain/entities/account.dart';
 import '../../master_data/domain/services/account_balance_calculator.dart';
@@ -33,6 +34,7 @@ class HealthCheckService {
           _household(snapshot),
           _transactions(snapshot, generatedAt),
           _transfers(snapshot),
+          _settlements(snapshot),
           _importInbox(snapshot),
           _rulesAndPlanning(snapshot, generatedAt),
           _sync(snapshot),
@@ -92,6 +94,37 @@ class HealthCheckService {
           title: 'Core data access',
           status: HealthCheckItemStatus.healthy,
           summary: 'Core household records are readable.',
+        ),
+      ],
+    );
+  }
+
+  HealthCheckSection _settlements(HealthCheckSnapshot snapshot) {
+    var invalid = 0;
+    for (final row in snapshot.rows('brokerage_settlements')) {
+      try {
+        BrokerageSettlementIntegrity.validate(
+          row,
+          snapshot.rows('accounts'),
+          snapshot.rows('transactions'),
+        );
+      } catch (_) {
+        invalid++;
+      }
+    }
+    return HealthCheckSection(
+      id: 'settlements',
+      title: 'Settlement evidence',
+      checks: [
+        HealthCheckItem(
+          code: 'settlements.references',
+          title: 'Non-financial evidence links',
+          status: invalid == 0
+              ? HealthCheckItemStatus.healthy
+              : HealthCheckItemStatus.error,
+          summary: invalid == 0
+              ? 'Settlement references are structurally valid. Unmatched evidence is allowed.'
+              : '$invalid settlement records have invalid source values or trade references.',
         ),
       ],
     );

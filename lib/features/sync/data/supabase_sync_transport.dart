@@ -258,6 +258,7 @@ class SupabaseSyncTransport
   }
 
   static const _timestampFields = {
+    'statement_date',
     'transaction_date',
     'opening_balance_date',
     'market_reference_quoted_at',
@@ -274,6 +275,26 @@ class SupabaseSyncTransport
   };
 
   static const Map<String, Set<String>> _remoteFields = {
+    'brokerage_settlements': {
+      'id',
+      'book_id',
+      'brokerage_account_id',
+      'statement_date',
+      'settlement_type',
+      'amount',
+      'currency_code',
+      'source_fingerprint',
+      'source_row_identity',
+      'source_row_fingerprint',
+      'reference',
+      'note',
+      'trade_ids_json',
+      'created_at',
+      'updated_at',
+      'deleted_at',
+      'version',
+      'device_id',
+    },
     'books': {
       'id',
       'name',

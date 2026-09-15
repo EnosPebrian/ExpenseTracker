@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../../core/database/brokerage_settlement_integrity.dart';
 
 import '../../../core/database/local_store_web.dart';
 import '../domain/initial_sync_models.dart';
@@ -345,6 +346,13 @@ class InitialSyncStoreAdapter {
       for (final row in payloadsByType['accounts']!) row['id']: row,
     };
     final activeLegIds = <Object?>{};
+    for (final row in payloadsByType['brokerage_settlements'] ?? const []) {
+      BrokerageSettlementIntegrity.validate(
+        row,
+        payloadsByType['accounts']!,
+        payloadsByType['transactions']!,
+      );
+    }
     for (final link in payloadsByType['transfer_links']!) {
       final outgoing = transactionsById[link['outgoing_transaction_id']];
       final incoming = transactionsById[link['incoming_transaction_id']];

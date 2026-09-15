@@ -77,7 +77,9 @@ class LocalTransactionRepository
     required List<Transaction> transactions,
     required List<AssetDefinition> assetDefinitionCreations,
     required List<InternalTransferLink> transferLinks,
+    List<Map<String, Object?>> settlements = const [],
   }) => store.insertInvestmentImportAtomic(
+    settlements: settlements,
     transactions: transactions.map((item) => item.toRecord()).toList(),
     assetDefinitions: assetDefinitionCreations
         .map((item) => item.toRecord())

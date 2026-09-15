@@ -1,6 +1,7 @@
 import '../../../assets/domain/entities/asset_definition.dart';
 import '../../../transactions/domain/entities/transaction_brokerage_metadata.dart';
 import '../../../transactions/domain/import/transaction_import_models.dart';
+import '../entities/brokerage_settlement.dart';
 
 enum BrokerageInstrumentResolution { notRequired, unresolved, mapped, create }
 
@@ -143,6 +144,10 @@ class BrokerageImportDraft {
   final List<BrokerageImportIssue> issues;
   final String? matchedTransactionId;
 
+  BrokerageSettlementType? get settlementType =>
+      BrokerageSettlementType.parse(rawActivity);
+  bool get isSettlement => settlementType != null;
+
   bool get requiresInstrument =>
       activityType == BrokerageActivityType.buy ||
       activityType == BrokerageActivityType.sell ||
@@ -158,7 +163,7 @@ class BrokerageImportDraft {
       included &&
       date != null &&
       !hasBlockingIssue &&
-      activityType != null &&
+      (activityType != null || isSettlement) &&
       !needsInstrumentResolution &&
       classification != BrokerageImportClassification.alreadyImported &&
       classification != BrokerageImportClassification.invalid;
@@ -246,7 +251,8 @@ class BrokerageImportPreview {
   int get unresolvedCount => drafts
       .where(
         (draft) =>
-            draft.activityType == null || draft.needsInstrumentResolution,
+            (!draft.isSettlement && draft.activityType == null) ||
+            draft.needsInstrumentResolution,
       )
       .length;
   bool get canCommit =>

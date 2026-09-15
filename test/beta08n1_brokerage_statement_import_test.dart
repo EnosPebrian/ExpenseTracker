@@ -780,6 +780,7 @@ class _RecordingRepository implements InvestmentImportAtomicRepository {
     required List<Transaction> transactions,
     required List<AssetDefinition> assetDefinitionCreations,
     required List<InternalTransferLink> transferLinks,
+    List<Map<String, Object?>> settlements = const [],
   }) async {
     calls += 1;
     this.transactions = List.unmodifiable(transactions);

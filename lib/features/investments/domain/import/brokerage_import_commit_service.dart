@@ -10,6 +10,7 @@ import '../../../transactions/domain/usecases/transaction_usecases.dart';
 import 'brokerage_import_identity.dart';
 import 'brokerage_import_models.dart';
 import 'brokerage_import_posting.dart';
+import '../entities/brokerage_settlement.dart';
 
 class BrokerageImportCommitService {
   const BrokerageImportCommitService({
@@ -100,12 +101,36 @@ class BrokerageImportCommitService {
     }
 
     final transactions = <Transaction>[];
+    final settlements = <Map<String, Object?>>[];
     final transferLinks = <InternalTransferLink>[];
     final seenTransactionIds = <String>{};
     final seenLinkIds = <String>{};
     final existing = existingTransactions.toList(growable: false);
     final sequence = existing.toList(growable: true);
     for (final draft in included) {
+      if (draft.isSettlement) {
+        final now = DateTime.now();
+        settlements.add(
+          BrokerageSettlement(
+            id: draft.eventId,
+            bookId: bookId,
+            brokerageAccountId: brokerageAccount.id,
+            date: draft.date!,
+            type: draft.settlementType!,
+            amount: draft.grossAmount,
+            currencyCode: draft.currencyCode,
+            sourceFingerprint: preview.source.fileFingerprint,
+            sourceRowIdentity: draft.sourceRowIdentity,
+            sourceRowFingerprint: draft.sourceRowFingerprint,
+            reference: draft.reference,
+            note: draft.note,
+            createdAt: now,
+            updatedAt: now,
+            deviceId: 'local-device',
+          ).toRecord(),
+        );
+        continue;
+      }
       final instrument = draft.instrumentId == null
           ? null
           : definitionsForCommit.cast<AssetDefinition?>().firstWhere(
@@ -170,6 +195,7 @@ class BrokerageImportCommitService {
     }
 
     await repository.saveInvestmentImportAtomic(
+      settlements: settlements,
       transactions: transactions,
       assetDefinitionCreations: creations,
       transferLinks: transferLinks,

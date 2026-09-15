@@ -1,9 +1,14 @@
 import 'dart:typed_data';
 
-const portableBackupFormatVersion = 7;
+const portableBackupFormatVersion = 8;
 const portableBackupApplicationVersion = '1.0.0+1';
 
 const portableBackupEntityKeys = <String>[
+  ...portableBackupV4EntityKeys,
+  'brokerage_settlements',
+];
+
+const portableBackupV4EntityKeys = <String>[
   'household',
   'members',
   'accounts',
@@ -16,8 +21,6 @@ const portableBackupEntityKeys = <String>[
   'transaction_import_rules',
   'manual_market_prices',
 ];
-
-const portableBackupV4EntityKeys = portableBackupEntityKeys;
 
 const portableBackupV3EntityKeys = <String>[
   'household',

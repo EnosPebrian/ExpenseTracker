@@ -10,6 +10,8 @@ import 'household_schema_native.dart';
 import 'import_review_schema_native.dart';
 import 'backup_schema_native.dart';
 import 'brokerage_schema_native.dart';
+import 'brokerage_settlement_schema_native.dart';
+import 'brokerage_settlement_integrity.dart';
 import 'budget_schema_native.dart';
 import 'native_database_path.dart';
 import 'sync_schema_native.dart';
@@ -20,7 +22,7 @@ import 'transfer_link_schema_native.dart';
 
 class LocalStore {
   LocalStore({this.databasePath});
-  static const schemaVersion = 28;
+  static const schemaVersion = 29;
   static bool _ffiInitialized = false;
 
   final String? databasePath;
@@ -156,6 +158,7 @@ asset_symbol TEXT,
         await BudgetSchemaNative.create(db);
         await TransactionImportRuleSchemaNative.create(db);
         await TransferLinkSchemaNative.create(db);
+        await BrokerageSettlementSchemaNative.create(db);
         await ImportReviewSchemaNative.create(db);
         await db.execute('''
           CREATE TABLE IF NOT EXISTS asset_market_prices (
@@ -460,6 +463,9 @@ asset_symbol TEXT,
         }
         if (oldVersion < 28) {
           await BrokerageSchemaNative.upgradeToV28(db);
+        }
+        if (oldVersion < 29) {
+          await BrokerageSettlementSchemaNative.create(db);
         }
       },
     );
@@ -781,6 +787,7 @@ asset_symbol TEXT,
     required List<Map<String, Object?>> transactions,
     required List<Map<String, Object?>> assetDefinitions,
     required List<Map<String, Object?>> transferLinks,
+    List<Map<String, Object?>> settlements = const [],
   }) async {
     await db.transaction((txn) async {
       for (final record in assetDefinitions) {
@@ -810,6 +817,34 @@ asset_symbol TEXT,
         await _enqueueSyncOperation(txn, 'asset_definitions', prepared);
       }
 
+      for (final record in settlements) {
+        final prepared = _withActiveBook(record);
+        final account = await txn.query(
+          'accounts',
+          where:
+              'id = ? AND book_id = ? AND deleted_at IS NULL AND account_type = ? AND currency_code = ?',
+          whereArgs: [
+            prepared['brokerage_account_id'],
+            _activeBookId,
+            'brokerage',
+            prepared['currency_code'],
+          ],
+        );
+        if (prepared['book_id'] != _activeBookId ||
+            account.length != 1 ||
+            prepared['trade_ids_json'] != '[]') {
+          throw StateError(
+            'Imported settlement evidence must be unmatched and belong to the active brokerage account.',
+          );
+        }
+        BrokerageSettlementIntegrity.validate(prepared, account, const []);
+        await txn.insert(
+          'brokerage_settlements',
+          prepared,
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        await _enqueueSyncOperation(txn, 'brokerage_settlements', prepared);
+      }
       final incomingIds = <Object?>{};
       for (final record in transactions) {
         if (!incomingIds.add(record['id'])) {
@@ -846,6 +881,65 @@ asset_symbol TEXT,
 
   static String _normalizeImportCategory(String value) =>
       value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  Future<List<Map<String, Object?>>> getBrokerageSettlements({
+    bool includeDeleted = false,
+  }) => db.query(
+    'brokerage_settlements',
+    where: _scopedWhere(_activeBookId, includeDeleted: includeDeleted),
+    whereArgs: _activeBookId == null ? null : [_activeBookId],
+  );
+
+  Future<void> reconcileBrokerageSettlement(
+    Map<String, Object?> record, {
+    required int expectedVersion,
+  }) async {
+    await db.transaction((txn) async {
+      if ((await txn.query(
+        'sync_conflicts',
+        where:
+            'book_id = ? AND entity_type = ? AND entity_id = ? AND resolution_status != ?',
+        whereArgs: [
+          _activeBookId,
+          'brokerage_settlements',
+          record['id'],
+          'resolved',
+        ],
+      )).isNotEmpty) {
+        throw StateError(
+          'Resolve the settlement sync conflict before reviewing links.',
+        );
+      }
+      final existing = await txn.query(
+        'brokerage_settlements',
+        where: 'id = ? AND book_id = ? AND version = ? AND deleted_at IS NULL',
+        whereArgs: [record['id'], _activeBookId, expectedVersion],
+      );
+      if (existing.length != 1) {
+        throw StateError('Settlement changed. Reload and review again.');
+      }
+      if (existing.single['trade_ids_json'] == record['trade_ids_json']) return;
+      final saved = {
+        ...existing.single,
+        'trade_ids_json': record['trade_ids_json'],
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+        'version': expectedVersion + 1,
+      };
+      BrokerageSettlementIntegrity.validate(
+        saved,
+        await txn.query('accounts'),
+        await txn.query('transactions'),
+      );
+      await txn.update(
+        'brokerage_settlements',
+        saved,
+        where: 'id = ?',
+        whereArgs: [saved['id']],
+      );
+      await _enqueueSyncOperation(txn, 'brokerage_settlements', saved);
+    });
+    onSyncMutation?.call();
+  }
 
   Future<List<Map<String, Object?>>> getTransferLinks({
     bool includeDeleted = false,
@@ -1217,6 +1311,7 @@ asset_symbol TEXT,
           orderBy: 'transaction_date, created_at, id',
         ),
         'transfer_links': await scoped('transfer_links'),
+        'brokerage_settlements': await scoped('brokerage_settlements'),
         'asset_definitions': await scoped('asset_definitions'),
         'budgets': await scoped(
           'monthly_category_budgets',
@@ -1262,6 +1357,7 @@ asset_symbol TEXT,
           throw StateError('Replacement requires a matching household ID.');
         }
         for (final table in const [
+          'brokerage_settlements',
           'transfer_links',
           'transactions',
           'transaction_import_rules',
@@ -1338,6 +1434,18 @@ asset_symbol TEXT,
       await insertAll('asset_market_prices', 'manual_market_prices');
       await insertAll('transactions', 'transactions');
       await insertAll('transfer_links', 'transfer_links');
+      await insertAll('brokerage_settlements', 'brokerage_settlements');
+      for (final row in await txn.query(
+        'brokerage_settlements',
+        where: 'book_id = ?',
+        whereArgs: [restoredBookId],
+      )) {
+        BrokerageSettlementIntegrity.validate(
+          row,
+          await txn.query('accounts'),
+          await txn.query('transactions'),
+        );
+      }
       await _validateTransactionCategoriesInBook(txn, restoredBookId);
 
       final session = await txn.query(
@@ -1374,6 +1482,7 @@ asset_symbol TEXT,
       'transaction_import_rules': 'transaction_import_rules',
       'transactions': 'transactions',
       'transfer_links': 'transfer_links',
+      'brokerage_settlements': 'brokerage_settlements',
     };
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
@@ -1540,6 +1649,7 @@ asset_symbol TEXT,
         'transaction_import_rules',
         'transactions',
         'transfer_links',
+        'brokerage_settlements',
       ]) {
         final table = tables[key]!;
         final entityType = key == 'budgets' ? 'monthly_category_budgets' : key;
@@ -1561,6 +1671,13 @@ asset_symbol TEXT,
         }
       }
       await _validateTransactionCategoriesInBook(txn, bookId);
+      for (final row in records['brokerage_settlements'] ?? const []) {
+        BrokerageSettlementIntegrity.validate(
+          row,
+          await txn.query('accounts'),
+          await txn.query('transactions'),
+        );
+      }
     });
     if (enqueueSync && records.values.any((rows) => rows.isNotEmpty)) {
       onSyncMutation?.call();
@@ -2323,6 +2440,17 @@ asset_symbol TEXT,
       }
       await _validateTransactionCategoriesInBook(txn, bookId);
       await _validateInternalTransfersInDatabase(txn, bookId);
+      for (final row in await txn.query(
+        'brokerage_settlements',
+        where: 'book_id = ?',
+        whereArgs: [bookId],
+      )) {
+        BrokerageSettlementIntegrity.validate(
+          row,
+          await txn.query('accounts'),
+          await txn.query('transactions'),
+        );
+      }
       final now = DateTime.now().millisecondsSinceEpoch;
       await txn.rawInsert(
         '''
@@ -2525,6 +2653,7 @@ asset_symbol TEXT,
       'transfer_links',
       'import_review_sessions',
       'import_review_drafts',
+      'brokerage_settlements',
     }.contains(entityType)) {
       throw ArgumentError.value(entityType, 'entityType');
     }

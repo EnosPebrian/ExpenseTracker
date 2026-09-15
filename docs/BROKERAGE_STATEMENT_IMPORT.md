@@ -3,12 +3,13 @@
 ## Scope
 
 BETA-08N1 imports UTF-8 broker-export CSV files into the existing BETA-08N0
-investment ledger. It does not introduce a second accounting engine. Every
-accepted row becomes the same authoritative `Transaction`, `AssetDefinition`,
+investment ledger. It does not introduce a second accounting engine. Financial
+rows become the same authoritative `Transaction`, `AssetDefinition`,
 and canonical `InternalTransferLink` records used by manual brokerage entry.
 
-Supported activities are exactly BUY, SELL, DIVIDEND, FEE, TAX, DEPOSIT,
-WITHDRAWAL, and SPLIT. Unknown activity text remains `UNRESOLVED`. Unsupported
+Supported financial activities are BUY, SELL, DIVIDEND, FEE, TAX, DEPOSIT,
+WITHDRAWAL, and SPLIT. R3 adds separate non-financial BUY_SETTLEMENT and
+SELL_SETTLEMENT evidence. Unknown activity text remains `UNRESOLVED`. Unsupported
 corporate actions are not guessed.
 
 ## Mapping and review
@@ -44,10 +45,12 @@ same-currency counterparty account.
 Rows show Ready, Ready · New instrument, Needs review or Invalid. Needs-review
 rows may be explicitly excluded so the valid selected rows can proceed.
 
-Settlement and Interest labels do not request an instrument but still have no
-accepted persisted activity type in the eight-type ledger. They remain Needs
-review; settlement-to-Buy/Sell/Split conversion is prohibited at planning and
-posting. Their cash/income treatment is pending ARCH-20260914-01.
+BUY_SETTLEMENT and SELL_SETTLEMENT import as unmatched non-financial evidence,
+without an instrument or a fake Buy/Sell choice. They create no transaction,
+cash, position, P&L, income/expense, budget, net-worth or Tithe effect. Persisted
+evidence is available from the Settlement evidence action for explicit
+many-to-many reconciliation. See BROKERAGE_SETTLEMENT_EVIDENCE.md. Interest
+remains a separate real-activity repair and is never aliased to Dividend.
 
 Pilgrim's weighted-average asset ledger remains authoritative. Broker-provided
 realized P&L is comparison evidence only; a difference is shown as a

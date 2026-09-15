@@ -251,3 +251,11 @@ sync entity types as BETA-08G/G1. They arrive with null destination account,
 null final transaction ID, and null identity binding. Merely downloading them
 does not finalize identity or create finance. Telegram operational tables and
 events are deliberately outside financial sync.
+# Settlement evidence extension — 2026-09-15
+
+`brokerage_settlements` follows the existing outbox, version-conflict and initial
+snapshot protocol after transactions. Remote apply produces no echo. The full
+reviewed link set is one versioned unit; manual field merging is disabled.
+References must share household/brokerage account and BUY/SELL direction. No
+evidence operation mutates a trade. The new migration is UNDEPLOYED; no hosted
+operation is authorized by the local repair sprint.

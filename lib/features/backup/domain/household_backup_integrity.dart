@@ -1,4 +1,7 @@
 import 'package:uuid/uuid.dart';
+import 'dart:convert';
+import '../../../core/database/brokerage_settlement_integrity.dart';
+import '../../investments/domain/import/brokerage_import_identity.dart';
 
 import '../../../core/master_data/system_category.dart';
 
@@ -91,6 +94,19 @@ class HouseholdBackupIntegrity {
     }
 
     final accounts = snapshot['accounts'] ?? const [];
+    for (final row in snapshot['brokerage_settlements'] ?? const []) {
+      try {
+        BrokerageSettlementIntegrity.validate(
+          row,
+          accounts,
+          snapshot['transactions'] ?? const [],
+        );
+      } catch (_) {
+        throw const BackupValidationException(
+          'Invalid brokerage settlement evidence or references.',
+        );
+      }
+    }
     final accountNames = <String>{};
     for (final account in accounts) {
       final name = _requiredString(account, 'name', 'accounts');
@@ -683,6 +699,29 @@ class HouseholdBackupIntegrity {
       'categories': remap('categories', categoryIds),
       'projects': remap('projects', projectIds),
       'transactions': remap('transactions', transactionIds),
+      'brokerage_settlements': (source['brokerage_settlements'] ?? const [])
+          .map(
+            (record) => <String, Object?>{
+              ...record,
+              'id': BrokerageImportIdentity.event(
+                bookId: newBookId,
+                brokerageAccountId: accountIds[record['brokerage_account_id']]!,
+                sourceFingerprint: record['source_fingerprint'] as String,
+                sourceRowIdentity: record['source_row_identity'] as String,
+                sourceRowFingerprint:
+                    record['source_row_fingerprint'] as String,
+              ),
+              'book_id': newBookId,
+              'brokerage_account_id':
+                  accountIds[record['brokerage_account_id']],
+              'trade_ids_json': jsonEncode(
+                (jsonDecode(record['trade_ids_json'] as String) as List)
+                    .map((id) => transactionIds[id])
+                    .toList(),
+              ),
+            },
+          )
+          .toList(),
       'transfer_links': (source['transfer_links'] ?? const [])
           .map(
             (record) => <String, Object?>{

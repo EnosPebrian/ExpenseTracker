@@ -41,6 +41,7 @@ class BrokerageImportPlanner {
     required Iterable<InternalTransferLink> existingTransferLinks,
     Account? counterpartyAccount,
     bool remoteFreshnessVerified = true,
+    Set<String> existingSettlementIds = const {},
   }) async {
     mapping.validate();
     final effectiveDateFormat = mapping.dateFormat == CsvDateFormat.automatic
@@ -135,8 +136,15 @@ class BrokerageImportPlanner {
         existingIndex: analysisIndex,
         existingTransferLinkIds: existingLinkIds,
       );
-      drafts[index] = finalized;
-      if (!finalized.canCommit) continue;
+      drafts[index] =
+          finalized.isSettlement &&
+              existingSettlementIds.contains(finalized.eventId)
+          ? finalized.copyWith(
+              classification: BrokerageImportClassification.alreadyImported,
+              included: false,
+            )
+          : finalized;
+      if (!finalized.canCommit || finalized.isSettlement) continue;
       final instrument = finalized.instrumentId == null
           ? null
           : activeInstruments.cast<AssetDefinition?>().firstWhere(
@@ -480,7 +488,7 @@ class BrokerageImportPlanner {
         ),
       );
     }
-    if (activity == null) {
+    if (activity == null && !draft.isSettlement) {
       issues.add(
         BrokerageImportIssue(
           'Unknown activity “${draft.rawActivity}”. Choose an activity.',
@@ -582,7 +590,8 @@ class BrokerageImportPlanner {
               : BrokerageImportClassification.invalid
         : BrokerageImportClassification.newRecord;
     String? matchedId;
-    if (classification == BrokerageImportClassification.newRecord) {
+    if (classification == BrokerageImportClassification.newRecord &&
+        !draft.isSettlement) {
       final posting = BrokerageImportPosting.materialize(
         draft: candidate,
         bookId: activeBookId,

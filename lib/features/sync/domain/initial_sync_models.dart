@@ -13,6 +13,7 @@ const initialSyncEntityOrder = <String>[
   'asset_definitions',
   'transactions',
   'transfer_links',
+  'brokerage_settlements',
 ];
 
 class InitialSyncManifest {

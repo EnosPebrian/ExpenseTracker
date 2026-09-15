@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 
 import '../master_data/system_category.dart';
+import 'brokerage_settlement_integrity.dart';
 
 class LocalStore {
   LocalStore({String? databasePath});
 
-  static const schemaVersion = 28;
+  static const schemaVersion = 29;
+  static final List<Map<String, Object?>> _brokerageSettlements = [];
   static final List<Map<String, Object?>> _records = [];
   static final List<Map<String, Object?>> _assetMarketPrices = [];
   static final List<Map<String, Object?>> _assetDefinitions = [];
@@ -259,7 +261,11 @@ class LocalStore {
     required List<Map<String, Object?>> transactions,
     required List<Map<String, Object?>> assetDefinitions,
     required List<Map<String, Object?>> transferLinks,
+    List<Map<String, Object?>> settlements = const [],
   }) async {
+    final settlementSnapshot = _brokerageSettlements
+        .map(Map<String, Object?>.of)
+        .toList();
     final transactionSnapshot = _records.map(Map<String, Object?>.of).toList();
     final definitionSnapshot = _assetDefinitions
         .map(Map<String, Object?>.of)
@@ -281,6 +287,38 @@ class LocalStore {
         }
         _assetDefinitions.add(prepared);
         _enqueueSyncOperation('asset_definitions', prepared);
+      }
+      for (final record in settlements) {
+        final prepared = _withActiveBook(record);
+        final account = _accounts.where(
+          (row) =>
+              row['id'] == prepared['brokerage_account_id'] &&
+              row['book_id'] == _activeBookId &&
+              row['deleted_at'] == null &&
+              row['account_type'] == 'brokerage' &&
+              row['currency_code'] == prepared['currency_code'],
+        );
+        if (prepared['book_id'] != _activeBookId ||
+            account.length != 1 ||
+            prepared['trade_ids_json'] != '[]' ||
+            _brokerageSettlements.any(
+              (row) =>
+                  row['id'] == prepared['id'] ||
+                  [
+                    'book_id',
+                    'brokerage_account_id',
+                    'source_fingerprint',
+                    'source_row_identity',
+                    'source_row_fingerprint',
+                  ].every((key) => row[key] == prepared[key]),
+            )) {
+          throw StateError(
+            'Settlement evidence is invalid or already present.',
+          );
+        }
+        BrokerageSettlementIntegrity.validate(prepared, account, const []);
+        _brokerageSettlements.add(prepared);
+        _enqueueSyncOperation('brokerage_settlements', prepared);
       }
       final incomingIds = <Object?>{};
       for (final record in transactions) {
@@ -309,6 +347,9 @@ class LocalStore {
         _validateActiveTransferLinks(bookId);
       }
     } catch (_) {
+      _brokerageSettlements
+        ..clear()
+        ..addAll(settlementSnapshot);
       _records
         ..clear()
         ..addAll(transactionSnapshot);
@@ -328,6 +369,57 @@ class LocalStore {
 
   static String _normalizeImportCategory(String value) =>
       value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  Future<List<Map<String, Object?>>> getBrokerageSettlements({
+    bool includeDeleted = false,
+  }) async => _brokerageSettlements
+      .where(
+        (row) =>
+            _inBook(row, null) && (includeDeleted || row['deleted_at'] == null),
+      )
+      .map(Map<String, Object?>.of)
+      .toList();
+
+  Future<void> reconcileBrokerageSettlement(
+    Map<String, Object?> record, {
+    required int expectedVersion,
+  }) async {
+    if (_syncConflicts.any(
+      (row) =>
+          row['book_id'] == _activeBookId &&
+          row['entity_type'] == 'brokerage_settlements' &&
+          row['entity_id'] == record['id'] &&
+          row['resolution_status'] != 'resolved',
+    )) {
+      throw StateError(
+        'Resolve the settlement sync conflict before reviewing links.',
+      );
+    }
+    final index = _brokerageSettlements.indexWhere(
+      (row) =>
+          row['id'] == record['id'] &&
+          row['book_id'] == _activeBookId &&
+          row['version'] == expectedVersion &&
+          row['deleted_at'] == null,
+    );
+    if (index < 0) {
+      throw StateError('Settlement changed. Reload and review again.');
+    }
+    if (_brokerageSettlements[index]['trade_ids_json'] ==
+        record['trade_ids_json']) {
+      return;
+    }
+    final saved = {
+      ..._brokerageSettlements[index],
+      'trade_ids_json': record['trade_ids_json'],
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+      'version': expectedVersion + 1,
+    };
+    BrokerageSettlementIntegrity.validate(saved, _accounts, _records);
+    _brokerageSettlements[index] = saved;
+    _enqueueSyncOperation('brokerage_settlements', saved);
+    onSyncMutation?.call();
+  }
 
   Future<List<Map<String, Object?>>> getTransferLinks({
     bool includeDeleted = false,
@@ -629,6 +721,7 @@ class LocalStore {
       ),
       'transactions': records(_records),
       'transfer_links': records(_transferLinks),
+      'brokerage_settlements': records(_brokerageSettlements),
       'asset_definitions': records(_assetDefinitions),
       'budgets': records(_monthlyCategoryBudgets),
       'transaction_import_rules': records(_transactionImportRules),
@@ -665,6 +758,9 @@ class LocalStore {
     );
 
     final snapshots = <List<Map<String, Object?>>, List<Map<String, Object?>>>{
+      _brokerageSettlements: _brokerageSettlements
+          .map(Map<String, Object?>.of)
+          .toList(),
       _records: _records.map(Map<String, Object?>.of).toList(),
       _transferLinks: _transferLinks.map(Map<String, Object?>.of).toList(),
       _assetMarketPrices: _assetMarketPrices
@@ -700,6 +796,7 @@ class LocalStore {
     try {
       if (replaceBookId != null) {
         for (final collection in [
+          _brokerageSettlements,
           _records,
           _transferLinks,
           _assetMarketPrices,
@@ -791,6 +888,12 @@ class LocalStore {
         _validateTransactionCategory(record);
       }
       addAll(_transferLinks, 'transfer_links');
+      addAll(_brokerageSettlements, 'brokerage_settlements');
+      for (final row in _brokerageSettlements.where(
+        (row) => row['book_id'] == restoredBookId,
+      )) {
+        BrokerageSettlementIntegrity.validate(row, _accounts, _records);
+      }
 
       _activeBookId = restoredBookId;
       _localSession = {
@@ -834,6 +937,9 @@ class LocalStore {
     required bool enqueueSync,
   }) async {
     final snapshots = <List<Map<String, Object?>>, List<Map<String, Object?>>>{
+      _brokerageSettlements: _brokerageSettlements
+          .map(Map<String, Object?>.of)
+          .toList(),
       _records: _records.map(Map<String, Object?>.of).toList(),
       _transferLinks: _transferLinks.map(Map<String, Object?>.of).toList(),
       _assetDefinitions: _assetDefinitions
@@ -858,6 +964,7 @@ class LocalStore {
       'transaction_import_rules': _transactionImportRules,
       'transactions': _records,
       'transfer_links': _transferLinks,
+      'brokerage_settlements': _brokerageSettlements,
     };
     try {
       if (!_books.any(
@@ -994,6 +1101,7 @@ class LocalStore {
         'transaction_import_rules',
         'transactions',
         'transfer_links',
+        'brokerage_settlements',
       ]) {
         for (final source in records[key] ?? const []) {
           final saved = <String, Object?>{
@@ -1016,6 +1124,9 @@ class LocalStore {
       }
       _rebuildMasterValues('categories', null);
       _rebuildMasterValues('projects', null);
+      for (final row in records['brokerage_settlements'] ?? const []) {
+        BrokerageSettlementIntegrity.validate(row, _accounts, _records);
+      }
       for (final row in _records.where((row) => row['book_id'] == bookId)) {
         _validateTransactionCategory(row);
       }
@@ -2509,6 +2620,7 @@ class LocalStore {
         _transferLinks,
         _importReviewSessions,
         _importReviewDrafts,
+        _brokerageSettlements,
         _assetMarketPrices,
         _syncOutbox,
         _syncConflicts,
@@ -2533,6 +2645,7 @@ class LocalStore {
           _transferLinks,
           _importReviewSessions,
           _importReviewDrafts,
+          _brokerageSettlements,
           _assetMarketPrices,
         ]) {
           collection.removeWhere((record) => record['book_id'] == bookId);
@@ -2587,6 +2700,11 @@ class LocalStore {
         _validateTransactionCategory(transaction);
       }
       _validateActiveTransferLinks(bookId);
+      for (final row in _brokerageSettlements.where(
+        (row) => row['book_id'] == bookId,
+      )) {
+        BrokerageSettlementIntegrity.validate(row, _accounts, _records);
+      }
       await setSyncInitializationState(bookId, 'ready');
       final cursorIndex = _syncCursors.indexWhere(
         (item) => item['book_id'] == bookId,
@@ -2609,6 +2727,7 @@ class LocalStore {
         _transferLinks,
         _importReviewSessions,
         _importReviewDrafts,
+        _brokerageSettlements,
         _assetMarketPrices,
         _syncOutbox,
         _syncConflicts,
@@ -2788,6 +2907,7 @@ class LocalStore {
         'monthly_category_budgets' => _monthlyCategoryBudgets,
         'transaction_import_rules' => _transactionImportRules,
         'transfer_links' => _transferLinks,
+        'brokerage_settlements' => _brokerageSettlements,
         'import_review_sessions' => _importReviewSessions,
         'import_review_drafts' => _importReviewDrafts,
         _ => throw ArgumentError.value(entityType, 'entityType'),

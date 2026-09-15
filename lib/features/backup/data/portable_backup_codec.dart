@@ -42,7 +42,7 @@ class PortableBackupCodec {
       1 => portableBackupV1EntityKeys,
       2 => portableBackupV2EntityKeys,
       3 => portableBackupV3EntityKeys,
-      4 => portableBackupV4EntityKeys,
+      4 || 5 || 6 || 7 => portableBackupV4EntityKeys,
       _ => portableBackupEntityKeys,
     };
     final encodedSnapshot = <String, List<Map<String, Object?>>>{
@@ -224,7 +224,7 @@ class PortableBackupCodec {
         1 => portableBackupV1EntityKeys,
         2 => portableBackupV2EntityKeys,
         3 => portableBackupV3EntityKeys,
-        4 => portableBackupV4EntityKeys,
+        4 || 5 || 6 || 7 => portableBackupV4EntityKeys,
         _ => portableBackupEntityKeys,
       };
       for (final key in encodedKeys) {
@@ -239,6 +239,7 @@ class PortableBackupCodec {
       snapshot.putIfAbsent('budgets', () => const []);
       snapshot.putIfAbsent('transaction_import_rules', () => const []);
       snapshot.putIfAbsent('transfer_links', () => const []);
+      snapshot.putIfAbsent('brokerage_settlements', () => const []);
       if (manifest.formatVersion < 5) {
         for (final transaction in snapshot['transactions'] ?? const []) {
           transaction['category_id'] = null;

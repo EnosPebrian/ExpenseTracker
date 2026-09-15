@@ -283,7 +283,7 @@ void main() {
     ]);
     expect(preview.instrumentsToCreate, 0);
     expect(preview.drafts.every((d) => !d.requiresInstrument), isTrue);
-    expect(preview.canCommit, isFalse);
+    expect(preview.canCommit, isTrue);
     final repo = RecordingRepository();
     expect(
       () => BrokerageImportPosting.materialize(
@@ -298,19 +298,17 @@ void main() {
       ),
       throwsStateError,
     );
-    await expectLater(
-      BrokerageImportCommitService(repository: repo).commit(
-        preview: preview,
-        bookId: 'book',
-        memberId: null,
-        brokerageAccount: broker,
-        counterpartyAccount: cash,
-        existingInstruments: const [],
-        existingTransactions: const [],
-      ),
-      throwsStateError,
+    await BrokerageImportCommitService(repository: repo).commit(
+      preview: preview,
+      bookId: 'book',
+      memberId: null,
+      brokerageAccount: broker,
+      counterpartyAccount: cash,
+      existingInstruments: const [],
+      existingTransactions: const [],
     );
-    expect(repo.calls, 0);
+    expect(repo.calls, 1);
+    expect(repo.transactions, isEmpty);
     expect(
       AssetPortfolioCalculator.calculate(
         transactions: repo.transactions,
@@ -329,6 +327,7 @@ class RecordingRepository implements InvestmentImportAtomicRepository {
     required List<Transaction> transactions,
     required List<AssetDefinition> assetDefinitionCreations,
     required List<InternalTransferLink> transferLinks,
+    List<Map<String, Object?>> settlements = const [],
   }) async {
     calls++;
     this.transactions = transactions;

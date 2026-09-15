@@ -32,6 +32,7 @@ class InitialSyncBackupRecoveryReader implements BackupRecoveryRemoteReader {
       'projects': [],
       'transactions': [],
       'transfer_links': [],
+      'brokerage_settlements': [],
       'asset_definitions': [],
       'budgets': [],
       'transaction_import_rules': [],

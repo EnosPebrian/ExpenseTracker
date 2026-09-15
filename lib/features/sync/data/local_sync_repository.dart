@@ -116,7 +116,8 @@ class LocalSyncRepository implements SyncRepository, SyncConflictRepository {
         changed.contains('relation_type')) {
       return SyncConflictType.linkedTransactionConflict;
     }
-    if (operation.entityType == 'transfer_links') {
+    if (operation.entityType == 'transfer_links' ||
+        operation.entityType == 'brokerage_settlements') {
       return SyncConflictType.linkedTransactionConflict;
     }
     if (operation.entityType == 'transactions' &&

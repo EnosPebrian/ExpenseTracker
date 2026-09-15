@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../features/investments/domain/entities/brokerage_settlement.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/database/local_store.dart';
@@ -275,6 +276,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   );
   late final BrokerageImportController brokerageImportController =
       BrokerageImportController(
+        loadSettlements: () async => (await store.getBrokerageSettlements())
+            .map(BrokerageSettlement.fromRecord)
+            .toList(),
+        saveSettlement: (settlement, expectedVersion) =>
+            store.reconcileBrokerageSettlement(
+              settlement.toRecord(),
+              expectedVersion: expectedVersion,
+            ),
+        loadSettlementIds: () async => (await store.getBrokerageSettlements(
+          includeDeleted: true,
+        )).map((row) => row['id'] as String).toSet(),
         pickFile: TransactionImportFileService().pick,
         commitService: BrokerageImportCommitService(
           repository: brokerageTransactionRepository,

@@ -10,6 +10,7 @@ import '../../../transactions/domain/import/transaction_import_models.dart';
 import '../../domain/import/brokerage_import_commit_service.dart';
 import '../../domain/import/brokerage_import_models.dart';
 import '../../domain/import/brokerage_import_planner.dart';
+import '../../domain/entities/brokerage_settlement.dart';
 
 class BrokerageImportController extends ChangeNotifier {
   BrokerageImportController({
@@ -22,6 +23,9 @@ class BrokerageImportController extends ChangeNotifier {
     required this.onImported,
     this.parser = const CsvTransactionSourceParser(),
     this.planner = const BrokerageImportPlanner(),
+    this.loadSettlementIds,
+    this.loadSettlements,
+    this.saveSettlement,
   });
 
   final Future<SelectedCsvFile?> Function() pickFile;
@@ -33,6 +37,13 @@ class BrokerageImportController extends ChangeNotifier {
   final Future<void> Function() onImported;
   final CsvTransactionSourceParser parser;
   final BrokerageImportPlanner planner;
+  final Future<Set<String>> Function()? loadSettlementIds;
+  final Future<List<BrokerageSettlement>> Function()? loadSettlements;
+  final Future<void> Function(
+    BrokerageSettlement settlement,
+    int expectedVersion,
+  )?
+  saveSettlement;
 
   CsvParsedSource? source;
   BrokerageStatementMapping? mapping;
@@ -96,6 +107,7 @@ class BrokerageImportController extends ChangeNotifier {
     notifyListeners();
     try {
       preview = await planner.build(
+        existingSettlementIds: await loadSettlementIds?.call() ?? const {},
         source: currentSource,
         mapping: currentMapping,
         brokerageAccount: _brokerageAccount(),

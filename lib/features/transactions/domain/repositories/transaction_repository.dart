@@ -48,6 +48,7 @@ abstract interface class InvestmentImportAtomicRepository {
     required List<Transaction> transactions,
     required List<AssetDefinition> assetDefinitionCreations,
     required List<InternalTransferLink> transferLinks,
+    List<Map<String, Object?>> settlements = const [],
   });
 }
 

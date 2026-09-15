@@ -96,3 +96,11 @@ its own contract before implementation. The accepted next sequence is:
 Feature freeze resumes after BETA-08N1 engineering completion unless another
 explicit decision changes the roadmap. The resulting authoritative contract is
 `docs/BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md`.
+# Resolution 2026-09-15 — ARCH-20260914-01 settlement portion
+
+Owner/Lead Architect selected durable reconciliation evidence with zero
+independent financial effect. One-to-one, one-to-many and many-to-one reviewed
+links are permitted. Unmatched rows are valid imports. Underlying BUY/SELL
+identities and financial authority remain unchanged. Implemented in active
+PT-BETA-08N1-R3; verification pending. Interest is explicitly separate, not a
+Dividend alias. This supersedes the earlier settlement choice request below.

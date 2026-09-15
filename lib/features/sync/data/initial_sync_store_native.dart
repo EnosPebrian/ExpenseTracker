@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../../core/database/brokerage_settlement_integrity.dart';
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -364,6 +365,7 @@ class InitialSyncStoreAdapter {
       alreadyMatched = alreadyMatches;
       if (replaceExisting && !alreadyMatches) {
         for (final table in const [
+          'brokerage_settlements',
           'import_review_drafts',
           'import_review_sessions',
           'transfer_links',
@@ -842,6 +844,13 @@ class InitialSyncStoreAdapter {
       for (final row in rowsByType['transactions']!) row['id']: row,
     };
     final activeLegIds = <Object?>{};
+    for (final row in rowsByType['brokerage_settlements'] ?? const []) {
+      BrokerageSettlementIntegrity.validate(
+        row,
+        rowsByType['accounts']!,
+        rowsByType['transactions']!,
+      );
+    }
     for (final link in rowsByType['transfer_links']!) {
       final outgoing = transactionsById[link['outgoing_transaction_id']];
       final incoming = transactionsById[link['incoming_transaction_id']];

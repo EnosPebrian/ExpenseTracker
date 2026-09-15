@@ -8,11 +8,13 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-`PT-BETA-08N1-R2 — Trusted Brokerage Review Automation`
+`PT-BETA-08N1-R3 — Durable Settlement Reconciliation Evidence`
 
 ## Current state
 
-`BLOCKED_ARCHITECT` — date/instrument review validated; settlement/interest posting decision remains open.
+`IN_PROGRESS` — settlement semantics resolved by owner on 2026-09-15: durable
+reconciliation evidence only, with zero independent financial effect. Interest
+remains a separate repair. No hosted deployment is authorized in this work item.
 
 ## Latest pushed engineering baseline
 
@@ -81,10 +83,28 @@ remaining failures: 0
 
 ## Exact next action
 
+R3 implementation is preserved and undergoing validation. Starting main/origin:
+6dd013c283bece6a903bf9a9d7570d618bbec49e. SQLite 29, backup v8;
+new migration 20260915004307 remains UNDEPLOYED.
+Domain evidence tests 5/5, brokerage focused group 30/30, enhanced native/web
+persistence/migration/backup/remote-apply tests 3/3 passed. Earlier affected
+persistence/N0/Health Check group passed 34/34. Local clean Supabase replay
+passed, focused pgTAP 12/12 and full pgTAP 326/326 passed.
+Final focused brokerage/settlement group: 33/33 PASS. Analyzer: PASS after
+13 missing-braces style fixes, with no suppression or test weakening.
+Full Flutter suite: 1010/1010 PASS. Web, Windows debug and Android debug
+builds PASS (unchanged file_picker Kotlin compatibility warning).
+Local security advisor: no errors; two historical mutable-search-path warnings
+for prevent_book_id_change / prevent_book_identity_change (unchanged).
+Latest review explicitly prevents silently removing unavailable historical
+trade links; user must confirm removal or cancel. Changed Dart files formatted.
+Next: final diff check and validated Git completion. No hosted operation,
+commit or push yet. Owner acceptance remains NOT RUN.
+
 Date/instrument review changes are published under the owner's 2026-09-14
 commit/push instruction. This documentation-only follow-up records the verified
-implementation push and clean post-push status. Await resolution of settlement and
-Interest posting in ARCH-20260914-01; do not reinterpret these
+implementation push and clean post-push status. Settlement semantics are resolved;
+Interest remains separate in ARCH-20260914-01; do not reinterpret these
 labels as trades, dividends or fees. Owner runtime acceptance remains NOT RUN.
 
 ## PT-BETA-08N-RC rollout result

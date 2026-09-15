@@ -3,6 +3,20 @@
 **Status:** PENDING / NOT RUN
 **Hosted schema:** DEPLOYED through `20260910054452`
 
+## Settlement repair acceptance — NOT RUN
+
+Requires the validated settlement client and separately authorized migration
+rollout; the settlement migration is currently UNDEPLOYED.
+
+| Setup | Action | Expected result | Result |
+| --- | --- | --- | --- |
+| Windows, disposable RDN CSV with BUY_SETTLEMENT and SELL_SETTLEMENT | Analyze and import with no instrument or matching trade | Ready unmatched evidence; no “choose Buy/Sell” error; no financial totals change | [ ] PASS [ ] FAIL |
+| Same file/account | Reimport exact CSV | Already present; zero extra evidence, transactions or sync mutations | [ ] PASS [ ] FAIL |
+| Evidence plus compatible BUY/SELL trades | Open Settlement evidence; review one-to-many and many-to-one links explicitly | Reconciled state; original trade IDs/values and all totals unchanged | [ ] PASS [ ] FAIL |
+| Several compatible candidates | Open review without confirming | Suggestions do not auto-confirm; unmatched remains valid | [ ] PASS [ ] FAIL |
+| Windows/Android offline | Import, close/reopen, then reconnect after authorized schema rollout | Evidence persists and syncs without duplicate financial effect | [ ] PASS [ ] FAIL |
+| Current encrypted backup | Backup, restore and clone | Evidence/source fields retained; clone account/trade links remapped | [ ] PASS [ ] FAIL |
+
 Run this matrix only with disposable brokerage data after creating a current
 encrypted backup. Use the same linked household on Windows and Android, with
 both authorized members signed in. Record evidence without exposing account

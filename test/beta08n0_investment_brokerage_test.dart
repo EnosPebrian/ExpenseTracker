@@ -95,7 +95,7 @@ void main() {
     await store.initialize();
     addTearDown(store.close);
     expect(await store.getSchemaVersion(), native.LocalStore.schemaVersion);
-    expect(native.LocalStore.schemaVersion, 28);
+    expect(native.LocalStore.schemaVersion, 29);
     final columns = (await store.db.rawQuery(
       'PRAGMA table_info(transactions)',
     )).map((row) => row['name']).toSet();
@@ -406,7 +406,11 @@ void main() {
         _brokerageTrade(bookId: 'book-backup').toRecord(),
       ];
       final codec = PortableBackupCodec(databaseSchemaVersion: 28);
-      final v7 = await codec.encode(snapshot: snapshot, password: 'password');
+      final v7 = await codec.encode(
+        snapshot: snapshot,
+        password: 'password',
+        formatVersion: 7,
+      );
       expect(v7.manifest.formatVersion, 7);
       final decoded = await codec.decode(v7.bytes, 'password');
       expect(

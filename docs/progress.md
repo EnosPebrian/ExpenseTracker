@@ -1,5 +1,16 @@
 # Pilgrim Tracker Progress
 
+## Settlement Reconciliation Evidence — 2026-09-15
+
+R3 implements the approved non-financial settlement contract: durable unmatched
+or explicitly reconciled evidence, many-to-many trade references, no independent
+financial effect, atomic CSV persistence and exact source identity protection.
+SQLite 29 / backup v8 extend native/web, sync, recovery and read-only diagnostics.
+Focused Flutter 33/33, full 1010/1010, analyzer, Web/Windows/Android debug builds,
+local replay and full pgTAP 326/326 passed. Git finalization pending.
+Migration 20260915004307 remains UNDEPLOYED; owner acceptance NOT RUN.
+Interest remains separate and is not treated as Dividend.
+
 ## Trusted Brokerage Review Automation — 2026-09-14
 
 Implemented whole-column date detection (ISO preference, unambiguous day/month

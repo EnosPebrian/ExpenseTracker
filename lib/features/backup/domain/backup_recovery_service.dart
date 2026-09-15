@@ -1,4 +1,5 @@
 import '../../transactions/domain/services/transaction_duplicate_detector.dart';
+import 'dart:convert';
 import '../../../core/master_data/system_category.dart';
 import 'backup_models.dart';
 import 'backup_recovery_models.dart';
@@ -45,6 +46,7 @@ class BackupRecoveryService {
     'transaction_import_rules',
     'transactions',
     'transfer_links',
+    'brokerage_settlements',
   };
 
   Future<BackupRecoveryPreview> analyze({
@@ -528,6 +530,13 @@ class BackupRecoveryService {
         require('projects', candidate.record['project_id']);
         require('asset_definitions', candidate.record['asset_definition_id']);
         require('transactions', candidate.record['related_transaction_id']);
+      } else if (candidate.entityType == 'brokerage_settlements') {
+        require('accounts', candidate.record['brokerage_account_id']);
+        for (final id
+            in jsonDecode(candidate.record['trade_ids_json'] as String)
+                as List) {
+          require('transactions', id);
+        }
       } else if (candidate.entityType == 'transfer_links') {
         require('transactions', candidate.record['outgoing_transaction_id']);
         require('transactions', candidate.record['incoming_transaction_id']);

@@ -147,6 +147,21 @@ Record in `docs/ENGINEERING_HANDOFF.md`:
 
 ## ACTIVE
 
+### PT-BETA-08N1-R3 — Durable Settlement Reconciliation Evidence
+
+**State:** IN_PROGRESS
+**Authority:** Lead Architect / owner settlement decision, 2026-09-15.
+
+BUY_SETTLEMENT and SELL_SETTLEMENT are reviewed, durable non-financial evidence.
+Preserve source identity/date/amount/type/reference/note. Support unmatched and
+explicitly reconciled evidence with many-to-many trade relationships. Never
+post cash, holdings, basis, P&L, income/expense, budget, net-worth or Tithe effects.
+BUY/SELL stay authoritative. Preserve local-first atomicity, duplicate protection,
+native/web persistence, sync and recovery compatibility. No hosted deployment.
+Interest remains a separate real-activity repair, never a dividend alias.
+Validate focused regressions, analyzer, full Flutter and applicable local SQL gates
+before Git publication; owner runtime acceptance remains NOT RUN.
+
 ### PT-BETA-08N1-R2 — Trusted Brokerage Review Automation
 
 **State:** BLOCKED_ARCHITECT (settlement/interest posting only)

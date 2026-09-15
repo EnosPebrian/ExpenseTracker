@@ -8,6 +8,7 @@ import '../../../transactions/domain/import/transaction_import_models.dart';
 import '../../domain/import/brokerage_import_models.dart';
 import '../../domain/import/brokerage_import_planner.dart';
 import '../controllers/brokerage_import_controller.dart';
+import 'brokerage_settlements_screen.dart';
 
 class BrokerageImportScreen extends StatefulWidget {
   const BrokerageImportScreen({
@@ -81,7 +82,23 @@ class _BrokerageImportScreenState extends State<BrokerageImportScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Import brokerage statement')),
+    appBar: AppBar(
+      title: const Text('Import brokerage statement'),
+      actions: [
+        if (widget.controller.loadSettlements != null &&
+            widget.controller.saveSettlement != null)
+          IconButton(
+            tooltip: 'Settlement evidence',
+            icon: const Icon(Icons.fact_check_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) =>
+                    BrokerageSettlementsScreen(controller: widget.controller),
+              ),
+            ),
+          ),
+      ],
+    ),
     body: AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
@@ -637,28 +654,33 @@ class _DraftCard extends StatelessWidget {
                 ),
               ],
             ),
-            DropdownButtonFormField<BrokerageActivityType>(
-              key: Key('brokerage-row-${draft.sourceRowNumber}-activity'),
-              initialValue: draft.activityType,
-              decoration: InputDecoration(
-                labelText: draft.activityType == null
-                    ? 'Activity · UNRESOLVED (${draft.rawActivity})'
-                    : 'Activity',
+            if (draft.isSettlement)
+              Text(
+                '${draft.rawActivity} · Unmatched evidence · No financial effect',
+              )
+            else
+              DropdownButtonFormField<BrokerageActivityType>(
+                key: Key('brokerage-row-${draft.sourceRowNumber}-activity'),
+                initialValue: draft.activityType,
+                decoration: InputDecoration(
+                  labelText: draft.activityType == null
+                      ? 'Activity · UNRESOLVED (${draft.rawActivity})'
+                      : 'Activity',
+                ),
+                items: [
+                  for (final value in BrokerageActivityType.values)
+                    DropdownMenuItem(value: value, child: Text(value.label)),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    controller.resolveActivity(
+                      draft.sourceRowNumber,
+                      value,
+                      bookId: bookId,
+                    );
+                  }
+                },
               ),
-              items: [
-                for (final value in BrokerageActivityType.values)
-                  DropdownMenuItem(value: value, child: Text(value.label)),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  controller.resolveActivity(
-                    draft.sourceRowNumber,
-                    value,
-                    bookId: bookId,
-                  );
-                }
-              },
-            ),
             if (draft.needsInstrumentResolution) ...[
               const SizedBox(height: 8),
               Text(

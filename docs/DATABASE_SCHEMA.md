@@ -366,3 +366,14 @@ Migration `202608230001_beta08h_telegram_ingestion.sql` adds server-only
 SHA-256 byte digests, update IDs are unique, RLS exposes only authorized
 connection status, and privileged RPCs revalidate membership and insert
 existing unresolved Inbox rows. SQLite remains 25; backup remains v4.
+# Settlement evidence addition — 2026-09-15
+
+SQLite v29 adds `brokerage_settlements`, separate from financial transactions:
+stable event ID, household/brokerage account, statement date, settlement type,
+positive amount/currency, source fingerprint/row identity/row fingerprint,
+reference/note, reviewed trade-ID JSON set and ordinary lifecycle/version/sync
+metadata. Empty links mean unmatched; non-empty links mean reconciled. No unique
+constraint on individual trade IDs: the relationship is many-to-many. The
+source-identity tuple is unique. v28 rows and financial tables are unchanged.
+Supabase migration `20260915004307_brokerage_settlement_evidence.sql` is local
+only/UNDEPLOYED pending engineering verification and rollout authorization.
