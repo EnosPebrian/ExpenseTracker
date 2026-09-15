@@ -21,8 +21,8 @@ direction must agree. No guessed allocations or automatic financial adjustments.
 Interest is a separate real brokerage activity, not a dividend alias. Deposit and
 withdrawal remain canonical cash transfers; dividend, fee and tax are unchanged.
 
-Implementation and automated engineering verification: PASS; Git finalization
-pending. Owner acceptance:
+Implementation and automated engineering verification: PASS; implementation
+8ac408b pushed to origin/main. Owner acceptance:
 NOT RUN. Hosted deployment: NOT AUTHORIZED by this work item.
 
 Implementation uses `brokerage_settlements` separate from transactions. Its ID

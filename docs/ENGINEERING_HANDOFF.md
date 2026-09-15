@@ -12,17 +12,18 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current state
 
-`IN_PROGRESS` — settlement semantics resolved by owner on 2026-09-15: durable
-reconciliation evidence only, with zero independent financial effect. Interest
-remains a separate repair. No hosted deployment is authorized in this work item.
+`COMPLETE` — R3 implementation validated and pushed. Settlement evidence has
+zero independent financial effect. No READY engineering item remains. Interest
+accounting policy remains BLOCKED_ARCHITECT; hosted rollout and physical-device
+acceptance remain owner gates. No hosted deployment was performed.
 
 ## Latest pushed engineering baseline
 
 ```text
 branch: main
 remote: origin
-commit: b4f954db39a78045c2bd271386508283343086b1
-message: feat: automate trusted brokerage CSV review
+commit: 8ac408b155ae5e3d3db7dd71152e5fa4c067effb
+message: feat: preserve brokerage settlement reconciliation evidence
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -98,8 +99,11 @@ Local security advisor: no errors; two historical mutable-search-path warnings
 for prevent_book_id_change / prevent_book_identity_change (unchanged).
 Latest review explicitly prevents silently removing unavailable historical
 trade links; user must confirm removal or cancel. Changed Dart files formatted.
-Next: final diff check and validated Git completion. No hosted operation,
-commit or push yet. Owner acceptance remains NOT RUN.
+Implementation commit and normal push succeeded: 8ac408b155ae5e3d3db7dd71152e5fa4c067effb.
+HEAD == origin/main and clean worktree verified before this documentation update.
+Next: owner-authorized hosted rollout/runtime acceptance, or architect resolution
+of the separate Interest accounting policy. Do not invent another feature item.
+Owner acceptance remains NOT RUN. This follow-up records completion on 2026-09-16.
 
 Date/instrument review changes are published under the owner's 2026-09-14
 commit/push instruction. This documentation-only follow-up records the verified

@@ -149,7 +149,7 @@ Record in `docs/ENGINEERING_HANDOFF.md`:
 
 ### PT-BETA-08N1-R3 — Durable Settlement Reconciliation Evidence
 
-**State:** IN_PROGRESS
+**State:** COMPLETE
 **Authority:** Lead Architect / owner settlement decision, 2026-09-15.
 
 BUY_SETTLEMENT and SELL_SETTLEMENT are reviewed, durable non-financial evidence.
@@ -162,9 +162,14 @@ Interest remains a separate real-activity repair, never a dividend alias.
 Validate focused regressions, analyzer, full Flutter and applicable local SQL gates
 before Git publication; owner runtime acceptance remains NOT RUN.
 
+Validated and pushed: 8ac408b155ae5e3d3db7dd71152e5fa4c067effb.
+Focused Flutter 33/33; full 1010/1010; analyzer and Web/Windows/Android debug
+builds PASS. Local replay and pgTAP 326/326 PASS. SQLite 29, backup v8.
+Hosted migration remains UNDEPLOYED; owner acceptance NOT RUN.
+
 ### PT-BETA-08N1-R2 — Trusted Brokerage Review Automation
 
-**State:** BLOCKED_ARCHITECT (settlement/interest posting only)
+**State:** BLOCKED_ARCHITECT (Interest accounting policy only; settlement completed in R3)
 **Authority:** owner request, 2026-09-14, including normal commit/push.
 
 Implement whole-column date detection, nullable unresolved review dates,

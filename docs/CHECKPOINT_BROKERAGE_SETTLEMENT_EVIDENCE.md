@@ -1,6 +1,7 @@
 # Brokerage Settlement Evidence — 2026-09-15
 
-PT-BETA-08N1-R3 automated engineering verification PASS. Git finalization pending.
+PT-BETA-08N1-R3 Engineering PASS. Implementation 8ac408b155ae5e3d3db7dd71152e5fa4c067effb
+pushed to origin/main; clean implementation worktree verified on 2026-09-16.
 
 - Settlement rows are durable reconciliation evidence, never financial postings.
 - Reviewed links support many-to-many cardinality. Suggestions never auto-confirm.

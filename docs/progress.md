@@ -7,7 +7,8 @@ or explicitly reconciled evidence, many-to-many trade references, no independent
 financial effect, atomic CSV persistence and exact source identity protection.
 SQLite 29 / backup v8 extend native/web, sync, recovery and read-only diagnostics.
 Focused Flutter 33/33, full 1010/1010, analyzer, Web/Windows/Android debug builds,
-local replay and full pgTAP 326/326 passed. Git finalization pending.
+local replay and full pgTAP 326/326 passed. Implementation 8ac408b pushed to
+origin/main; completion handoff recorded 2026-09-16.
 Migration 20260915004307 remains UNDEPLOYED; owner acceptance NOT RUN.
 Interest remains separate and is not treated as Dividend.
 
