@@ -25,8 +25,8 @@ RUN, and no new product item is READY.
 ```text
 branch: main
 remote: origin
-commit: 1cd7543f0836e55f525b4fac4ec4039be31c8153
-message: feat: add brokerage interest activity
+commit: d1333361eb3502e0327b4a23673a16b6139fe3a5
+message: fix: harden settlement evidence delete ACL
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -35,7 +35,7 @@ post-push worktree: clean
 ## Latest completed engineering state
 
 ```text
-PT-BETA-08N1-R4 distinct Interest activity: ENGINEERING COMPLETE
+PT-BETA-08N-R5 settlement + Interest hosted rollout: ENGINEERING/HOSTED COMPLETE
 SQLite: 29
 backup format: v8
 focused Flutter: 123/123 PASS
