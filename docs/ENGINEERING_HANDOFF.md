@@ -23,8 +23,8 @@ active and no new product item is READY.
 ```text
 branch: main
 remote: origin
-commit: 8ac408b155ae5e3d3db7dd71152e5fa4c067effb
-message: feat: preserve brokerage settlement reconciliation evidence
+commit: 1cd7543f0836e55f525b4fac4ec4039be31c8153
+message: feat: add brokerage interest activity
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -159,6 +159,28 @@ post-push git status: clean
 ---
 
 ## Completed sprint records
+
+### PT-BETA-08N1-R4 — Distinct Brokerage Interest Activity
+
+```text
+work item: PT-BETA-08N1-R4
+verdict: COMPLETE
+root cause / implementation: added distinct positive instrument-free Interest across the existing brokerage transaction, import, cash, performance, persistence, sync, backup and Health Check authorities; zero/negative values preserve sign and block
+schema/version changes: SQLite 29 unchanged; backup v8 unchanged; one additive Supabase migration 20260916000331 created and remains UNDEPLOYED
+focused tests: 123/123 PASS
+full suite: 1014/1014 PASS
+analyzer: PASS
+builds: Web PASS; Windows debug PASS; Android debug APK PASS with unchanged non-blocking file_picker warning
+server/pgTAP: clean local replay PASS; focused 13/13 PASS; full 339/339 PASS across 17 files
+git diff --check: PASS
+owner acceptance status: PENDING / NOT RUN
+branch: main
+implementation commit: 1cd7543f0836e55f525b4fac4ec4039be31c8153
+push result: origin/main succeeded
+final git status: clean after implementation push; this durable-state record is the documentation follow-up
+remaining limitations: settlement and Interest migrations remain undeployed; owner runtime acceptance pending; historical local lint false positive in begin_initial_download remains
+next READY item: none; BLOCKED_OWNER under active feature freeze
+```
 
 ### PT-BETA-08N-UI-R1 — Investment / Brokerage UI Navigation Gap
 
