@@ -545,6 +545,10 @@ class _CurrencyCard extends StatelessWidget {
             value: _currencyMoney(summary.currencyCode, summary.dividendIncome),
           ),
           _Metric(
+            label: 'Interest income',
+            value: _currencyMoney(summary.currencyCode, summary.interestIncome),
+          ),
+          _Metric(
             label: 'Fees and tax',
             value: _currencyMoney(
               summary.currencyCode,

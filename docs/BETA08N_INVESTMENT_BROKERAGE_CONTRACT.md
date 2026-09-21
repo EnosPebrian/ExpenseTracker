@@ -26,11 +26,12 @@ combined.
 
 ## Authoritative economic events
 
-BETA-08N0 supports exactly:
+BETA-08N plus the bounded ARCH-20260914-01 repair support exactly:
 
 - `BUY`
 - `SELL`
 - `DIVIDEND`
+- `INTEREST`
 - `FEE`
 - `TAX`
 - `DEPOSIT`
@@ -74,6 +75,21 @@ and unrealized P&L is never cash income.
 A DIVIDEND increases brokerage cash, is investment income, and contributes to
 investment performance separately from trade proceeds. It does not
 automatically affect Tithe Due in BETA-08N.
+
+### INTEREST
+
+INTEREST is positive cash interest earned on brokerage/RDN cash. It increases
+brokerage cash and the separate investment Interest Income component exactly
+once. It is not an instrument activity, ordinary household income, a dividend,
+or realized trading gain. It changes no position quantity, cost basis, average
+cost, realized/unrealized trade P&L, budget, Project, or Tithe Due/Paid.
+
+Interest must be greater than zero and must not reference an instrument.
+Zero/negative broker interest is outside BETA-08N (it may represent financing
+or margin semantics) and remains a blocking review item without absolute-value
+coercion or silent Fee conversion. Withholding is recorded only when explicitly
+present as the separate TAX activity; Pilgrim does not calculate or fabricate
+it.
 
 ### FEE
 
@@ -134,6 +150,7 @@ Brokerage-account and household investment views expose separately:
 
 - realized gain/loss;
 - dividend income;
+- interest income;
 - investment fees/taxes;
 - unrealized gain/loss.
 
@@ -153,8 +170,8 @@ Investment activities do not participate in ordinary category budgets and are
 not Projects. Trading must not be routed through ordinary spending categories.
 
 BETA-08N does not change `TithePolicy`. BUY, SELL proceeds, realized/unrealized
-gain, dividends, deposits, withdrawals, brokerage fees, and tax have no new
-automatic Tithe Due effect. Any investment-specific Tithe policy needs a
+gain, dividends, interest, deposits, withdrawals, brokerage fees, and tax have
+no new automatic Tithe Due effect. Any investment-specific Tithe policy needs a
 separate owner/architect decision.
 
 ## Multi-currency

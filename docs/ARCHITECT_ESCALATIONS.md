@@ -6,30 +6,7 @@ Ordinary implementation questions do not belong here.
 
 ## Open escalations
 
-### ARCH-20260914-01 — Remaining Interest accounting policy
-
-**Work item:** PT-BETA-08N1-R2
-**State:** BLOCKED_ARCHITECT (posting behavior only)
-
-The owner requires no instrument for Interest, Buy Settlement and Sell
-Settlement, and no settlement effect on holdings or realized P&L. Those labels
-are not persisted activity types in the current eight-type ledger.
-
-Settlement decision is RESOLVED and implemented in R3. Interest is explicitly
-authorized as a distinct real activity, not Dividend. Remaining decision before
-that separate ledger repair: its household-income, budget and Tithe eligibility
-policy, plus whether negative interest is supported or must be rejected. These
-financial classifications are not defined by the settlement-only decision and
-must not be inferred from Dividend or Fee.
-
-Evidence: transaction_brokerage_metadata.dart defines eight types;
-brokerage_import_posting.dart materializes trade cash effects;
-BETA08N_INVESTMENT_BROKERAGE_CONTRACT.md restricts activity interpretation.
-
-Recommendation: retain reference-only settlements alongside actual trade
-records; define Interest distinctly in a separately reviewed ledger change.
-Date detection, staged instruments, review UX and their tests are independent
-and implemented. Settlement rows cannot be converted to holding-changing trades.
+None.
 
 ## Escalation template
 
@@ -67,6 +44,20 @@ List any safe independent work, or `none`.
 ```
 
 ## Resolved escalations
+
+### ARCH-20260914-01 — Settlement and Interest accounting
+
+**Resolved:** 2026-09-16
+**Decision:** Settlement is zero-effect reconciliation evidence; Interest is
+distinct positive brokerage cash investment income.
+**Affected work items:** PT-BETA-08N1-R3 and PT-BETA-08N1-R4
+
+The settlement portion was implemented in R3. The final Interest decision adds
+instrument-free positive Interest as a separate activity and performance
+component. It raises brokerage cash and net worth naturally, but changes no
+position/basis/trading P&L, ordinary income/expense, budget, Project or Tithe.
+Explicit TAX stays separate. Zero/negative Interest is unsupported, preserves
+its source sign in review, and blocks without Fee/Dividend coercion.
 
 ### ARCH-20260911-01 — Ordered hosted chain includes undeployed BETA-08M0
 

@@ -400,6 +400,20 @@ void main() {
             brokerageActivityType: BrokerageActivityType.dividend,
           ).toRecord(),
         );
+        records['transactions']!.add(
+          Transaction(
+            id: 'interest-a',
+            bookId: 'book-a',
+            title: 'Interest',
+            category: 'Investment',
+            account: brokerage.name,
+            date: DateTime(2026, 9, 1),
+            amount: 10000,
+            type: TransactionType.investment,
+            brokerageAccountId: brokerage.id,
+            brokerageActivityType: BrokerageActivityType.interest,
+          ).toRecord(),
+        );
         final before = records['transactions']!.length;
         final healthy = await _run(_replace(snapshot, records: records));
         expect(

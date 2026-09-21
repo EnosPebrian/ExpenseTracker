@@ -15,6 +15,7 @@ import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_imp
 import 'package:pilgrim_tracker/features/investments/presentation/controllers/brokerage_import_controller.dart';
 import 'package:pilgrim_tracker/features/investments/presentation/screens/brokerage_import_screen.dart';
 import 'package:pilgrim_tracker/features/master_data/domain/entities/account.dart';
+import 'package:pilgrim_tracker/features/master_data/domain/services/account_balance_calculator.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/internal_transfer_link.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction_brokerage_metadata.dart';
@@ -71,13 +72,14 @@ void main() {
         tax: '2',
       ),
       _row(4, '2026-01-03', 'DIVIDEND', symbol: 'AAPL', gross: '20'),
-      _row(5, '2026-01-04', 'FEE', gross: '5'),
-      _row(6, '2026-01-05', 'TAX', gross: '3'),
-      _row(7, '2026-01-06', 'DEPOSIT', gross: '500'),
-      _row(8, '2026-01-07', 'WITHDRAWAL', gross: '50'),
+      _row(5, '2026-01-04', 'INTEREST', gross: '10'),
+      _row(6, '2026-01-05', 'FEE', gross: '5'),
+      _row(7, '2026-01-06', 'TAX', gross: '3'),
+      _row(8, '2026-01-07', 'DEPOSIT', gross: '500'),
+      _row(9, '2026-01-08', 'WITHDRAWAL', gross: '50'),
       _row(
-        9,
-        '2026-01-08',
+        10,
+        '2026-01-09',
         'SPLIT',
         symbol: 'AAPL',
         numerator: '2',
@@ -105,10 +107,105 @@ void main() {
         predicate<BrokerageImportDraft>((draft) => !draft.hasBlockingIssue),
       ),
     );
-    expect(preview.readyCount, 8);
+    expect(preview.readyCount, 9);
+    final interest = preview.drafts[3];
+    expect(interest.activityType, BrokerageActivityType.interest);
+    expect(
+      interest.instrumentResolution,
+      BrokerageInstrumentResolution.notRequired,
+    );
+    expect(interest.instrumentId, isNull);
+    expect(interest.grossAmount, 1000);
     expect(preview.drafts[1].brokerRealizedPnl, isNull);
     expect(preview.drafts[1].issues, isEmpty);
   });
+
+  test(
+    'interest preserves invalid sign and posts separately from explicit tax',
+    () async {
+      final negative = (await _plan(
+        planner,
+        _source([_row(2, '2026-01-01', 'INTEREST', gross: '-10')]),
+        broker,
+        cash,
+        [instrument],
+      )).drafts.single;
+      expect(negative.activityType, BrokerageActivityType.interest);
+      expect(negative.grossAmount, -1000);
+      expect(negative.hasBlockingIssue, isTrue);
+      expect(negative.canCommit, isFalse);
+      expect(
+        negative.issues.map((issue) => issue.message),
+        contains('A positive gross amount is required.'),
+      );
+
+      final preview = await _plan(
+        planner,
+        _source([
+          _row(
+            2,
+            '2026-01-01',
+            'INTEREST',
+            gross: '100',
+            tax: '20',
+            reference: 'rdn-interest',
+          ),
+        ]),
+        broker,
+        cash,
+        [instrument],
+      );
+      final repository = _RecordingRepository();
+      final result = await BrokerageImportCommitService(repository: repository)
+          .commit(
+            preview: preview,
+            bookId: 'book',
+            memberId: 'member',
+            brokerageAccount: broker,
+            counterpartyAccount: cash,
+            existingInstruments: [instrument],
+            existingTransactions: const [],
+          );
+      expect(result.transactionsCreated, 2);
+      final interest = repository.transactions.singleWhere(
+        (transaction) =>
+            transaction.brokerageActivityType == BrokerageActivityType.interest,
+      );
+      final tax = repository.transactions.singleWhere(
+        (transaction) =>
+            transaction.brokerageActivityType == BrokerageActivityType.tax,
+      );
+      expect(interest.amount, 10000);
+      expect(interest.assetDefinitionId, isNull);
+      expect(interest.assetName, isNull);
+      expect(interest.assetSymbol, isNull);
+      expect(tax.amount, 2000);
+      expect(interest.id, preview.drafts.single.eventId);
+      expect(
+        AccountBalanceCalculator.calculate(
+          account: broker,
+          transactions: repository.transactions,
+        ),
+        8000,
+      );
+
+      final reimport = await planner.build(
+        source: preview.source,
+        mapping: canonicalBrokerageMappingFor(preview.source.headers)!,
+        brokerageAccount: broker,
+        activeBookId: 'book',
+        instruments: [instrument],
+        existingTransactions: repository.transactions,
+        existingTransferLinks: const [],
+        counterpartyAccount: cash,
+      );
+      expect(
+        reimport.drafts.single.classification,
+        BrokerageImportClassification.alreadyImported,
+      );
+      expect(reimport.readyCount, 0);
+    },
+  );
 
   test('Pilgrim human-readable brokerage headers map every source field', () {
     const headers = [

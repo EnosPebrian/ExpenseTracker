@@ -354,6 +354,7 @@ class BrokerageImportPlanner {
       effectiveCurrency,
       mapping,
       parseIssues,
+      signed: activity == BrokerageActivityType.interest,
     );
     var fee = _money(
       optional(mapping.feeColumn),
@@ -412,7 +413,8 @@ class BrokerageImportPlanner {
               instrument.normalizedCurrencyCode == effectiveCurrency,
         )
         .toList(growable: false);
-    final matchedInstrument = exactMatches.length == 1
+    final matchedInstrument =
+        activity != BrokerageActivityType.interest && exactMatches.length == 1
         ? exactMatches.single
         : null;
     return _finish(
@@ -429,7 +431,9 @@ class BrokerageImportPlanner {
         currencyCode: effectiveCurrency,
         quantity: quantity,
         executionPrice: executionPrice,
-        grossAmount: gross.abs(),
+        grossAmount: activity == BrokerageActivityType.interest
+            ? gross
+            : gross.abs(),
         feeAmount: fee.abs(),
         taxAmount: tax.abs(),
         splitNumerator: numerator,
@@ -437,7 +441,9 @@ class BrokerageImportPlanner {
         reference: optional(mapping.referenceColumn).trim(),
         note: optional(mapping.noteColumn).trim(),
         brokerRealizedPnl: brokerPnl,
-        instrumentResolution: matchedInstrument == null
+        instrumentResolution: activity == BrokerageActivityType.interest
+            ? BrokerageInstrumentResolution.notRequired
+            : matchedInstrument == null
             ? sourceInstrument.isEmpty
                   ? BrokerageInstrumentResolution.notRequired
                   : BrokerageInstrumentResolution.unresolved

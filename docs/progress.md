@@ -1,5 +1,16 @@
 # Pilgrim Tracker Progress
 
+## Distinct Brokerage Interest repair — 2026-09-16
+
+R4 implements ARCH-20260914-01: exact `INTEREST` import/manual activity is
+positive instrument-free brokerage cash income, reported separately from
+Dividend and trading P&L. It affects no ordinary income/expense, budget,
+Project, position/basis, or Tithe Due/Paid. Explicit TAX remains separate;
+zero/negative Interest blocks without absolute-value or Fee conversion.
+SQLite remains 29 and backup remains v8. New additive Supabase migration
+`20260916000331` is locally verified and remains UNDEPLOYED. Owner acceptance
+remains **PENDING / NOT RUN**; feature freeze remains active.
+
 ## Settlement Reconciliation Evidence — 2026-09-15
 
 R3 implements the approved non-financial settlement contract: durable unmatched

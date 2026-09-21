@@ -7,6 +7,7 @@ class BrokerageAccountPerformance {
     required this.cashBalance,
     required this.portfolio,
     required this.dividendIncome,
+    required this.interestIncome,
     required this.investmentCosts,
   });
 
@@ -14,10 +15,14 @@ class BrokerageAccountPerformance {
   final int cashBalance;
   final AssetPortfolio portfolio;
   final int dividendIncome;
+  final int interestIncome;
   final int investmentCosts;
 
   int get realizedPerformance =>
-      portfolio.totalRealizedGain + dividendIncome - investmentCosts;
+      portfolio.totalRealizedGain +
+      dividendIncome +
+      interestIncome -
+      investmentCosts;
   int get netWorth => cashBalance + portfolio.totalMarketValue;
 }
 
@@ -30,6 +35,7 @@ class BrokerageCurrencyPerformance {
     required this.realizedGain,
     required this.unrealizedGain,
     required this.dividendIncome,
+    required this.interestIncome,
     required this.investmentCosts,
   });
 
@@ -40,10 +46,11 @@ class BrokerageCurrencyPerformance {
   final int realizedGain;
   final int unrealizedGain;
   final int dividendIncome;
+  final int interestIncome;
   final int investmentCosts;
 
   int get realizedPerformance =>
-      realizedGain + dividendIncome - investmentCosts;
+      realizedGain + dividendIncome + interestIncome - investmentCosts;
   int get netWorth => cashBalance + positionMarketValue;
 }
 

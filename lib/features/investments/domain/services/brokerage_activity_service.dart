@@ -92,13 +92,19 @@ class BrokerageActivityService {
     String deviceId = 'local-device',
   }) async {
     if (activityType != BrokerageActivityType.dividend &&
+        activityType != BrokerageActivityType.interest &&
         activityType != BrokerageActivityType.fee &&
         activityType != BrokerageActivityType.tax) {
       throw TransactionValidationException(
-        'Choose dividend, fee, or tax for an investment cash activity.',
+        'Choose dividend, interest, fee, or tax for an investment cash activity.',
       );
     }
     _validateBrokerageAccount(bookId, brokerageAccount);
+    if (activityType == BrokerageActivityType.interest && instrument != null) {
+      throw TransactionValidationException(
+        'Brokerage interest is cash income and cannot reference an instrument.',
+      );
+    }
     if (instrument != null) {
       _validateAccountAndInstrument(
         bookId: bookId,

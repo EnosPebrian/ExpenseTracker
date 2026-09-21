@@ -8,14 +8,15 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-`PT-BETA-08N1-R3 — Durable Settlement Reconciliation Evidence`
+None — accepted engineering roadmap is frozen; owner action remains pending.
 
 ## Current state
 
-`COMPLETE` — R3 implementation validated and pushed. Settlement evidence has
-zero independent financial effect. No READY engineering item remains. Interest
-accounting policy remains BLOCKED_ARCHITECT; hosted rollout and physical-device
-acceptance remain owner gates. No hosted deployment was performed.
+`BLOCKED_OWNER` — PT-BETA-08N1-R4 engineering is complete and validated.
+Migrations `20260915004307` (settlement evidence) and `20260916000331`
+(Interest) remain UNDEPLOYED pending separate hosted-rollout authorization.
+BETA-08N owner runtime acceptance is PENDING / NOT RUN. Feature freeze remains
+active and no new product item is READY.
 
 ## Latest pushed engineering baseline
 
@@ -32,6 +33,21 @@ post-push worktree: clean
 ## Latest completed engineering state
 
 ```text
+PT-BETA-08N1-R4 distinct Interest activity: ENGINEERING COMPLETE
+SQLite: 29
+backup format: v8
+focused Flutter: 123/123 PASS
+full Flutter suite: 1014/1014 PASS
+analyzer: PASS
+builds: Web, Windows debug, Android debug APK PASS
+local Supabase clean replay: PASS
+focused pgTAP: 13/13 PASS
+full pgTAP: 339/339 PASS across 17 files
+git diff --check: PASS
+Supabase migration 20260916000331: UNDEPLOYED
+hosted changes: none
+owner acceptance: PENDING / NOT RUN
+feature freeze: active
 BETA-08N1-R2 date/instrument review: VALIDATED / PUSHED
 focused Flutter: 25/25 PASS
 full Flutter suite: 1002/1002 PASS
@@ -83,6 +99,13 @@ remaining failures: 0
 ```
 
 ## Exact next action
+
+Obtain explicit authorization before deploying the ordered undeployed BETA-08N
+settlement/Interest migration chain. Then run the documented Windows and Android
+owner-acceptance matrix. Do not mark acceptance complete without owner execution
+and do not create a new feature item while the feature freeze is active.
+
+R3 completion context:
 
 R3 implementation is preserved and undergoing validation. Starting main/origin:
 6dd013c283bece6a903bf9a9d7570d618bbec49e. SQLite 29, backup v8;

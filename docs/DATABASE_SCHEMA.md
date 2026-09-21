@@ -1,11 +1,25 @@
 # Pilgrim Tracker Database and Persistence Schema
 
+## BETA-08N Interest activity repair
+
+Current SQLite schema version: **29**. Current encrypted backup format: **v8**.
+Interest reuses the existing text `transactions.brokerage_activity_type` field,
+so native SQLite, web storage, backup layout, sync allowlists, and financial
+identity require no schema/version bump. Valid Interest is a positive
+`investment` transaction attributed to a same-household brokerage account with
+no `asset_definition_id` or asset action.
+
+Supabase migration `20260916000331_beta08n_interest_activity.sql` additively
+extends the existing activity check and authoritative trigger validation. It
+adds no table/column/row, preserves RLS/privileges, and is **UNDEPLOYED**.
+
 ## BETA-08N1 schema impact
 
-BETA-08N1 adds no persisted review entity and no SQLite or Supabase schema
+BETA-08N1 originally added no persisted review entity and no SQLite or Supabase schema
 change. Committed statement rows use the existing BETA-08N0 transaction
 brokerage fields, `asset_definitions`, canonical `transfer_links`, and ordinary
-`sync_outbox`. SQLite remains v28 and encrypted backup remains v7.
+`sync_outbox`. The later settlement and Interest repairs leave the current
+versions at SQLite v29 and encrypted backup v8.
 
 ## BETA-08N0 brokerage attribution
 

@@ -1,5 +1,15 @@
 # Pilgrim Tracker Incremental Sync Protocol
 
+## BETA-08N Interest activity
+
+Interest uses the existing transaction/outbox/change-feed/bootstrap protocol.
+`brokerage_activity_type = interest` is paired with the existing brokerage
+account identity; it is positive `investment` cash activity with no instrument.
+Local native/web validation, remote apply, conflict payloads, initial sync and
+encrypted recovery retain the same stable transaction identity. No sync entity,
+cursor, RPC, or allowlist was added. The additive server constraint/trigger
+migration `20260916000331_beta08n_interest_activity.sql` is **UNDEPLOYED**.
+
 ## BETA-08N1 statement imports
 
 Brokerage statement review is local and creates no remote authority. One atomic

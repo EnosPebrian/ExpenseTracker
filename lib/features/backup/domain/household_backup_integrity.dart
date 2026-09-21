@@ -805,6 +805,11 @@ class HouseholdBackupIntegrity {
       BrokerageActivityType.dividend ||
       BrokerageActivityType.fee ||
       BrokerageActivityType.tax => type == 'investment' && (amount ?? 0) > 0,
+      BrokerageActivityType.interest =>
+        type == 'investment' &&
+            (amount ?? 0) > 0 &&
+            definitionId == null &&
+            action == null,
       BrokerageActivityType.deposit => type == 'income' && (amount ?? 0) > 0,
       BrokerageActivityType.withdrawal =>
         type == 'expense' && (amount ?? 0) > 0,

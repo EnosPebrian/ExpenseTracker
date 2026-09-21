@@ -2790,6 +2790,7 @@ class LocalStore {
       'buy',
       'sell',
       'dividend',
+      'interest',
       'fee',
       'tax',
       'deposit',

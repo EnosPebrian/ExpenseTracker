@@ -19,6 +19,34 @@ Codex must:
 
 ## RECENTLY COMPLETED
 
+### PT-BETA-08N1-R4 — Distinct Brokerage Interest Activity
+
+**Priority:** P0
+**State:** COMPLETE
+**Authority:** ARCH-20260914-01 Interest portion, 2026-09-16
+**Scope:** bounded BETA-08N owner-acceptance repair; feature freeze remains active
+
+Implement `INTEREST` as positive brokerage/RDN cash interest: a distinct
+investment activity with no instrument, no asset/cost-basis/trading-P&L effect,
+no ordinary household income/expense, no budget/Project/Tithe effect, and a
+separate Interest Income performance component. Negative or zero Interest stays
+reviewable but blocks commit without absolute-value coercion or Fee conversion.
+Preserve deterministic import identity, exact reimport, local-first persistence,
+sync/bootstrap, backup/recovery and settlement evidence. Add only the minimum
+Supabase constraint/validation migration; do not deploy hosted changes.
+
+Validate focused Interest, N0/N1, settlement, performance, Tithe, budget/report,
+sync/bootstrap, backup/restore and Health Check regressions, then analyzer, full
+Flutter suite, Web/Windows/Android debug builds, local replay/pgTAP, diff review,
+commit and normal push. Owner acceptance remains NOT RUN.
+
+Engineering validation completed: focused Flutter 123/123, full Flutter
+1014/1014, analyzer, Web/Windows/Android debug builds, clean local Supabase
+replay, focused pgTAP 13/13, full pgTAP 339/339, and diff checks passed. SQLite
+remains 29 and backup remains v8. Migration `20260916000331` is locally verified
+and remains UNDEPLOYED. Owner acceptance remains PENDING / NOT RUN and feature
+freeze remains active.
+
 ### PT-BETA-08M-R1 — Category-commit compatibility repair
 
 **Priority:** P0

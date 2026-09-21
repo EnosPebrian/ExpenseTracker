@@ -85,6 +85,7 @@ class BrokerageController extends ChangeNotifier {
             reference: request.reference,
           );
         case BrokerageActivityType.dividend:
+        case BrokerageActivityType.interest:
         case BrokerageActivityType.fee:
         case BrokerageActivityType.tax:
           await service.recordCashActivity(
@@ -94,7 +95,9 @@ class BrokerageController extends ChangeNotifier {
             activityType: request.activityType,
             date: request.date,
             amount: request.amount,
-            instrument: request.instrumentId == null
+            instrument:
+                request.activityType == BrokerageActivityType.interest ||
+                    request.instrumentId == null
                 ? null
                 : _instrument(request.instrumentId),
             note: request.note,

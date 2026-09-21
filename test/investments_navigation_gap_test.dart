@@ -184,7 +184,8 @@ void main() {
     await _selectTab(tester, 'performance');
     expect(find.textContaining('Currencies remain separate'), findsOneWidget);
     expect(find.text('Invested cost: IDR 1.000.000'), findsOneWidget);
-    expect(find.text('Realized performance: IDR 70.000'), findsOneWidget);
+    expect(find.text('Realized performance: IDR 80.000'), findsOneWidget);
+    expect(find.text('Interest income: IDR 10.000'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -320,6 +321,7 @@ class _InvestmentFixture {
       cashBalance: 300000,
       portfolio: portfolio,
       dividendIncome: 25000,
+      interestIncome: 10000,
       investmentCosts: 5000,
     );
     const currency = BrokerageCurrencyPerformance(
@@ -330,6 +332,7 @@ class _InvestmentFixture {
       realizedGain: 50000,
       unrealizedGain: 200000,
       dividendIncome: 25000,
+      interestIncome: 10000,
       investmentCosts: 5000,
     );
     final trade = Transaction(

@@ -162,6 +162,15 @@ void _validateBrokerageShape(Transaction transaction) {
           'The investment cash activity is invalid.',
         );
       }
+    case BrokerageActivityType.interest:
+      if (transaction.type != TransactionType.investment ||
+          transaction.amount <= 0 ||
+          transaction.assetAction != null ||
+          transaction.assetDefinitionId != null) {
+        throw TransactionValidationException(
+          'Brokerage interest must be positive cash income without an instrument.',
+        );
+      }
     case BrokerageActivityType.deposit:
       if (transaction.type != TransactionType.income) {
         throw TransactionValidationException(

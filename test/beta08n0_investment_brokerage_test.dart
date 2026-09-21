@@ -26,6 +26,7 @@ import 'package:pilgrim_tracker/features/sync/domain/initial_sync_models.dart';
 import 'package:pilgrim_tracker/features/sync/domain/sync_models.dart';
 import 'package:pilgrim_tracker/features/sync/domain/sync_repository.dart';
 import 'package:pilgrim_tracker/features/sync/domain/sync_transport.dart';
+import 'package:pilgrim_tracker/features/tithe/domain/tithe_summary.dart';
 import 'package:pilgrim_tracker/features/transactions/data/repositories/local_transaction_repository.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction_brokerage_metadata.dart';
@@ -138,14 +139,20 @@ void main() {
           );
         }
         final bookId = 'book-$platform';
-        final trade = _brokerageTrade(bookId: bookId);
-        await store.upsertTransaction(trade.toRecord(), enqueueSync: false);
+        final interest = _investmentCash(
+          id: 'interest-$platform',
+          account: _brokerage(bookId),
+          amount: 10000,
+          type: BrokerageActivityType.interest,
+        );
+        await store.upsertTransaction(interest.toRecord(), enqueueSync: false);
         final row = (await store.getTransactions()).single;
         expect(row['brokerage_account_id'], 'broker-$bookId');
-        expect(row['brokerage_activity_type'], 'buy');
+        expect(row['brokerage_activity_type'], 'interest');
+        expect(row['asset_definition_id'], isNull);
         expect(
           () => store.upsertTransaction(
-            trade
+            interest
                 .copyWith(id: 'foreign', brokerageAccountId: 'missing-account')
                 .toRecord(),
             enqueueSync: false,
@@ -156,6 +163,63 @@ void main() {
       },
     );
   }
+
+  test(
+    'offline interest survives restart with one pending outbox row',
+    () async {
+      const bookId = 'book-interest-restart';
+      final directory = await Directory.systemTemp.createTemp(
+        'beta08n-interest-restart-',
+      );
+      final path = '${directory.path}/test.db';
+      final store = native.LocalStore(databasePath: path);
+      await store.initialize();
+      await store.activateHouseholdBackupSnapshot(
+        HouseholdBackupIntegrity.prepareForRestore(_emptySnapshot(bookId)),
+        replaceBookId: bookId,
+      );
+      store.setActiveBookId(bookId);
+      final account = _brokerage(bookId);
+      await store.upsertAccount(account.toRecord(), enqueueSync: false);
+      await store.db.update(
+        'books',
+        {'remote_linked_at': DateTime(2026, 9, 10).millisecondsSinceEpoch},
+        where: 'id = ?',
+        whereArgs: [bookId],
+      );
+      await store.setSyncInitializationState(bookId, 'ready');
+      final repository = LocalTransactionRepository(store as dynamic);
+      await BrokerageActivityService(
+        createTransaction: CreateTransaction(repository),
+        internalTransfers: InternalTransferService(repository),
+      ).recordCashActivity(
+        bookId: bookId,
+        enteredByMemberId: null,
+        brokerageAccount: account,
+        activityType: BrokerageActivityType.interest,
+        date: DateTime(2026, 9, 10),
+        amount: 10000,
+        reference: 'restart-interest',
+      );
+      expect(await store.getPendingSyncCount(bookId), 1);
+      await store.close();
+
+      final reopened = native.LocalStore(databasePath: path);
+      await reopened.initialize();
+      addTearDown(() async {
+        await reopened.close();
+        await directory.delete(recursive: true);
+      });
+      reopened.setActiveBookId(bookId);
+      final transaction = Transaction.fromRecord(
+        (await reopened.getTransactions()).single,
+      );
+      expect(transaction.brokerageActivityType, BrokerageActivityType.interest);
+      expect(transaction.amount, 10000);
+      expect(transaction.assetDefinitionId, isNull);
+      expect(await reopened.getPendingSyncCount(bookId), 1);
+    },
+  );
 
   test(
     'manual activities reuse asset, cash, transfer, budget, and tithe authorities',
@@ -221,8 +285,25 @@ void main() {
           instrument: fixture.instrument,
         );
       }
+      await service.recordCashActivity(
+        bookId: fixture.bookId,
+        enteredByMemberId: 'member-owner',
+        brokerageAccount: fixture.brokerage,
+        activityType: BrokerageActivityType.interest,
+        date: date.add(const Duration(days: 3)),
+        amount: 10000,
+        note: 'RDN cash interest',
+        reference: 'interest-1',
+      );
 
       final transactions = await fixture.repository.getAll();
+      final interest = transactions.singleWhere(
+        (transaction) =>
+            transaction.brokerageActivityType == BrokerageActivityType.interest,
+      );
+      expect(interest.projectId, isNull);
+      expect(interest.reference, 'interest-1');
+      expect(interest.assetDefinitionId, isNull);
       final performance = BrokeragePerformanceCalculator.calculate(
         accounts: [fixture.cash, fixture.brokerage],
         transactions: transactions,
@@ -238,15 +319,16 @@ void main() {
         ],
       );
       final account = performance.accounts.single;
-      expect(account.cashBalance, 1720000);
+      expect(account.cashBalance, 1730000);
       expect(account.portfolio.holdings.single.quantity, 1);
       expect(account.portfolio.totalCostBasis, 505000);
       expect(account.portfolio.totalRealizedGain, 190000);
       expect(account.portfolio.totalMarketValue, 1200000);
       expect(account.dividendIncome, 50000);
+      expect(account.interestIncome, 10000);
       expect(account.investmentCosts, 15000);
-      expect(account.realizedPerformance, 225000);
-      expect(account.netWorth, 2920000);
+      expect(account.realizedPerformance, 235000);
+      expect(account.netWorth, 2930000);
       expect(performance.currencies.single.currencyCode, 'IDR');
       expect(split.amount, 0);
       expect(split.splitNumerator, 2);
@@ -266,6 +348,15 @@ void main() {
       expect(summary.monthlyIncome, 0);
       expect(summary.monthlyExpenses, 0);
       expect(summary.monthlyTithe, 0);
+      final tithe = TitheSummaryCalculator().calculate(
+        bookId: fixture.bookId,
+        currencyCode: 'IDR',
+        transactions: transactions,
+        transferLinks: [funding.link],
+        asOf: date,
+      );
+      expect(tithe.currentMonth.due, 0);
+      expect(tithe.currentMonth.paid, 0);
       final budget = MonthlyBudgetCalculator.calculate(
         month: date,
         budgets: [
@@ -283,6 +374,45 @@ void main() {
         pairedTransactionIds: funding.link.transactionIds,
       );
       expect(budget.totalSpendMinor, 0);
+    },
+  );
+
+  test(
+    'interest rejects non-positive amounts and instrument attribution',
+    () async {
+      final fixture = await _Fixture.create('interest-validation');
+      addTearDown(fixture.dispose);
+      for (final amount in [0, -10000]) {
+        await expectLater(
+          fixture.service.recordCashActivity(
+            bookId: fixture.bookId,
+            enteredByMemberId: null,
+            brokerageAccount: fixture.brokerage,
+            activityType: BrokerageActivityType.interest,
+            date: DateTime(2026, 9, 10),
+            amount: amount,
+          ),
+          throwsA(isA<TransactionValidationException>()),
+        );
+      }
+      await expectLater(
+        fixture.service.recordCashActivity(
+          bookId: fixture.bookId,
+          enteredByMemberId: null,
+          brokerageAccount: fixture.brokerage,
+          activityType: BrokerageActivityType.interest,
+          date: DateTime(2026, 9, 10),
+          amount: 10000,
+          instrument: fixture.instrument,
+        ),
+        throwsA(
+          isA<TransactionValidationException>().having(
+            (error) => error.message,
+            'message',
+            contains('cannot reference an instrument'),
+          ),
+        ),
+      );
     },
   );
 
@@ -373,7 +503,7 @@ void main() {
             id: 'idr-$index',
             account: idr,
             amount: 1,
-            type: BrokerageActivityType.dividend,
+            type: BrokerageActivityType.interest,
           ),
         for (var index = 0; index < 2500; index++)
           _investmentCash(
@@ -390,8 +520,14 @@ void main() {
       );
       stopwatch.stop();
       expect(result.currencies, hasLength(2));
-      expect(result.currencies.first.dividendIncome, 2500);
+      expect(result.currencies.first.dividendIncome, 0);
+      expect(result.currencies.first.interestIncome, 2500);
+      expect(result.currencies.first.positionMarketValue, 0);
+      expect(result.currencies.first.positionCostBasis, 0);
+      expect(result.currencies.first.realizedGain, 0);
+      expect(result.currencies.first.unrealizedGain, 0);
       expect(result.currencies.last.dividendIncome, 5000);
+      expect(result.currencies.last.interestIncome, 0);
       expect(stopwatch.elapsed, lessThan(const Duration(seconds: 3)));
     },
   );
@@ -441,6 +577,39 @@ void main() {
     },
   );
 
+  test(
+    'current encrypted backup round-trips instrument-free interest',
+    () async {
+      const bookId = 'book-interest-backup';
+      final account = _brokerage(bookId);
+      final snapshot = _emptySnapshot(bookId);
+      snapshot['accounts'] = [account.toRecord()];
+      snapshot['transactions'] = [
+        _investmentCash(
+          id: 'interest-backup',
+          account: account,
+          amount: 10000,
+          type: BrokerageActivityType.interest,
+        ).toRecord(),
+      ];
+      final codec = PortableBackupCodec(
+        databaseSchemaVersion: native.LocalStore.schemaVersion,
+      );
+      final encoded = await codec.encode(
+        snapshot: snapshot,
+        password: 'password',
+      );
+      expect(encoded.manifest.formatVersion, portableBackupFormatVersion);
+      final decoded = await codec.decode(encoded.bytes, 'password');
+      HouseholdBackupIntegrity.validate(decoded.snapshot);
+      final transaction = decoded.snapshot['transactions']!.single;
+      expect(transaction['brokerage_activity_type'], 'interest');
+      expect(transaction['amount'], 10000);
+      expect(transaction['asset_definition_id'], isNull);
+      expect(transaction['asset_action'], isNull);
+    },
+  );
+
   test('backup rejects malformed brokerage activity without mutation', () {
     final snapshot = _emptySnapshot('book-invalid-backup');
     snapshot['accounts'] = [_brokerage('book-invalid-backup').toRecord()];
@@ -473,11 +642,11 @@ void main() {
         whereArgs: [source.bookId],
       );
       await source.store.setSyncInitializationState(source.bookId, 'ready');
-      final dividend = await source.service.recordCashActivity(
+      final interest = await source.service.recordCashActivity(
         bookId: source.bookId,
         enteredByMemberId: 'member-owner',
         brokerageAccount: source.brokerage,
-        activityType: BrokerageActivityType.dividend,
+        activityType: BrokerageActivityType.interest,
         date: DateTime(2026, 9, 10),
         amount: 50000,
       );
@@ -489,7 +658,7 @@ void main() {
 
       final target = await _Fixture.create('sync-target');
       addTearDown(target.dispose);
-      final remote = dividend.copyWith(
+      final remote = interest.copyWith(
         bookId: target.bookId,
         brokerageAccountId: target.brokerage.id,
         syncStatus: 'synced',
@@ -511,10 +680,10 @@ void main() {
         (await target.store.getTransactions()).single,
       );
       expect(stored.brokerageAccountId, target.brokerage.id);
-      expect(stored.brokerageActivityType, BrokerageActivityType.dividend);
+      expect(stored.brokerageActivityType, BrokerageActivityType.interest);
 
       final oldClientPayload =
-          stored.copyWith(title: 'Dividend updated').toRecord()
+          stored.copyWith(title: 'Interest updated').toRecord()
             ..remove('brokerage_account_id')
             ..remove('brokerage_activity_type')
             ..remove('split_numerator')
@@ -534,7 +703,7 @@ void main() {
         (await target.store.getTransactions()).single,
       );
       expect(preserved.brokerageAccountId, target.brokerage.id);
-      expect(preserved.brokerageActivityType, BrokerageActivityType.dividend);
+      expect(preserved.brokerageActivityType, BrokerageActivityType.interest);
       expect(await target.store.getPendingSyncCount(target.bookId), 0);
     },
   );
@@ -550,16 +719,13 @@ void main() {
         where: 'id = ?',
         whereArgs: [source.bookId],
       );
-      await source.service.recordTrade(
+      await source.service.recordCashActivity(
         bookId: source.bookId,
         enteredByMemberId: 'member-owner',
         brokerageAccount: source.brokerage,
-        instrument: source.instrument,
-        action: AssetAction.buy,
         date: DateTime(2026, 9, 10),
-        grossAmount: 1000000,
-        quantity: 1,
-        unitPrice: 1000000,
+        activityType: BrokerageActivityType.interest,
+        amount: 10000,
       );
       final sourceAdapter = InitialSyncStoreAdapter(source.store);
       final manifest = await sourceAdapter.captureUploadSnapshot(source.bookId);
@@ -606,7 +772,8 @@ void main() {
         (await targetStore.getTransactions()).single,
       );
       expect(transaction.brokerageAccountId, source.brokerage.id);
-      expect(transaction.brokerageActivityType, BrokerageActivityType.buy);
+      expect(transaction.brokerageActivityType, BrokerageActivityType.interest);
+      expect(transaction.assetDefinitionId, isNull);
       expect(await targetStore.getPendingSyncCount(source.bookId), 0);
     },
   );

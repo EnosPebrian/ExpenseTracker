@@ -915,6 +915,11 @@ class HealthCheckService {
       BrokerageActivityType.tax =>
         transaction.type == TransactionType.investment &&
             transaction.amount > 0,
+      BrokerageActivityType.interest =>
+        transaction.type == TransactionType.investment &&
+            transaction.amount > 0 &&
+            transaction.assetDefinitionId == null &&
+            transaction.assetAction == null,
       BrokerageActivityType.deposit =>
         transaction.type == TransactionType.income,
       BrokerageActivityType.withdrawal =>

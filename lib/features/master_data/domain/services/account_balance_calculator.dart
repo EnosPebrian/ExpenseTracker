@@ -79,6 +79,7 @@ class AccountBalanceCalculator {
       case TransactionType.investment:
         return switch (transaction.brokerageActivityType) {
           BrokerageActivityType.dividend => transaction.amount,
+          BrokerageActivityType.interest => transaction.amount,
           BrokerageActivityType.fee ||
           BrokerageActivityType.tax => -transaction.amount,
           _ => 0,

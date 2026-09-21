@@ -265,9 +265,15 @@ class BrokerageImportPosting {
     date: draft.date!,
     amount: amount ?? draft.grossAmount,
     type: TransactionType.investment,
-    assetDefinitionId: draft.instrumentId,
-    assetName: draft.plannedInstrument?.displayName,
-    assetSymbol: draft.plannedInstrument?.normalizedSymbol,
+    assetDefinitionId: activity == BrokerageActivityType.interest
+        ? null
+        : draft.instrumentId,
+    assetName: activity == BrokerageActivityType.interest
+        ? null
+        : draft.plannedInstrument?.displayName,
+    assetSymbol: activity == BrokerageActivityType.interest
+        ? null
+        : draft.plannedInstrument?.normalizedSymbol,
     brokerageAccountId: brokerageAccount.id,
     brokerageActivityType: activity,
     note: draft.note,

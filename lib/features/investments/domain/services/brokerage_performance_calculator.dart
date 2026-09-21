@@ -38,11 +38,14 @@ class BrokeragePerformanceCalculator {
         brokerageAccountId: account.id,
       );
       var dividends = 0;
+      var interest = 0;
       var costs = 0;
       for (final transaction in accountTransactions) {
         switch (transaction.brokerageActivityType) {
           case BrokerageActivityType.dividend:
             dividends += transaction.amount;
+          case BrokerageActivityType.interest:
+            interest += transaction.amount;
           case BrokerageActivityType.fee:
           case BrokerageActivityType.tax:
             costs += transaction.amount;
@@ -64,6 +67,7 @@ class BrokeragePerformanceCalculator {
           ),
           portfolio: portfolio,
           dividendIncome: dividends,
+          interestIncome: interest,
           investmentCosts: costs,
         ),
       );
@@ -83,6 +87,7 @@ class BrokeragePerformanceCalculator {
         ..realized += result.portfolio.totalRealizedGain
         ..unrealized += result.portfolio.totalUnrealizedGain
         ..dividends += result.dividendIncome
+        ..interest += result.interestIncome
         ..costs += result.investmentCosts;
     }
 
@@ -97,6 +102,7 @@ class BrokeragePerformanceCalculator {
                 realizedGain: entry.value.realized,
                 unrealizedGain: entry.value.unrealized,
                 dividendIncome: entry.value.dividends,
+                interestIncome: entry.value.interest,
                 investmentCosts: entry.value.costs,
               ),
             )
@@ -121,5 +127,6 @@ class _CurrencyAccumulator {
   int realized = 0;
   int unrealized = 0;
   int dividends = 0;
+  int interest = 0;
   int costs = 0;
 }
