@@ -45,6 +45,21 @@ List any safe independent work, or `none`.
 
 ## Resolved escalations
 
+### ARCH-20260921-01 — Settlement hosted DELETE ACL hardening
+
+**Resolved:** 2026-09-21
+**Decision:** authenticated clients retain SELECT, INSERT and UPDATE but have no
+direct DELETE privilege on `public.brokerage_settlements`.
+**Affected work item:** PT-BETA-08N-R5
+
+The owner authorized one additive migration after the deployed settlement and
+Interest migrations. `20260921144802_beta08n_settlement_delete_acl.sql` revokes
+only authenticated DELETE. Local clean replay, focused/full pgTAP, verified
+recovery point, exact hosted preflight, normal deployment and hosted
+transaction-wrapped checks passed. Versioned UPDATE/deleted-at tombstones remain
+the authoritative deletion path; no settlement, Interest or financial semantics
+changed.
+
 ### ARCH-20260914-01 — Settlement and Interest accounting
 
 **Resolved:** 2026-09-16

@@ -11,7 +11,9 @@ no `asset_definition_id` or asset action.
 
 Supabase migration `20260916000331_beta08n_interest_activity.sql` additively
 extends the existing activity check and authoritative trigger validation. It
-adds no table/column/row, preserves RLS/privileges, and is **UNDEPLOYED**.
+adds no table/column/row and preserves transaction RLS/privileges. It was
+deployed on 2026-09-21. The accompanying settlement ACL was hardened by additive
+migration `20260921144802`.
 
 ## BETA-08N1 schema impact
 
@@ -389,5 +391,9 @@ reference/note, reviewed trade-ID JSON set and ordinary lifecycle/version/sync
 metadata. Empty links mean unmatched; non-empty links mean reconciled. No unique
 constraint on individual trade IDs: the relationship is many-to-many. The
 source-identity tuple is unique. v28 rows and financial tables are unchanged.
-Supabase migration `20260915004307_brokerage_settlement_evidence.sql` is local
-only/UNDEPLOYED pending engineering verification and rollout authorization.
+Supabase migration `20260915004307_brokerage_settlement_evidence.sql` was
+deployed on 2026-09-21. Additive migration
+`20260921144802_beta08n_settlement_delete_acl.sql` revokes authenticated direct
+DELETE. Authenticated clients retain SELECT, INSERT and UPDATE; deletion remains
+the versioned UPDATE/deleted-at tombstone path. Service/internal ownership was
+not changed.

@@ -23,7 +23,9 @@ withdrawal remain canonical cash transfers; dividend, fee and tax are unchanged.
 
 Implementation and automated engineering verification: PASS; implementation
 8ac408b pushed to origin/main. Owner acceptance:
-NOT RUN. Hosted deployment: NOT AUTHORIZED by this work item.
+NOT RUN. The migration was deployed under PT-BETA-08N-R5 on 2026-09-21. Additive
+migration `20260921144802` also removed direct authenticated DELETE while
+preserving SELECT/INSERT/UPDATE and versioned tombstones.
 
 Implementation uses `brokerage_settlements` separate from transactions. Its ID
 reuses the existing brokerage statement event UUIDv5 calculation. Reviewed trade
@@ -51,5 +53,5 @@ confirm their removal or cancel. Interest remains unimplemented in this repair.
 Validation: focused Flutter 33/33; full Flutter 1010/1010; analyzer clean;
 Web, Windows debug, Android debug builds passed. Local clean replay passed,
 pgTAP 12/12 focused and 326/326 full. Local advisor has no errors; two unchanged
-legacy search-path warnings remain. Hosted deployment and owner acceptance
-have not been performed.
+legacy search-path warnings remain. Hosted deployment and ACL verification
+completed on 2026-09-21; owner acceptance has not been performed.

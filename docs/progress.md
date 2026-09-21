@@ -8,8 +8,10 @@ Dividend and trading P&L. It affects no ordinary income/expense, budget,
 Project, position/basis, or Tithe Due/Paid. Explicit TAX remains separate;
 zero/negative Interest blocks without absolute-value or Fee conversion.
 SQLite remains 29 and backup remains v8. New additive Supabase migration
-`20260916000331` is locally verified and remains UNDEPLOYED. Owner acceptance
-remains **PENDING / NOT RUN**; feature freeze remains active.
+`20260916000331` is locally verified and deployed. Additive migration
+`20260921144802` removes direct authenticated settlement DELETE while preserving
+SELECT/INSERT/UPDATE and tombstone sync. R5 hosted validation passed. Owner
+acceptance remains **PENDING / NOT RUN**; feature freeze remains active.
 
 ## Settlement Reconciliation Evidence — 2026-09-15
 
@@ -20,7 +22,8 @@ SQLite 29 / backup v8 extend native/web, sync, recovery and read-only diagnostic
 Focused Flutter 33/33, full 1010/1010, analyzer, Web/Windows/Android debug builds,
 local replay and full pgTAP 326/326 passed. Implementation 8ac408b pushed to
 origin/main; completion handoff recorded 2026-09-16.
-Migration 20260915004307 remains UNDEPLOYED; owner acceptance NOT RUN.
+Migration 20260915004307 and its additive ACL hardening are deployed and
+verified. Owner acceptance NOT RUN.
 Interest remains separate and is not treated as Dividend.
 
 ## Trusted Brokerage Review Automation — 2026-09-14

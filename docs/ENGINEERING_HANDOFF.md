@@ -8,15 +8,17 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-None — accepted engineering roadmap is frozen; owner action remains pending.
+None — BETA-08N engineering and hosted rollout are complete; owner acceptance is
+pending.
 
 ## Current state
 
-`BLOCKED_OWNER` — PT-BETA-08N1-R4 engineering is complete and validated.
-Migrations `20260915004307` (settlement evidence) and `20260916000331`
-(Interest) remain UNDEPLOYED pending separate hosted-rollout authorization.
-BETA-08N owner runtime acceptance is PENDING / NOT RUN. Feature freeze remains
-active and no new product item is READY.
+`BLOCKED_OWNER` — settlement evidence, Interest and additive settlement ACL
+hardening are deployed and verified. Authenticated settlement access is exactly
+SELECT/INSERT/UPDATE without direct DELETE. Existing hosted business counts are
+unchanged; local pgTAP passed 352/352 and hosted settlement + Interest checks
+passed 38/38. Feature freeze remains active, owner acceptance is PENDING / NOT
+RUN, and no new product item is READY.
 
 ## Latest pushed engineering baseline
 
@@ -44,8 +46,13 @@ local Supabase clean replay: PASS
 focused pgTAP: 13/13 PASS
 full pgTAP: 339/339 PASS across 17 files
 git diff --check: PASS
-Supabase migration 20260916000331: UNDEPLOYED
-hosted changes: none
+Supabase migrations 20260915004307 and 20260916000331: DEPLOYED
+hosted business counts preserved: yes
+ACL migration 20260921144802: DEPLOYED
+authenticated settlement ACL: SELECT/INSERT/UPDATE yes; DELETE no
+post-deployment settlement + Interest verification: 38/38 PASS
+hosted business-count and migration-history verification: PASS
+fresh recovery point: pre-beta08nr5-acl-20260921-215323 (five non-empty dumps, SHA-256 recorded)
 owner acceptance: PENDING / NOT RUN
 feature freeze: active
 BETA-08N1-R2 date/instrument review: VALIDATED / PUSHED
@@ -54,7 +61,7 @@ full Flutter suite: 1002/1002 PASS
 analyzer: PASS
 diff checks: PASS
 builds: not required/rerun for this bounded item
-remaining scope: settlement/interest posting BLOCKED_ARCHITECT
+remaining scope: owner runtime acceptance PENDING / NOT RUN
 owner runtime acceptance: NOT RUN
 BETA-08N1 brokerage CSV compatibility repair: VALIDATED / PUSHED
 repair commit: 2684254c814d1bef781ffe707ab3e625c08c2f60
@@ -100,10 +107,10 @@ remaining failures: 0
 
 ## Exact next action
 
-Obtain explicit authorization before deploying the ordered undeployed BETA-08N
-settlement/Interest migration chain. Then run the documented Windows and Android
-owner-acceptance matrix. Do not mark acceptance complete without owner execution
-and do not create a new feature item while the feature freeze is active.
+Owner reruns the real 125-row RDN CSV acceptance on Windows, then completes the
+remaining Windows/Android matrix in `docs/BETA08N_OWNER_ACCEPTANCE.md`. Do not
+mark acceptance complete without owner execution and do not create a feature
+item while the feature freeze remains active.
 
 R3 completion context:
 

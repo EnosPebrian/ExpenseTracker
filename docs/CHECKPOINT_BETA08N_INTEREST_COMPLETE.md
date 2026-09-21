@@ -36,7 +36,7 @@ semantics remain unchanged.
 - new Supabase migration: `20260916000331_beta08n_interest_activity.sql`
 - migration scope: additive activity constraint/validation only
 - local clean migration replay: PASS
-- hosted deployment: NOT RUN / UNDEPLOYED
+- hosted deployment: deployed on 2026-09-21 through `20260916000331`
 - no historical migration was edited
 - no table, column, RLS-policy or client privilege change was introduced
 
@@ -59,7 +59,7 @@ corpus pass.
 
 ## Remaining gates
 
-The settlement and Interest migrations require separately authorized hosted
-rollout. The owner must then execute the Windows/Android acceptance matrix in
-`docs/BETA08N_OWNER_ACCEPTANCE.md`. Neither hosted deployment nor owner runtime
-acceptance is implied by this engineering checkpoint.
+The settlement and Interest migrations and the authorized settlement ACL
+hardening were deployed under R5. The owner must now execute the Windows/Android
+matrix in `docs/BETA08N_OWNER_ACCEPTANCE.md`, beginning with the real 125-row RDN
+CSV. Owner runtime acceptance remains PENDING / NOT RUN.

@@ -2,7 +2,7 @@
 
 **Queue protocol:** `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md`
 **Last architect seed:** 2026-09-09
-**Last reconciled:** 2026-09-14
+**Last reconciled:** 2026-09-21
 
 ## Queue rules
 
@@ -18,6 +18,31 @@ Codex must:
 ---
 
 ## RECENTLY COMPLETED
+
+### PT-BETA-08N-R5 — Settlement + Interest Hosted Rollout
+
+**Priority:** P0
+**State:** BLOCKED_OWNER
+**Authority:** Lead Architect / owner hosted-rollout authorization, 2026-09-21
+**Scope:** release/acceptance rollout only; feature freeze remains active
+
+Validate and deploy only the ordered migrations
+`20260915004307_brokerage_settlement_evidence.sql` and
+`20260916000331_beta08n_interest_activity.sql` to the existing linked Pilgrim
+Tracker project after clean local replay, focused/full pgTAP, privacy-safe hosted
+baseline checks, a fresh verified logical recovery point, advisor comparison and
+exact migration-history review. Reconcile documentation after hosted PASS, leave
+owner acceptance PENDING / NOT RUN, create no feature READY item, and stop as
+`BLOCKED_OWNER`.
+
+The two feature migrations and the separately authorized additive ACL migration
+`20260921144802` deployed successfully. Existing business counts were preserved.
+Authenticated settlement privileges are now SELECT/INSERT/UPDATE with no direct
+DELETE; versioned tombstone sync, reconciliation, RLS, household isolation and
+zero-financial-effect checks passed locally and hosted. Full local pgTAP passed
+352/352 and hosted focused checks passed 38/38. Owner acceptance remains NOT RUN;
+the next owner action is the real 125-row RDN CSV on Windows. Feature freeze
+remains active and no feature item is READY.
 
 ### PT-BETA-08N1-R4 — Distinct Brokerage Interest Activity
 
@@ -44,8 +69,9 @@ Engineering validation completed: focused Flutter 123/123, full Flutter
 1014/1014, analyzer, Web/Windows/Android debug builds, clean local Supabase
 replay, focused pgTAP 13/13, full pgTAP 339/339, and diff checks passed. SQLite
 remains 29 and backup remains v8. Migration `20260916000331` is locally verified
-and remains UNDEPLOYED. Owner acceptance remains PENDING / NOT RUN and feature
-freeze remains active.
+and was deployed by R5 on 2026-09-21. The follow-up settlement ACL hardening also
+passed. Owner acceptance remains PENDING / NOT RUN and feature freeze remains
+active.
 
 ### PT-BETA-08M-R1 — Category-commit compatibility repair
 
@@ -193,11 +219,12 @@ before Git publication; owner runtime acceptance remains NOT RUN.
 Validated and pushed: 8ac408b155ae5e3d3db7dd71152e5fa4c067effb.
 Focused Flutter 33/33; full 1010/1010; analyzer and Web/Windows/Android debug
 builds PASS. Local replay and pgTAP 326/326 PASS. SQLite 29, backup v8.
-Hosted migration remains UNDEPLOYED; owner acceptance NOT RUN.
+Hosted migration and settlement DELETE-ACL hardening passed under R5 on
+2026-09-21. Owner acceptance NOT RUN.
 
 ### PT-BETA-08N1-R2 — Trusted Brokerage Review Automation
 
-**State:** BLOCKED_ARCHITECT (Interest accounting policy only; settlement completed in R3)
+**State:** COMPLETE (Interest policy implemented in R4; hosted ACL blocker is tracked in R5)
 **Authority:** owner request, 2026-09-14, including normal commit/push.
 
 Implement whole-column date detection, nullable unresolved review dates,

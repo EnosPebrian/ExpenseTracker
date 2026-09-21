@@ -13,9 +13,11 @@ pushed to origin/main; clean implementation worktree verified on 2026-09-16.
 - Web, Windows debug, Android debug APK: PASS; existing file_picker warning.
 - Local clean replay: PASS. pgTAP: 12/12 focused, 326/326 full.
 - Local security advisor: no errors; two unchanged legacy search-path warnings.
-- Hosted deployment: NOT RUN. Physical-device owner acceptance: NOT RUN.
+- Hosted migration and additive DELETE-ACL hardening: DEPLOYED and verified on
+  2026-09-21. Physical-device acceptance: NOT RUN.
 
 Limitations: Interest is a separate unimplemented activity; suggestions rank
 reference/gross amount and a seven-day window without inferred allocations.
-Hosted settlement sync requires separately authorized deployment of the new
-migration. Do not deploy this migration under the current work item.
+Hosted settlement sync schema is deployed with authenticated
+SELECT/INSERT/UPDATE and no direct DELETE. Owner acceptance is the remaining
+gate.

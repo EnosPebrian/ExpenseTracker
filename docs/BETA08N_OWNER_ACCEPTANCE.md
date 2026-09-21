@@ -1,12 +1,14 @@
 # BETA-08N Windows and Android Owner Acceptance
 
 **Status:** PENDING / NOT RUN
-**Hosted schema:** DEPLOYED through `20260910054452`
+**Hosted schema:** DEPLOYED through `20260921144802`
+**Next owner action:** rerun the real 125-row RDN CSV on Windows, then continue
+the remaining Windows and Android matrix below.
 
 ## Interest repair acceptance — NOT RUN
 
-The Interest migration is local-only/UNDEPLOYED. Run these checks only after a
-separately authorized hosted rollout and a current encrypted backup.
+The Interest migration and settlement ACL hardening are deployed. Use a current
+encrypted backup before beginning owner testing.
 
 | Setup | Action | Expected result | Result |
 | --- | --- | --- | --- |
@@ -20,8 +22,22 @@ separately authorized hosted rollout and a current encrypted backup.
 
 ## Settlement repair acceptance — NOT RUN
 
-Requires the validated settlement client and separately authorized migration
-rollout; the settlement migration is currently UNDEPLOYED.
+The settlement migration and least-privilege ACL correction are deployed.
+
+The real RDN CSV acceptance must explicitly verify:
+
+- `BUY_SETTLEMENT` and `SELL_SETTLEMENT` auto-resolve without Buy/Sell selection
+  or an instrument, persist as settlement evidence, and have zero financial
+  effect.
+- `INTEREST` auto-resolves without an instrument, increases brokerage cash and
+  Interest Income once, and does not affect ordinary income, budgets, Projects,
+  or Tithe.
+- `DIVIDEND` remains distinct, exact existing symbols auto-map, and an unknown
+  symbol requires one explicit Map/Create decision without repetitive per-row
+  resolution once statement-level staging resolves that symbol.
+- DEPOSIT, WITHDRAWAL, FEE and TAX retain their accepted semantics.
+- Exact re-import creates zero duplicate financial, settlement, or Interest
+  effects.
 
 | Setup | Action | Expected result | Result |
 | --- | --- | --- | --- |
