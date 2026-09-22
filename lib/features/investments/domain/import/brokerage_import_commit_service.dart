@@ -42,6 +42,12 @@ class BrokerageImportCommitService {
     if (preview.drafts.any((draft) => draft.included && !draft.canCommit)) {
       throw StateError('Resolve every included statement row before import.');
     }
+    if (preview.requiresFractionalIdrApproval &&
+        !preview.fractionalIdrRoundingApproved) {
+      throw StateError(
+        'Approve HALF_UP rounding for fractional IDR values before import.',
+      );
+    }
     final included =
         preview.drafts.where((draft) => draft.included).toList(growable: false)
           ..sort((left, right) {
@@ -123,7 +129,7 @@ class BrokerageImportCommitService {
             sourceRowIdentity: draft.sourceRowIdentity,
             sourceRowFingerprint: draft.sourceRowFingerprint,
             reference: draft.reference,
-            note: draft.note,
+            note: draft.committedNote,
             createdAt: now,
             updatedAt: now,
             deviceId: 'local-device',

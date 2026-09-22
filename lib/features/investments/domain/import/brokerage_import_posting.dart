@@ -80,7 +80,7 @@ class BrokerageImportPosting {
           date: draft.date!,
           amount: draft.grossAmount,
           type: TransactionType.expense,
-          note: draft.note,
+          note: draft.committedNote,
           reference: draft.reference,
           brokerageAccountId: source.id == brokerageAccount.id
               ? brokerageAccount.id
@@ -101,7 +101,7 @@ class BrokerageImportPosting {
           date: draft.date!,
           amount: draft.grossAmount,
           type: TransactionType.income,
-          note: draft.note,
+          note: draft.committedNote,
           reference: draft.reference,
           brokerageAccountId: destination.id == brokerageAccount.id
               ? brokerageAccount.id
@@ -158,7 +158,7 @@ class BrokerageImportPosting {
               : buy
               ? AssetFeeTreatment.capitalizeIntoCostBasis
               : AssetFeeTreatment.deductFromSaleProceeds,
-          note: draft.note,
+          note: draft.committedNote,
           reference: draft.reference,
           deviceId: deviceId,
           syncStatus: 'pending',
@@ -188,7 +188,7 @@ class BrokerageImportPosting {
           brokerageActivityType: activity,
           splitNumerator: draft.splitNumerator,
           splitDenominator: draft.splitDenominator,
-          note: draft.note,
+          note: draft.committedNote,
           reference: draft.reference,
           deviceId: deviceId,
           syncStatus: 'pending',
@@ -276,7 +276,7 @@ class BrokerageImportPosting {
         : draft.plannedInstrument?.normalizedSymbol,
     brokerageAccountId: brokerageAccount.id,
     brokerageActivityType: activity,
-    note: draft.note,
+    note: draft.committedNote,
     reference: draft.reference,
     deviceId: deviceId,
     syncStatus: 'pending',

@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import '../../../assets/domain/entities/asset_definition.dart';
 import '../../../transactions/domain/entities/transaction_brokerage_metadata.dart';
 import '../../../transactions/domain/import/transaction_import_models.dart';
 import '../entities/brokerage_settlement.dart';
+import 'brokerage_idr_rounding.dart';
 
 enum BrokerageInstrumentResolution { notRequired, unresolved, mapped, create }
 
@@ -112,6 +115,7 @@ class BrokerageImportDraft {
     required this.classification,
     required this.included,
     required this.issues,
+    this.idrRoundings = const [],
     this.matchedTransactionId,
     this.rawDate = '',
   });
@@ -142,6 +146,7 @@ class BrokerageImportDraft {
   final BrokerageImportClassification classification;
   final bool included;
   final List<BrokerageImportIssue> issues;
+  final List<BrokerageIdrRounding> idrRoundings;
   final String? matchedTransactionId;
 
   BrokerageSettlementType? get settlementType =>
@@ -158,6 +163,20 @@ class BrokerageImportDraft {
       requiresInstrument && instrumentId == null;
 
   bool get hasBlockingIssue => issues.any((issue) => issue.blocking);
+
+  bool get hasFractionalIdr => idrRoundings.isNotEmpty;
+
+  String get committedNote {
+    if (idrRoundings.isEmpty) return note;
+    final provenance = jsonEncode({
+      'pilgrim_brokerage_import': {
+        'currency': 'IDR',
+        'rounding': 'HALF_UP',
+        'values': idrRoundings.map((value) => value.toJson()).toList(),
+      },
+    });
+    return note.trim().isEmpty ? provenance : '$note\n$provenance';
+  }
 
   bool get canCommit =>
       included &&
@@ -185,6 +204,7 @@ class BrokerageImportDraft {
     BrokerageImportClassification? classification,
     bool? included,
     List<BrokerageImportIssue>? issues,
+    List<BrokerageIdrRounding>? idrRoundings,
     String? matchedTransactionId,
     bool clearMatchedTransactionId = false,
   }) => BrokerageImportDraft(
@@ -216,6 +236,7 @@ class BrokerageImportDraft {
     classification: classification ?? this.classification,
     included: included ?? this.included,
     issues: issues ?? this.issues,
+    idrRoundings: idrRoundings ?? this.idrRoundings,
     matchedTransactionId: clearMatchedTransactionId
         ? null
         : matchedTransactionId ?? this.matchedTransactionId,
@@ -228,12 +249,14 @@ class BrokerageImportPreview {
     required this.drafts,
     required this.remoteFreshnessVerified,
     this.detectedDateFormat,
+    this.fractionalIdrRoundingApproved = false,
   });
 
   final CsvParsedSource source;
   final List<BrokerageImportDraft> drafts;
   final bool remoteFreshnessVerified;
   final CsvDateFormat? detectedDateFormat;
+  final bool fractionalIdrRoundingApproved;
 
   int count(BrokerageImportClassification value) =>
       drafts.where((draft) => draft.classification == value).length;
@@ -255,8 +278,16 @@ class BrokerageImportPreview {
             draft.needsInstrumentResolution,
       )
       .length;
+  int get fractionalIdrRowCount =>
+      drafts.where((draft) => draft.hasFractionalIdr).length;
+  int get fractionalIdrValueCount =>
+      drafts.fold(0, (total, draft) => total + draft.idrRoundings.length);
+  bool get requiresFractionalIdrApproval => drafts.any(
+    (draft) => draft.included && draft.canCommit && draft.hasFractionalIdr,
+  );
   bool get canCommit =>
       readyCount > 0 &&
+      (!requiresFractionalIdrApproval || fractionalIdrRoundingApproved) &&
       drafts
           .where((draft) => draft.included)
           .every((draft) => !draft.hasBlockingIssue);

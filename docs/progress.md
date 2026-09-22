@@ -60,6 +60,22 @@ all 992 Flutter tests, `flutter analyze`, Web, Windows debug, Android debug APK,
 and diff checks. SQLite remains v28, backup remains v7, and no SQL/Supabase
 change exists for this repair. Owner runtime re-test is **NOT RUN**.
 
+## BETA-08N Fractional-IDR Brokerage Repair — 2026-09-22
+
+`ARCH-20260922-01` authorizes brokerage-import-only HALF_UP conversion of
+fractional IDR to integer rupiah after one explicit approval per review session.
+The parser uses exact integer/string arithmetic, rounds negative ties away from
+zero symmetrically, and preserves original source values plus field/policy data
+as structured durable note provenance. Canonical brokerage CSVs select period
+decimals automatically. General household money and non-brokerage CSV imports
+remain unchanged.
+
+Focused brokerage/settlement tests passed 39/39, the full Flutter suite passed
+1019/1019, analyzer passed, and Web, Windows debug and Android debug APK builds
+passed. The existing `file_picker` Kotlin warning remains non-blocking. SQLite
+remains 29, backup remains v8, and no SQL/Supabase migration or hosted action
+was needed. Owner runtime re-test is **PENDING / NOT RUN**.
+
 ## BETA-08N Investments UI Navigation Gap — 2026-09-11
 
 The existing BETA-08N0/N1 brokerage ledger is now exposed as a first-class

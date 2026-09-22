@@ -315,9 +315,10 @@ These limitations do not change the version-21 financial or accounting model.
   calculation remain excluded.
 - Only BUY, SELL, DIVIDEND, FEE, TAX, DEPOSIT, WITHDRAWAL, and SPLIT are
   supported. Unknown or unsupported activity stays unresolved.
-- Exact zero-decimal values written with trailing zeroes (such as IDR
-  `639000.00`) are accepted, but non-zero fractional IDR remains invalid and is
-  never rounded silently.
+- Fractional IDR is accepted only in brokerage statement review after explicit
+  session-level approval. It is posted as deterministic HALF_UP whole rupiah
+  while the original value is retained in durable provenance. General household
+  and non-brokerage CSV precision remains integer IDR without implicit rounding.
 - Instrument matching is exact symbol plus currency. Unknown instruments need
   explicit map/create review; no typo silently creates an asset.
 - Cross-currency source/account rows block because N1 does not fabricate FX.

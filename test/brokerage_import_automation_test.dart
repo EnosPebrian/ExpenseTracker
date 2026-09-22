@@ -8,6 +8,7 @@ import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_dat
 import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_models.dart';
 import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_planner.dart';
 import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_posting.dart';
+import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_idr_rounding.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction_brokerage_metadata.dart';
 import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_commit_service.dart';
 import 'package:pilgrim_tracker/features/master_data/domain/entities/account.dart';
@@ -15,6 +16,7 @@ import 'package:pilgrim_tracker/features/transactions/domain/entities/transactio
 import 'package:pilgrim_tracker/features/transactions/domain/entities/internal_transfer_link.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/repositories/transaction_repository.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/import/transaction_import_models.dart';
+import 'package:pilgrim_tracker/features/transactions/domain/import/csv_value_parsers.dart';
 
 final broker = Account(
   id: 'broker',
@@ -36,6 +38,7 @@ const mapping = BrokerageStatementMapping(
   activityColumn: 1,
   instrumentColumn: 2,
   grossAmountColumn: 3,
+  decimalSeparator: CsvSeparator.period,
   trustedIdx: true,
 );
 CsvParsedSource source(List<List<String>> rows) => CsvParsedSource(
@@ -66,6 +69,195 @@ Future<BrokerageImportPreview> analyze(
 );
 
 void main() {
+  test('fractional IDR uses exact symmetric HALF_UP rounding', () {
+    BrokerageIdrParseResult parse(String value) =>
+        BrokerageIdrRoundingParser.parse(
+          value,
+          field: 'gross_amount',
+          decimalSeparator: CsvSeparator.period,
+          thousandsSeparator: CsvSeparator.none,
+          stripCurrencySymbols: false,
+        );
+
+    expect(parse('42563.49').value, 42563);
+    expect(parse('42563.50').value, 42564);
+    expect(parse('-42563.49').value, -42563);
+    expect(parse('-42563.50').value, -42564);
+    expect(parse('639000.00').rounding, isNull);
+    expect(
+      () => const CsvMoneyParser().parse(
+        '10.50',
+        currencyCode: 'IDR',
+        decimalSeparator: CsvSeparator.period,
+        thousandsSeparator: CsvSeparator.none,
+        stripCurrencySymbols: false,
+      ),
+      throwsA(isA<TransactionImportException>()),
+    );
+  });
+
+  test(
+    'fractional IDR rows require one approval and preserve provenance',
+    () async {
+      final preview = await analyze([
+        ['2026-01-01', 'BUY_SETTLEMENT', '', '42563.75'],
+        ['2026-01-02', 'INTEREST', '', '10.49'],
+        ['2026-01-03', 'TAX', '', '10.50'],
+      ]);
+      expect(preview.fractionalIdrRowCount, 3);
+      expect(preview.fractionalIdrValueCount, 3);
+      expect(preview.drafts.map((draft) => draft.grossAmount), [42564, 10, 11]);
+      expect(preview.drafts.every((draft) => !draft.hasBlockingIssue), isTrue);
+      expect(preview.canCommit, isFalse);
+
+      final repo = RecordingRepository();
+      final service = BrokerageImportCommitService(repository: repo);
+      await expectLater(
+        service.commit(
+          preview: preview,
+          bookId: 'book',
+          memberId: null,
+          brokerageAccount: broker,
+          counterpartyAccount: cash,
+          existingInstruments: const [],
+          existingTransactions: const [],
+        ),
+        throwsStateError,
+      );
+      expect(repo.calls, 0);
+
+      final approved = BrokerageImportPreview(
+        source: preview.source,
+        drafts: preview.drafts,
+        remoteFreshnessVerified: true,
+        detectedDateFormat: preview.detectedDateFormat,
+        fractionalIdrRoundingApproved: true,
+      );
+      await service.commit(
+        preview: approved,
+        bookId: 'book',
+        memberId: null,
+        brokerageAccount: broker,
+        counterpartyAccount: cash,
+        existingInstruments: const [],
+        existingTransactions: const [],
+      );
+      expect(repo.settlements.single['amount'], 42564);
+      expect(repo.settlements.single['note'], contains('"source":"42563.75"'));
+      expect(repo.transactions.map((transaction) => transaction.amount), [
+        10,
+        11,
+      ]);
+      expect(repo.transactions.first.note, contains('"rounding":"HALF_UP"'));
+    },
+  );
+
+  test(
+    'fractional re-import keeps rounded value and stable identity',
+    () async {
+      final first = await analyze([
+        ['2026-01-02', 'INTEREST', '', '10.50'],
+      ]);
+      final approved = BrokerageImportPreview(
+        source: first.source,
+        drafts: first.drafts,
+        remoteFreshnessVerified: true,
+        detectedDateFormat: first.detectedDateFormat,
+        fractionalIdrRoundingApproved: true,
+      );
+      final repo = RecordingRepository();
+      await BrokerageImportCommitService(repository: repo).commit(
+        preview: approved,
+        bookId: 'book',
+        memberId: null,
+        brokerageAccount: broker,
+        counterpartyAccount: cash,
+        existingInstruments: const [],
+        existingTransactions: const [],
+      );
+      final repeated = await analyze([
+        ['2026-01-02', 'INTEREST', '', '10.50'],
+      ], transactions: repo.transactions);
+      expect(repeated.drafts.single.grossAmount, 11);
+      expect(repeated.drafts.single.eventId, first.drafts.single.eventId);
+      expect(repeated.count(BrokerageImportClassification.alreadyImported), 1);
+      expect(repeated.requiresFractionalIdrApproval, isFalse);
+    },
+  );
+
+  testWidgets('review requires explicit session rounding approval', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = RecordingRepository();
+    final controller =
+        BrokerageImportController(
+            pickFile: () async => null,
+            commitService: BrokerageImportCommitService(repository: repository),
+            accounts: () => [broker, cash],
+            instruments: () => const [],
+            transactions: () => const [],
+            transferLinks: () => const [],
+            onImported: () async {},
+          )
+          ..source = source([
+            ['2026-01-01', 'INTEREST', '', '10.50'],
+          ])
+          ..mapping = mapping
+          ..brokerageAccountId = broker.id
+          ..counterpartyAccountId = cash.id;
+    addTearDown(controller.dispose);
+    await controller.analyze(bookId: 'book');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BrokerageImportScreen(
+          bookId: 'book',
+          memberId: null,
+          accounts: [broker, cash],
+          instruments: const [],
+          controller: controller,
+          remoteFreshnessVerified: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Approve HALF_UP rounding for 1 fractional IDR rows'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const Key('commit-brokerage-import')),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(find.byKey(const Key('approve-brokerage-idr-rounding')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const Key('commit-brokerage-import')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  test('canonical mapping opts into period decimal parsing', () {
+    final selected = canonicalBrokerageMappingFor(const [
+      'Date',
+      'Activity',
+      'Symbol / instrument',
+      'Gross amount',
+    ]);
+    expect(selected, isNotNull);
+    expect(selected!.decimalSeparator, CsvSeparator.period);
+    expect(selected.thousandsSeparator, CsvSeparator.none);
+  });
+
   testWidgets(
     'trusted review shows staged summary without per-row create or writes',
     (tester) async {
@@ -322,6 +514,7 @@ class RecordingRepository implements InvestmentImportAtomicRepository {
   int calls = 0;
   List<Transaction> transactions = [];
   List<AssetDefinition> definitions = [];
+  List<Map<String, Object?>> settlements = [];
   @override
   Future<void> saveInvestmentImportAtomic({
     required List<Transaction> transactions,
@@ -332,5 +525,6 @@ class RecordingRepository implements InvestmentImportAtomicRepository {
     calls++;
     this.transactions = transactions;
     definitions = assetDefinitionCreations;
+    this.settlements = settlements;
   }
 }

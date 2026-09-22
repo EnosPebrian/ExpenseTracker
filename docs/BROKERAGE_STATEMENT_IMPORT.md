@@ -21,10 +21,13 @@ deterministic convenience; it recognizes both canonical snake-case labels and
 Pilgrim's exported human-readable labels (for example, `Symbol / instrument`
 and `Broker realized P&L`). External layouts require explicit mapping.
 
-Money remains exact integer minor-unit accounting. For zero-decimal currencies
-such as IDR, decimal notation containing only trailing zeroes (for example,
-`639000.00`) is accepted without rounding. A non-zero fractional IDR value is
-rejected because Pilgrim does not invent a rounding policy during import.
+Money remains exact integer minor-unit accounting. Brokerage statement imports
+may review non-zero fractional IDR using HALF_UP to the nearest rupiah, with
+negative ties moving symmetrically away from zero. The review identifies every
+affected row and final import remains disabled until the user approves rounding
+for that session. Structured provenance appended to the durable note metadata
+preserves each original source value, field, rounded integer and policy. This
+does not change household transaction precision or other CSV importers.
 
 The Date column is inspected as a whole when automatic format is selected.
 ISO dates prefer yyyy-MM-dd; slash dates select DD/MM/YYYY or MM/DD/YYYY only
@@ -102,7 +105,8 @@ constraint/validation function. SQLite remains v29 and backup remains v8.
 - No options, futures, margin, shorts, security transfer between brokers, or
   unsupported corporate action.
 - Account currency and source currency must match; no FX rate is fabricated.
-- Non-zero fractional values for a zero-decimal currency require correction at
-  source; import does not round them silently.
+- Fractional IDR is supported only by this reviewed brokerage importer. It uses
+  explicit session approval, deterministic HALF_UP rounding and durable source
+  provenance; rounding is never silent.
 - Review state is in-memory for this bounded importer; only committed
   authoritative financial records persist.

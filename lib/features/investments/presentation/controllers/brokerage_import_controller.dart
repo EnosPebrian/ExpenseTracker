@@ -181,6 +181,21 @@ class BrokerageImportController extends ChangeNotifier {
         draft.canChangeInclusion ? draft.copyWith(included: included) : draft,
   );
 
+  void approveFractionalIdrRounding(bool approved) {
+    final current = preview;
+    if (current == null) return;
+    preview = BrokerageImportPreview(
+      source: current.source,
+      drafts: current.drafts,
+      remoteFreshnessVerified: current.remoteFreshnessVerified,
+      detectedDateFormat: current.detectedDateFormat,
+      fractionalIdrRoundingApproved: approved,
+    );
+    result = null;
+    error = null;
+    notifyListeners();
+  }
+
   Future<void> commit({
     required String bookId,
     required String? memberId,
@@ -223,6 +238,7 @@ class BrokerageImportController extends ChangeNotifier {
       ],
       remoteFreshnessVerified: current.remoteFreshnessVerified,
       detectedDateFormat: current.detectedDateFormat,
+      fractionalIdrRoundingApproved: current.fractionalIdrRoundingApproved,
     );
     result = null;
     error = null;

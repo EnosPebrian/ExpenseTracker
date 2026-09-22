@@ -45,6 +45,22 @@ List any safe independent work, or `none`.
 
 ## Resolved escalations
 
+### ARCH-20260922-01 — Fractional IDR in trusted brokerage statements
+
+**Resolved:** 2026-09-22
+**Decision:** Brokerage statement imports may use explicitly reviewed HALF_UP
+rounding to integer IDR; ties round symmetrically away from zero. Original
+fractional source values remain durable audit provenance. Approval is required
+once per import review session before commit. Household money precision and all
+non-brokerage CSV imports remain unchanged.
+**Affected work item:** PT-BETA-08N-R6
+
+The implementation uses exact string/integer arithmetic and appends structured
+rounding provenance to existing durable transaction/settlement note metadata.
+It adds no decimal ledger, schema, sync field, migration or backup-format change.
+Canonical brokerage CSV mapping selects period decimals with no thousands
+separator; external layouts retain explicit mapping controls.
+
 ### ARCH-20260921-01 — Settlement hosted DELETE ACL hardening
 
 **Resolved:** 2026-09-21

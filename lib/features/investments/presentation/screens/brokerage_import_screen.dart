@@ -153,6 +153,26 @@ class _BrokerageImportScreenState extends State<BrokerageImportScreen> {
             if (controller.preview case final preview?) ...[
               const SizedBox(height: 20),
               _PreviewSummary(preview: preview),
+              if (preview.fractionalIdrRowCount > 0)
+                Card(
+                  color: const Color(0xFFFFF7E6),
+                  child: CheckboxListTile(
+                    key: const Key('approve-brokerage-idr-rounding'),
+                    value: preview.fractionalIdrRoundingApproved,
+                    onChanged: controller.busy
+                        ? null
+                        : (value) => controller.approveFractionalIdrRounding(
+                            value ?? false,
+                          ),
+                    title: Text(
+                      'Approve HALF_UP rounding for ${preview.fractionalIdrRowCount} fractional IDR rows',
+                    ),
+                    subtitle: Text(
+                      '${preview.fractionalIdrValueCount} values will be rounded to whole rupiah. Original source values are preserved in import provenance.',
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                ),
               if (!preview.remoteFreshnessVerified)
                 const Card(
                   child: Padding(
@@ -734,6 +754,11 @@ class _DraftCard extends StatelessWidget {
               '${draft.currencyCode} ${draft.grossAmount} · '
               '${draft.date == null ? 'Unresolved date: ${draft.rawDate}' : '${draft.date!.year}-${draft.date!.month.toString().padLeft(2, '0')}-${draft.date!.day.toString().padLeft(2, '0')}'}',
             ),
+            for (final rounding in draft.idrRoundings)
+              Text(
+                '${rounding.field}: ${rounding.sourceValue} → ${rounding.roundedValue} IDR (HALF_UP)',
+                style: const TextStyle(color: violet),
+              ),
             if (draft.quantity != null)
               Text(
                 'Quantity ${draft.quantity} · Price ${draft.executionPrice ?? 0}',

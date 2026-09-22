@@ -8,28 +8,55 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-None — BETA-08N engineering and hosted rollout are complete; owner acceptance is
+None — PT-BETA-08N-R6 engineering is complete; BETA-08N owner acceptance is
 pending.
 
 ## Current state
 
-`BLOCKED_OWNER` — settlement evidence, Interest and additive settlement ACL
-hardening are deployed and verified. Authenticated settlement access is exactly
-SELECT/INSERT/UPDATE without direct DELETE. Existing hosted business counts are
-unchanged; local pgTAP passed 352/352 and hosted settlement + Interest checks
-passed 38/38. Feature freeze remains active, owner acceptance is PENDING / NOT
-RUN, and no new product item is READY.
+`BLOCKED_OWNER` — `ARCH-20260922-01` is implemented and fully validated. The
+real 125-row CSV can now review fractional IDR through explicit session approval,
+deterministic HALF_UP whole-rupiah posting and durable source provenance.
+Canonical brokerage mapping selects period decimals. No schema, Supabase or
+backup change was made. Feature freeze remains active and owner acceptance is
+PENDING / NOT RUN.
 
 ## Latest pushed engineering baseline
 
 ```text
 branch: main
 remote: origin
-commit: d1333361eb3502e0327b4a23673a16b6139fe3a5
-message: fix: harden settlement evidence delete ACL
+commit: 67bec5323cc0e55552feb1afcfc7cf51358519fa
+message: docs: record BETA-08N R5 publication
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
+```
+
+## Latest session evidence — 2026-09-22
+
+```text
+work item: PT-BETA-08N-R6
+state: COMPLETE / BLOCKED_OWNER
+branch: main
+starting HEAD/origin baseline: 67bec5323cc0e55552feb1afcfc7cf51358519fa; clean before durable-state edits
+owner evidence: Windows brokerage review screenshots plus the supplied 125-row CSV
+aggregate diagnosis: 71/125 rows contain non-zero fractional IDR; counts by activity are BUY_SETTLEMENT 28, SELL_SETTLEMENT 10, DIVIDEND 1, INTEREST 16, TAX 16
+root cause: CsvMoneyParser intentionally assigns IDR zero fractional digits; persistence uses integer currency minor units and accepted docs prohibit silent rounding
+separator observation: choosing period/none resolves separator ambiguity but correctly exposes the excessive-precision error
+implementation changes: brokerage-only exact IDR parser, review approval state/UI, commit defense, durable note provenance and focused tests
+schema/migration/hosted changes: none
+tests/builds: focused brokerage tranche 39/39 PASS; analyzer/full suite/builds pending
+architecture resolution: explicit reviewed HALF_UP whole-rupiah rounding; original source values preserved in durable note provenance
+implementation: exact brokerage-only parser, canonical period separator, session approval gate, rounded review display, commit guard and deterministic audit metadata
+focused tests: brokerage import/settlement tranche 39/39 PASS
+analyzer: PASS
+full Flutter: 1019/1019 PASS
+builds: Web PASS; Windows debug PASS; Android debug APK PASS with unchanged file_picker warning
+git diff --check: PASS
+SQLite / backup: 29 / v8 unchanged
+Supabase / hosted: untouched; no SQL change
+next exact action: owner reruns the 125-row Windows review, enables Trusted Stockbit / IDX for unknown tickers, approves HALF_UP rounding once, and verifies import/re-import
+owner acceptance: PENDING / NOT RUN
 ```
 
 ## Latest completed engineering state

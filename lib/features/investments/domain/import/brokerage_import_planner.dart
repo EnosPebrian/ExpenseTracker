@@ -14,6 +14,7 @@ import '../../../transactions/domain/import/csv_value_parsers.dart';
 import '../../../transactions/domain/import/transaction_import_models.dart';
 import '../../../transactions/domain/services/transaction_duplicate_detector.dart';
 import 'brokerage_import_identity.dart';
+import 'brokerage_idr_rounding.dart';
 import 'brokerage_import_models.dart';
 import 'brokerage_import_posting.dart';
 import 'brokerage_date_detection.dart';
@@ -334,6 +335,7 @@ class BrokerageImportPlanner {
       sourceRowFingerprint: rowFingerprint,
     );
     final parseIssues = <BrokerageImportIssue>[];
+    final idrRoundings = <BrokerageIdrRounding>[];
     DateTime? date;
     final rawActivity = at(mapping.activityColumn).trim();
     final activity = _activity(rawActivity);
@@ -348,12 +350,16 @@ class BrokerageImportPlanner {
       effectiveCurrency,
       mapping,
       parseIssues,
+      idrRoundings: idrRoundings,
+      field: 'execution_price',
     );
     var gross = _money(
       at(mapping.grossAmountColumn),
       effectiveCurrency,
       mapping,
       parseIssues,
+      idrRoundings: idrRoundings,
+      field: 'gross_amount',
       signed: activity == BrokerageActivityType.interest,
     );
     var fee = _money(
@@ -361,18 +367,24 @@ class BrokerageImportPlanner {
       effectiveCurrency,
       mapping,
       parseIssues,
+      idrRoundings: idrRoundings,
+      field: 'fee',
     );
     var tax = _money(
       optional(mapping.taxColumn),
       effectiveCurrency,
       mapping,
       parseIssues,
+      idrRoundings: idrRoundings,
+      field: 'tax',
     );
     final brokerPnl = _optionalMoney(
       optional(mapping.realizedPnlColumn),
       effectiveCurrency,
       mapping,
       parseIssues,
+      idrRoundings: idrRoundings,
+      field: 'broker_realized_pnl',
       signed: true,
     );
     final numerator = _integer(
@@ -405,6 +417,7 @@ class BrokerageImportPlanner {
       tax = 0;
       quantity = null;
       executionPrice = null;
+      idrRoundings.clear();
     }
     final exactMatches = instruments
         .where(
@@ -453,6 +466,7 @@ class BrokerageImportPlanner {
         classification: BrokerageImportClassification.newRecord,
         included: true,
         issues: parseIssues,
+        idrRoundings: List.unmodifiable(idrRoundings),
       ),
       activeBookId: activeBookId,
       brokerageAccount: brokerageAccount,
@@ -739,19 +753,32 @@ class BrokerageImportPlanner {
     String currency,
     BrokerageStatementMapping mapping,
     List<BrokerageImportIssue> issues, {
+    required List<BrokerageIdrRounding> idrRoundings,
+    required String field,
     bool signed = false,
   }) {
     if (raw.trim().isEmpty) return 0;
     try {
-      final value = moneyParser.parse(
-        raw,
-        currencyCode: currency,
-        decimalSeparator: mapping.decimalSeparator,
-        thousandsSeparator: mapping.thousandsSeparator,
-        stripCurrencySymbols: mapping.stripCurrencySymbols,
-        allowZero: true,
-      );
-      return signed ? value : value.abs();
+      final value = currency.toUpperCase() == 'IDR'
+          ? BrokerageIdrRoundingParser.parse(
+              raw,
+              field: field,
+              decimalSeparator: mapping.decimalSeparator,
+              thousandsSeparator: mapping.thousandsSeparator,
+              stripCurrencySymbols: mapping.stripCurrencySymbols,
+            )
+          : BrokerageIdrParseResult(
+              moneyParser.parse(
+                raw,
+                currencyCode: currency,
+                decimalSeparator: mapping.decimalSeparator,
+                thousandsSeparator: mapping.thousandsSeparator,
+                stripCurrencySymbols: mapping.stripCurrencySymbols,
+                allowZero: true,
+              ),
+            );
+      if (value.rounding case final rounding?) idrRoundings.add(rounding);
+      return signed ? value.value : value.value.abs();
     } on Object catch (error) {
       issues.add(BrokerageImportIssue('CSV: $error', blocking: true));
       return 0;
@@ -763,10 +790,20 @@ class BrokerageImportPlanner {
     String currency,
     BrokerageStatementMapping mapping,
     List<BrokerageImportIssue> issues, {
+    required List<BrokerageIdrRounding> idrRoundings,
+    required String field,
     bool signed = false,
   }) => raw.trim().isEmpty
       ? null
-      : _money(raw, currency, mapping, issues, signed: signed);
+      : _money(
+          raw,
+          currency,
+          mapping,
+          issues,
+          idrRoundings: idrRoundings,
+          field: field,
+          signed: signed,
+        );
 
   static void _validateAccounts(
     String activeBookId,
@@ -864,6 +901,7 @@ BrokerageStatementMapping? canonicalBrokerageMappingFor(List<String> headers) {
     ]),
     splitNumeratorColumn: index('split_numerator'),
     splitDenominatorColumn: index('split_denominator'),
+    decimalSeparator: CsvSeparator.period,
   );
 }
 

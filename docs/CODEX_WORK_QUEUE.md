@@ -2,7 +2,7 @@
 
 **Queue protocol:** `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md`
 **Last architect seed:** 2026-09-09
-**Last reconciled:** 2026-09-21
+**Last reconciled:** 2026-09-22
 
 ## Queue rules
 
@@ -18,6 +18,36 @@ Codex must:
 ---
 
 ## RECENTLY COMPLETED
+
+### PT-BETA-08N-R6 — Fractional-IDR brokerage statement compatibility
+
+**Priority:** P0
+**State:** COMPLETE
+**Type:** owner-acceptance regression / financial precision decision
+**Authority:** owner Windows acceptance evidence, 2026-09-22
+**Scope:** trusted Stockbit/IDX brokerage CSV only; feature freeze remains active
+
+The real 125-row acceptance CSV now recognizes settlement rows, dates and
+activities, but exactly 71 rows contain non-zero fractional IDR amounts and are
+therefore invalid under the accepted whole-rupiah/no-silent-rounding contract:
+28 BUY_SETTLEMENT, 10 SELL_SETTLEMENT, 1 DIVIDEND, 16 INTEREST and 16 TAX.
+Selecting decimal `period` and thousands `none` correctly changes the parser
+message from unresolved separators to excessive precision; it cannot make the
+rows safe to commit. Settlement evidence and real brokerage cash activities
+both persist amounts as integer minor units, and the repository explicitly
+forbids inventing an IDR rounding policy.
+
+`ARCH-20260922-01` selected explicit reviewed HALF_UP rounding, symmetric away
+from zero at ties. The brokerage-only parser uses exact integer/string
+arithmetic; one session-level approval gates commit, and structured provenance
+preserves every original fractional source value in existing durable note
+metadata. Canonical brokerage CSVs select period decimals automatically.
+Household precision and non-brokerage imports remain unchanged; no schema,
+Supabase or backup-format change is required. Focused brokerage/settlement tests
+passed 39/39; analyzer, the full 1019/1019 Flutter suite, Web, Windows debug,
+Android debug APK and diff checks passed. The unchanged `file_picker` Kotlin
+warning remains non-blocking. Owner acceptance remains PENDING / NOT RUN, and
+the feature freeze returns to `BLOCKED_OWNER` with no READY feature item.
 
 ### PT-BETA-08N-R5 — Settlement + Interest Hosted Rollout
 
