@@ -25,8 +25,8 @@ PENDING / NOT RUN.
 ```text
 branch: main
 remote: origin
-commit: 67bec5323cc0e55552feb1afcfc7cf51358519fa
-message: docs: record BETA-08N R5 publication
+commit: 542bc485d8a00b222e6f028d101acb41c239ac86
+message: fix: review fractional IDR brokerage imports
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -57,6 +57,9 @@ SQLite / backup: 29 / v8 unchanged
 Supabase / hosted: untouched; no SQL change
 next exact action: owner reruns the 125-row Windows review, enables Trusted Stockbit / IDX for unknown tickers, approves HALF_UP rounding once, and verifies import/re-import
 owner acceptance: PENDING / NOT RUN
+implementation commit: 542bc485d8a00b222e6f028d101acb41c239ac86
+push result: origin/main succeeded
+post-push status: clean before this durable-state follow-up
 ```
 
 ## Latest completed engineering state
