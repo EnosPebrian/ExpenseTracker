@@ -8,17 +8,17 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-None — PT-BETA-08N-R6 engineering is complete; BETA-08N owner acceptance is
-pending.
+None — PT-BETA-08N-R6-R1 engineering verification is complete; BETA-08N owner
+acceptance is pending on a current Windows artifact.
 
 ## Current state
 
-`BLOCKED_OWNER` — `ARCH-20260922-01` is implemented and fully validated. The
-real 125-row CSV can now review fractional IDR through explicit session approval,
-deterministic HALF_UP whole-rupiah posting and durable source provenance.
-Canonical brokerage mapping selects period decimals. No schema, Supabase or
-backup change was made. Feature freeze remains active and owner acceptance is
-PENDING / NOT RUN.
+`BLOCKED_OWNER` — the owner-visible error came from stale Release `data/app.so`
+built 2026-09-16, before R6 was implemented on 2026-09-22. Current source and
+new Debug artifacts pass an exact 14-column RDN parse-order regression and all
+mandatory gates. Owner must close the stale Release app, launch/build a current
+artifact and rerun the real 125-row acceptance CSV. Owner acceptance remains
+PENDING / NOT RUN; the feature freeze remains active.
 
 ## Latest pushed engineering baseline
 
@@ -32,7 +32,30 @@ HEAD == origin/main: yes
 post-push worktree: clean
 ```
 
-## Latest session evidence — 2026-09-22
+## Latest session evidence — 2026-09-23
+
+```text
+work item: PT-BETA-08N-R6-R1
+state: COMPLETE / BLOCKED_OWNER
+branch: main
+starting HEAD/origin: 3cf7e52b1c2d822cc22b639efc59200ab4ae063e; clean
+owner runtime: D:\ExpenseTracker\build\windows\x64\runner\Release\pilgrim_tracker.exe
+stale artifact evidence: Release data\app.so built 2026-09-16; R6 implementation commit authored 2026-09-22
+diagnosis: current source already intercepts IDR brokerage values before generic CsvMoneyParser precision enforcement; the running release did not contain R6
+regression: verified 14-column RDN row shape with a rejecting generic parser; 42563.75 -> 42564, exact provenance retained, approval required, no precision/positive-gross issue, settlement creates no transaction
+production changes: none
+schema / Supabase / backup changes: none
+focused tests: 84/84 PASS
+analyzer: PASS
+full Flutter: 1020/1020 PASS
+builds: Web PASS; Windows debug PASS; Android debug APK PASS with unchanged file_picker Kotlin warning
+artifacts: build\windows\x64\runner\Debug\pilgrim_tracker.exe; build\app\outputs\flutter-apk\app-debug.apk
+git diff --check: PASS
+next exact action: owner closes the stale Release app, launches the current Debug artifact (or rebuilds Release from current main), and reruns the 125-row CSV
+owner acceptance: PENDING / NOT RUN
+```
+
+## Previous session evidence — 2026-09-22
 
 ```text
 work item: PT-BETA-08N-R6

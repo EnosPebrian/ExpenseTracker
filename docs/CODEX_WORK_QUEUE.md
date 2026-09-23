@@ -2,7 +2,7 @@
 
 **Queue protocol:** `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md`
 **Last architect seed:** 2026-09-09
-**Last reconciled:** 2026-09-22
+**Last reconciled:** 2026-09-23
 
 ## Queue rules
 
@@ -18,6 +18,25 @@ Codex must:
 ---
 
 ## RECENTLY COMPLETED
+
+### PT-BETA-08N-R6-R1 — Fractional IDR parse-order regression repair
+
+**Priority:** P0
+**State:** COMPLETE
+**Type:** owner-acceptance runtime regression
+**Authority:** owner runtime evidence and bounded repair authorization, 2026-09-23
+**Scope:** brokerage CSV parse order and release verification only; feature freeze remains active
+
+The verified 14-column RDN row shape now has a regression guard that injects a
+generic money parser which always rejects: `42563.75 IDR` still parses through
+the brokerage-only exact path, becomes 42564, retains source provenance,
+requires session approval and commits only zero-effect settlement evidence.
+The owner was running Release `data/app.so` built 2026-09-16, before R6 was
+implemented on 2026-09-22. Current Debug artifacts contain R6. Focused tests
+passed 84/84, analyzer and full 1020/1020 Flutter suite passed, and Web,
+Windows debug and Android debug builds passed. No production, schema, Supabase
+or backup behavior changed. Owner acceptance remains PENDING / NOT RUN and the
+feature freeze returns to `BLOCKED_OWNER`.
 
 ### PT-BETA-08N-R6 — Fractional-IDR brokerage statement compatibility
 

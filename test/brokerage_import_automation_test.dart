@@ -9,6 +9,7 @@ import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_imp
 import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_planner.dart';
 import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_posting.dart';
 import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_idr_rounding.dart';
+import 'package:pilgrim_tracker/features/investments/domain/entities/brokerage_settlement.dart';
 import 'package:pilgrim_tracker/features/transactions/domain/entities/transaction_brokerage_metadata.dart';
 import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_commit_service.dart';
 import 'package:pilgrim_tracker/features/master_data/domain/entities/account.dart';
@@ -33,6 +34,9 @@ final cash = Account(
   currencyCode: 'IDR',
 );
 const planner = BrokerageImportPlanner();
+const rejectingGenericMoneyPlanner = BrokerageImportPlanner(
+  moneyParser: _RejectingGenericMoneyParser(),
+);
 const mapping = BrokerageStatementMapping(
   dateColumn: 0,
   activityColumn: 1,
@@ -49,6 +53,57 @@ CsvParsedSource source(List<List<String>> rows) => CsvParsedSource(
   rows: [
     for (var i = 0; i < rows.length; i++)
       CsvSourceRow(rowNumber: i + 2, identityKey: 'row-$i', values: rows[i]),
+  ],
+  headerMode: CsvHeaderMode.firstRowHeaders,
+);
+
+const ownerRdnMapping = BrokerageStatementMapping(
+  dateColumn: 0,
+  activityColumn: 1,
+  instrumentColumn: 2,
+  grossAmountColumn: 3,
+  quantityColumn: 4,
+  executionPriceColumn: 5,
+  feeColumn: 6,
+  taxColumn: 7,
+  currencyColumn: 8,
+  referenceColumn: 9,
+  noteColumn: 10,
+  realizedPnlColumn: 11,
+  splitNumeratorColumn: 12,
+  splitDenominatorColumn: 13,
+  decimalSeparator: CsvSeparator.period,
+  thousandsSeparator: CsvSeparator.none,
+  trustedIdx: true,
+);
+
+CsvParsedSource ownerRdnSource(List<List<String>> rows) => CsvParsedSource(
+  fileName: 'synthetic-stockbit-rdn.csv',
+  fileFingerprint: 'synthetic-stockbit-rdn-source',
+  delimiter: ',',
+  headers: const [
+    'Date',
+    'Activity',
+    'Symbol / instrument',
+    'Gross amount',
+    'Quantity',
+    'Execution price',
+    'Fee',
+    'Tax',
+    'Currency',
+    'Reference',
+    'Note',
+    'Broker realized P&L',
+    'Split numerator',
+    'Split denominator',
+  ],
+  rows: [
+    for (var i = 0; i < rows.length; i++)
+      CsvSourceRow(
+        rowNumber: i + 2,
+        identityKey: 'rdn-row-$i',
+        values: rows[i],
+      ),
   ],
   headerMode: CsvHeaderMode.firstRowHeaders,
 );
@@ -95,6 +150,80 @@ void main() {
       throwsA(isA<TransactionImportException>()),
     );
   });
+
+  test(
+    'real RDN row shape reaches HALF_UP review before generic IDR rejection',
+    () async {
+      final preview = await rejectingGenericMoneyPlanner.build(
+        source: ownerRdnSource([
+          [
+            '10/20/2023',
+            'BUY_SETTLEMENT',
+            '',
+            '42563.75',
+            '',
+            '',
+            '',
+            '',
+            'IDR',
+            'BCA-RDN-20231020-01',
+            'Synthetic settlement evidence',
+            '',
+            '',
+            '',
+          ],
+        ]),
+        mapping: ownerRdnMapping,
+        brokerageAccount: broker,
+        activeBookId: 'book',
+        instruments: const [],
+        existingTransactions: const [],
+        existingTransferLinks: const [],
+        counterpartyAccount: cash,
+      );
+
+      final draft = preview.drafts.single;
+      expect(draft.isSettlement, isTrue);
+      expect(draft.settlementType, BrokerageSettlementType.buySettlement);
+      expect(draft.activityType, isNull);
+      expect(draft.grossAmount, 42564);
+      expect(draft.idrRoundings.single.sourceValue, '42563.75');
+      expect(draft.idrRoundings.single.roundedValue, 42564);
+      expect(draft.hasBlockingIssue, isFalse);
+      expect(
+        draft.issues.map((issue) => issue.message),
+        isNot(contains('CSV: The monetary value has too many decimal places.')),
+      );
+      expect(
+        draft.issues.map((issue) => issue.message),
+        isNot(contains('A positive gross amount is required.')),
+      );
+      expect(preview.requiresFractionalIdrApproval, isTrue);
+      expect(preview.fractionalIdrRoundingApproved, isFalse);
+      expect(preview.canCommit, isFalse);
+
+      final approved = BrokerageImportPreview(
+        source: preview.source,
+        drafts: preview.drafts,
+        remoteFreshnessVerified: true,
+        detectedDateFormat: preview.detectedDateFormat,
+        fractionalIdrRoundingApproved: true,
+      );
+      final repo = RecordingRepository();
+      await BrokerageImportCommitService(repository: repo).commit(
+        preview: approved,
+        bookId: 'book',
+        memberId: null,
+        brokerageAccount: broker,
+        counterpartyAccount: cash,
+        existingInstruments: const [],
+        existingTransactions: const [],
+      );
+      expect(repo.settlements.single['amount'], 42564);
+      expect(repo.settlements.single['note'], contains('42563.75'));
+      expect(repo.transactions, isEmpty);
+    },
+  );
 
   test(
     'fractional IDR rows require one approval and preserve provenance',
@@ -508,6 +637,22 @@ void main() {
       0,
     );
   });
+}
+
+class _RejectingGenericMoneyParser extends CsvMoneyParser {
+  const _RejectingGenericMoneyParser();
+
+  @override
+  int parse(
+    String source, {
+    required String currencyCode,
+    required CsvSeparator decimalSeparator,
+    required CsvSeparator thousandsSeparator,
+    required bool stripCurrencySymbols,
+    bool allowZero = false,
+  }) => throw StateError(
+    'The generic money parser must not parse brokerage IDR source values.',
+  );
 }
 
 class RecordingRepository implements InvestmentImportAtomicRepository {
