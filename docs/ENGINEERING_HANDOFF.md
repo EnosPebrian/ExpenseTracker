@@ -26,8 +26,8 @@ EXECUTED. Feature freeze remains active and no product work is READY.
 ```text
 branch: main
 remote: origin
-commit: 69615b6
-message: test: guard fractional IDR brokerage parse order
+commit: 5f1fb7804449f35e103a84fb03665f48e065fefe
+message: docs: record BETA-08N RDN owner acceptance
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -47,6 +47,8 @@ duplicate policy: 39 duplicate/review candidates retained for review and were no
 remaining owner checks: DEFERRED BY OWNER / NOT EXECUTED
 production/schema/Supabase/backup changes: none
 feature freeze: active; no new product development authorized
+closure commit: 5f1fb7804449f35e103a84fb03665f48e065fefe
+push result: origin/main succeeded
 ```
 
 ## Engineering verification evidence — 2026-09-23
