@@ -25,8 +25,8 @@ PENDING / NOT RUN; the feature freeze remains active.
 ```text
 branch: main
 remote: origin
-commit: 542bc485d8a00b222e6f028d101acb41c239ac86
-message: fix: review fractional IDR brokerage imports
+commit: 69615b6
+message: test: guard fractional IDR brokerage parse order
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
@@ -53,6 +53,8 @@ artifacts: build\windows\x64\runner\Debug\pilgrim_tracker.exe; build\app\outputs
 git diff --check: PASS
 next exact action: owner closes the stale Release app, launches the current Debug artifact (or rebuilds Release from current main), and reruns the 125-row CSV
 owner acceptance: PENDING / NOT RUN
+implementation/test commit: 69615b6
+push result: origin/main succeeded
 ```
 
 ## Previous session evidence — 2026-09-22
