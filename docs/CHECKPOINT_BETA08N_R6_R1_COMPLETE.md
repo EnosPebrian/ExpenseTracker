@@ -2,9 +2,11 @@
 
 **Date:** 2026-09-23
 
-**Verdict:** Engineering PASS; owner acceptance PENDING / NOT RUN
+**Verdict:** Engineering PASS; targeted 125-row RDN owner acceptance PASS
 
 **Feature freeze:** ACTIVE
+
+**Remaining owner matrix:** DEFERRED BY OWNER / NOT EXECUTED
 
 ## Runtime diagnosis
 
@@ -63,7 +65,25 @@ build\app\outputs\flutter-apk\app-debug.apk
 
 ## Owner acceptance
 
-PENDING / NOT RUN. Close the stale Release process, run a current artifact,
-reanalyze the real 125-row CSV, approve HALF_UP once, import, and re-import to
-confirm zero duplicate effects. Do not mark owner acceptance complete until
-that runtime scenario is actually performed.
+The owner completed the targeted Windows regression with the real 125-row RDN
+CSV. Result: PASS.
+
+```text
+Invalid: 0
+Unresolved: 0
+fractional-IDR values reviewed through HALF_UP: 71
+selected events imported: 86
+financial rows created: 16
+instruments created: 0
+duplicate/review candidates retained: 39
+```
+
+The UI exposed one session-level approval and displayed original fractional
+values as provenance. BUY_SETTLEMENT and SELL_SETTLEMENT persisted as
+zero-financial-effect evidence, and Interest was recognized without an
+instrument. The 39 duplicate/review rows are governed by the existing review
+policy and are not an import failure.
+
+The owner intentionally deferred the remainder of the Windows/Android,
+cross-device, bootstrap, backup/restore and restart matrix. Those checks remain
+**DEFERRED BY OWNER / NOT EXECUTED** and are not marked PASS.

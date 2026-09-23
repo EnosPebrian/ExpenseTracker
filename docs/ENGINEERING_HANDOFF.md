@@ -8,17 +8,18 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-None — PT-BETA-08N-R6-R1 engineering verification is complete; BETA-08N owner
-acceptance is pending on a current Windows artifact.
+None — PT-BETA-08N-R6-R1 engineering and targeted owner acceptance are complete.
+The remainder of BETA-08N physical-device acceptance is deferred by the owner.
 
 ## Current state
 
-`BLOCKED_OWNER` — the owner-visible error came from stale Release `data/app.so`
-built 2026-09-16, before R6 was implemented on 2026-09-22. Current source and
-new Debug artifacts pass an exact 14-column RDN parse-order regression and all
-mandatory gates. Owner must close the stale Release app, launch/build a current
-artifact and rerun the real 125-row acceptance CSV. Owner acceptance remains
-PENDING / NOT RUN; the feature freeze remains active.
+`BLOCKED_OWNER` — targeted Windows acceptance of the real 125-row RDN CSV is
+PASS. Invalid and Unresolved were both zero; 71 fractional values used the
+approved HALF_UP path; 86 selected events imported as 16 financial rows and
+zero instruments; settlement and Interest semantics were observed correctly.
+The 39 duplicate/review candidates are expected policy outcomes, not failures.
+All remaining Windows/Android physical-device checks are DEFERRED BY OWNER / NOT
+EXECUTED. Feature freeze remains active and no product work is READY.
 
 ## Latest pushed engineering baseline
 
@@ -32,7 +33,23 @@ HEAD == origin/main: yes
 post-push worktree: clean
 ```
 
-## Latest session evidence — 2026-09-23
+## Latest owner evidence — 2026-09-23
+
+```text
+work item: PT-BETA-08N-R6-R1 owner acceptance closure
+state: targeted acceptance PASS / remaining physical-device matrix DEFERRED BY OWNER / NOT EXECUTED
+owner fixture: real 125-row Stockbit/RDN CSV on Windows
+review result: Invalid 0; Unresolved 0; 71 fractional-IDR values reached HALF_UP review with source provenance
+commit result: 86 selected events imported; 16 financial rows; zero instruments
+settlement result: BUY_SETTLEMENT / SELL_SETTLEMENT imported as zero-financial-effect evidence
+Interest result: recognized as Interest without instrument requirement
+duplicate policy: 39 duplicate/review candidates retained for review and were not blindly imported; not an import failure
+remaining owner checks: DEFERRED BY OWNER / NOT EXECUTED
+production/schema/Supabase/backup changes: none
+feature freeze: active; no new product development authorized
+```
+
+## Engineering verification evidence — 2026-09-23
 
 ```text
 work item: PT-BETA-08N-R6-R1

@@ -35,8 +35,12 @@ The owner was running Release `data/app.so` built 2026-09-16, before R6 was
 implemented on 2026-09-22. Current Debug artifacts contain R6. Focused tests
 passed 84/84, analyzer and full 1020/1020 Flutter suite passed, and Web,
 Windows debug and Android debug builds passed. No production, schema, Supabase
-or backup behavior changed. Owner acceptance remains PENDING / NOT RUN and the
-feature freeze returns to `BLOCKED_OWNER`.
+or backup behavior changed. The owner subsequently passed the targeted real
+125-row Windows RDN regression: Invalid 0, Unresolved 0, 71 fractional values
+reviewed through HALF_UP, 86 selected events imported, 16 financial rows, zero
+instruments, and 39 expected duplicate/review candidates. The remaining full
+Windows/Android acceptance matrix is DEFERRED BY OWNER / NOT EXECUTED. The
+feature freeze remains active with no READY feature item.
 
 ### PT-BETA-08N-R6 — Fractional-IDR brokerage statement compatibility
 
@@ -65,8 +69,9 @@ Household precision and non-brokerage imports remain unchanged; no schema,
 Supabase or backup-format change is required. Focused brokerage/settlement tests
 passed 39/39; analyzer, the full 1019/1019 Flutter suite, Web, Windows debug,
 Android debug APK and diff checks passed. The unchanged `file_picker` Kotlin
-warning remains non-blocking. Owner acceptance remains PENDING / NOT RUN, and
-the feature freeze returns to `BLOCKED_OWNER` with no READY feature item.
+warning remains non-blocking. The targeted 125-row RDN regression is owner
+accepted; all other physical-device acceptance is DEFERRED BY OWNER / NOT
+EXECUTED. The feature freeze remains active with no READY feature item.
 
 ### PT-BETA-08N-R5 — Settlement + Interest Hosted Rollout
 
@@ -89,9 +94,10 @@ The two feature migrations and the separately authorized additive ACL migration
 Authenticated settlement privileges are now SELECT/INSERT/UPDATE with no direct
 DELETE; versioned tombstone sync, reconciliation, RLS, household isolation and
 zero-financial-effect checks passed locally and hosted. Full local pgTAP passed
-352/352 and hosted focused checks passed 38/38. Owner acceptance remains NOT RUN;
-the next owner action is the real 125-row RDN CSV on Windows. Feature freeze
-remains active and no feature item is READY.
+352/352 and hosted focused checks passed 38/38. The targeted real 125-row RDN
+CSV acceptance subsequently passed on Windows. The remaining physical-device
+matrix is DEFERRED BY OWNER / NOT EXECUTED. Feature freeze remains active and no
+feature item is READY.
 
 ### PT-BETA-08N1-R4 — Distinct Brokerage Interest Activity
 

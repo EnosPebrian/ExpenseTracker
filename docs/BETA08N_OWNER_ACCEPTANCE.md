@@ -1,11 +1,37 @@
 # BETA-08N Windows and Android Owner Acceptance
 
-**Status:** PENDING / NOT RUN
+**Status:** PARTIAL — targeted 125-row RDN regression PASS; remaining matrix
+DEFERRED BY OWNER / NOT EXECUTED
 **Hosted schema:** DEPLOYED through `20260921144802`
-**Next owner action:** rerun the real 125-row RDN CSV on Windows, then continue
-the remaining Windows and Android matrix below.
+**Feature freeze:** ACTIVE
 
-## Interest repair acceptance — NOT RUN
+## Targeted 125-row RDN regression acceptance — PASS
+
+Owner acceptance was completed on Windows with the real 125-row Stockbit/RDN
+CSV. Observed result:
+
+- Invalid: 0;
+- Unresolved: 0;
+- 71 fractional-IDR values entered the accepted HALF_UP review path;
+- one session-level rounding approval was available;
+- original fractional source values were visible as provenance;
+- BUY_SETTLEMENT and SELL_SETTLEMENT imported as zero-financial-effect
+  settlement evidence;
+- Interest was recognized as Interest without requiring an instrument;
+- import completed for 86 selected events;
+- 16 financial rows were created;
+- 0 instruments were created;
+- 39 rows remained duplicate/review candidates and were not blindly imported.
+
+The 39 duplicate/review candidates are expected review-policy outcomes, not an
+import failure. This targeted acceptance closes the original fractional-IDR and
+stale-runtime blocker.
+
+The owner intentionally deferred every unexecuted Windows, Android,
+cross-device, bootstrap, backup/restore and restart check below. Their status is
+**DEFERRED BY OWNER / NOT EXECUTED**, not PASS.
+
+## Full Interest repair matrix — DEFERRED BY OWNER / NOT EXECUTED
 
 The Interest migration and settlement ACL hardening are deployed. Use a current
 encrypted backup before beginning owner testing.
@@ -20,7 +46,7 @@ encrypted backup before beginning owner testing.
 | Windows offline then Android after reconnect | Record/import Interest, close/reopen, sync and inspect second device | Stable Interest activity persists and converges once with no instrument or duplicate | [ ] PASS [ ] FAIL |
 | Current encrypted v8 backup | Backup, restore and clone disposable Interest history | Interest identity, amount, note/reference and account attribution survive; no duplicate effect | [ ] PASS [ ] FAIL |
 
-## Settlement repair acceptance — NOT RUN
+## Full Settlement repair matrix — DEFERRED BY OWNER / NOT EXECUTED
 
 The settlement migration and least-privilege ACL correction are deployed.
 
@@ -51,8 +77,8 @@ The real RDN CSV acceptance must explicitly verify:
 Run this matrix only with disposable brokerage data after creating a current
 encrypted backup. Use the same linked household on Windows and Android, with
 both authorized members signed in. Record evidence without exposing account
-numbers, credentials, or real financial details. Do not mark this document PASS
-until every required row passes on real devices.
+numbers, credentials, or real financial details. Do not mark the full BETA-08N
+owner matrix PASS until every required row is actually executed on real devices.
 
 | # | Platform/setup | Exact action | Expected result | Result |
 | ---: | --- | --- | --- | --- |
@@ -84,12 +110,14 @@ until every required row passes on real devices.
 
 ## Final owner verdict
 
-- Windows required checks: [ ] PASS [ ] FAIL
-- Android required checks: [ ] PASS [ ] FAIL
-- Cross-device synchronization/bootstrap: [ ] PASS [ ] FAIL
-- Backup/restore: [ ] PASS [ ] FAIL
-- Owner acceptance date: ____________________
-- Owner notes: ______________________________
+- Targeted 125-row Windows RDN regression: [x] PASS [ ] FAIL
+- Remaining Windows required checks: DEFERRED BY OWNER / NOT EXECUTED
+- Android required checks: DEFERRED BY OWNER / NOT EXECUTED
+- Cross-device synchronization/bootstrap: DEFERRED BY OWNER / NOT EXECUTED
+- Backup/restore: DEFERRED BY OWNER / NOT EXECUTED
+- Targeted acceptance date: 2026-09-23
+- Owner notes: 39 duplicate/review candidates remain governed by existing
+  duplicate-review policy and are not an import failure.
 
-Until the owner completes and records this matrix, BETA-08N owner acceptance
-remains **PENDING / NOT RUN**.
+The targeted RDN regression is accepted. Full BETA-08N owner acceptance remains
+incomplete because the remainder was **DEFERRED BY OWNER / NOT EXECUTED**.
