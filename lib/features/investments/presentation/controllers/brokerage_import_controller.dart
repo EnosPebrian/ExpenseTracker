@@ -53,6 +53,7 @@ class BrokerageImportController extends ChangeNotifier {
   String? counterpartyAccountId;
   bool busy = false;
   String? error;
+  Set<String> _existingSettlementIds = const {};
 
   Future<void> selectCsv() async {
     if (busy) return;
@@ -106,8 +107,9 @@ class BrokerageImportController extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
+      _existingSettlementIds = await loadSettlementIds?.call() ?? const {};
       preview = await planner.build(
-        existingSettlementIds: await loadSettlementIds?.call() ?? const {},
+        existingSettlementIds: _existingSettlementIds,
         source: currentSource,
         mapping: currentMapping,
         brokerageAccount: _brokerageAccount(),
@@ -130,56 +132,67 @@ class BrokerageImportController extends ChangeNotifier {
     int rowNumber,
     BrokerageActivityType activity, {
     required String bookId,
-  }) => _replace(
-    rowNumber,
-    (draft) => planner.resolveActivity(
-      draft: draft,
-      activityType: activity,
-      activeBookId: bookId,
-      brokerageAccount: _brokerageAccount(),
-      counterpartyAccount: _counterpartyAccount(),
-      instruments: instruments(),
-      existingTransactions: transactions(),
-      existingTransferLinks: transferLinks(),
-    ),
+  }) => _replan(
+    bookId,
+    (drafts) => [
+      for (final draft in drafts)
+        if (draft.sourceRowNumber == rowNumber)
+          draft.copyWith(activityType: activity)
+        else
+          draft,
+    ],
   );
 
   void mapInstrument(
     int rowNumber,
     AssetDefinition instrument, {
     required String bookId,
-  }) => _replace(
-    rowNumber,
-    (draft) => planner.mapInstrument(
-      draft: draft,
+  }) => _replan(
+    bookId,
+    (drafts) => planner.applyInstrumentDecision(
+      drafts: drafts,
+      sourceRowNumber: rowNumber,
       instrument: instrument,
+      resolution: BrokerageInstrumentResolution.mapped,
       activeBookId: bookId,
       brokerageAccount: _brokerageAccount(),
-      counterpartyAccount: _counterpartyAccount(),
-      instruments: instruments(),
-      existingTransactions: transactions(),
-      existingTransferLinks: transferLinks(),
     ),
   );
 
-  void createInstrument(int rowNumber, {required String bookId}) => _replace(
-    rowNumber,
-    (draft) => planner.createInstrument(
-      draft: draft,
+  void createInstrument(int rowNumber, {required String bookId}) {
+    final current = preview;
+    if (current == null) return;
+    final sourceDraft = current.drafts.firstWhere(
+      (draft) => draft.sourceRowNumber == rowNumber,
+    );
+    final instrument = planner.createInstrumentDefinition(
+      draft: sourceDraft,
       activeBookId: bookId,
-      brokerageAccount: _brokerageAccount(),
-      counterpartyAccount: _counterpartyAccount(),
-      instruments: instruments(),
-      existingTransactions: transactions(),
-      existingTransferLinks: transferLinks(),
-    ),
-  );
+    );
+    _replan(
+      bookId,
+      (drafts) => planner.applyInstrumentDecision(
+        drafts: drafts,
+        sourceRowNumber: rowNumber,
+        instrument: instrument,
+        resolution: BrokerageInstrumentResolution.create,
+        activeBookId: bookId,
+        brokerageAccount: _brokerageAccount(),
+      ),
+    );
+  }
 
-  void setIncluded(int rowNumber, bool included) => _replace(
-    rowNumber,
-    (draft) =>
-        draft.canChangeInclusion ? draft.copyWith(included: included) : draft,
-  );
+  void setIncluded(int rowNumber, bool included, {required String bookId}) =>
+      _replan(
+        bookId,
+        (drafts) => [
+          for (final draft in drafts)
+            if (draft.sourceRowNumber == rowNumber && draft.canChangeInclusion)
+              draft.copyWith(included: included)
+            else
+              draft,
+        ],
+      );
 
   void approveFractionalIdrRounding(bool approved) {
     final current = preview;
@@ -224,21 +237,28 @@ class BrokerageImportController extends ChangeNotifier {
     }
   }
 
-  void _replace(
-    int rowNumber,
-    BrokerageImportDraft Function(BrokerageImportDraft draft) update,
+  void _replan(
+    String bookId,
+    List<BrokerageImportDraft> Function(List<BrokerageImportDraft> drafts)
+    update,
   ) {
     final current = preview;
     if (current == null) return;
-    preview = BrokerageImportPreview(
-      source: current.source,
-      drafts: [
-        for (final draft in current.drafts)
-          if (draft.sourceRowNumber == rowNumber) update(draft) else draft,
-      ],
-      remoteFreshnessVerified: current.remoteFreshnessVerified,
-      detectedDateFormat: current.detectedDateFormat,
-      fractionalIdrRoundingApproved: current.fractionalIdrRoundingApproved,
+    preview = planner.replan(
+      preview: BrokerageImportPreview(
+        source: current.source,
+        drafts: update(current.drafts),
+        remoteFreshnessVerified: current.remoteFreshnessVerified,
+        detectedDateFormat: current.detectedDateFormat,
+        fractionalIdrRoundingApproved: current.fractionalIdrRoundingApproved,
+      ),
+      activeBookId: bookId,
+      brokerageAccount: _brokerageAccount(),
+      counterpartyAccount: _counterpartyAccount(),
+      instruments: instruments(),
+      existingTransactions: transactions(),
+      existingTransferLinks: transferLinks(),
+      existingSettlementIds: _existingSettlementIds,
     );
     result = null;
     error = null;

@@ -8,18 +8,41 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-None — PT-BETA-08N-R6-R1 engineering and targeted owner acceptance are complete.
-The remainder of BETA-08N physical-device acceptance is deferred by the owner.
+None — PT-BETA-08N-R7 engineering is complete. Owner runtime acceptance is
+pending under the active feature freeze.
 
 ## Current state
 
-`BLOCKED_OWNER` — targeted Windows acceptance of the real 125-row RDN CSV is
-PASS. Invalid and Unresolved were both zero; 71 fractional values used the
-approved HALF_UP path; 86 selected events imported as 16 financial rows and
-zero instruments; settlement and Interest semantics were observed correctly.
-The 39 duplicate/review candidates are expected policy outcomes, not failures.
-All remaining Windows/Android physical-device checks are DEFERRED BY OWNER / NOT
-EXECUTED. Feature freeze remains active and no product work is READY.
+`BLOCKED_OWNER` — R7 now propagates one explicit Map/Create decision by
+normalized symbol + currency and chronologically replans the entire preview
+after every financial review action. Engineering gates are complete; owner
+runtime acceptance is PENDING / NOT RUN. Feature freeze remains active, with no
+new product work READY.
+
+## PT-BETA-08N-R7 engineering evidence — 2026-09-27
+
+```text
+work item: PT-BETA-08N-R7
+state: ENGINEERING COMPLETE / BLOCKED_OWNER
+scope: brokerage import review-session replanning only
+root cause: review actions finalized one row against persisted history instead of replanning the statement against an evolving simulated sequence
+instrument resolution: one explicit Map/Create propagates by normalized symbol + currency only
+planning order: activity date, then stable source row number
+simulation: persisted transactions plus earlier included planned postings
+validation authority: AssetTradeValidator unchanged; oversells remain blocked
+commit behavior: one deterministic instrument definition; atomic import unchanged
+reimport behavior: exact source/account import creates no duplicate financial effect or instrument
+focused tests: 97/97 PASS
+flutter analyze: PASS
+full Flutter suite: 1024/1024 PASS
+web build: PASS
+Windows debug build: PASS
+Android debug APK build: PASS (unchanged file_picker forward-looking Kotlin warning)
+schema / Supabase / backup changes: none
+owner acceptance: PENDING / NOT RUN
+feature freeze: active
+Git completion: pending final commit and push
+```
 
 ## Latest pushed engineering baseline
 

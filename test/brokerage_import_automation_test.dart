@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:pilgrim_tracker/features/investments/presentation/controllers/brokerage_import_controller.dart';
 import 'package:pilgrim_tracker/features/investments/presentation/screens/brokerage_import_screen.dart';
 import 'package:pilgrim_tracker/features/assets/domain/entities/asset_definition.dart';
+import 'package:pilgrim_tracker/features/assets/domain/entities/asset_kind.dart';
 import 'package:pilgrim_tracker/features/assets/domain/services/asset_portfolio_calculator.dart';
 import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_date_detection.dart';
 import 'package:pilgrim_tracker/features/investments/domain/import/brokerage_import_models.dart';
@@ -76,6 +77,52 @@ const ownerRdnMapping = BrokerageStatementMapping(
   thousandsSeparator: CsvSeparator.none,
   trustedIdx: true,
 );
+
+const reviewRdnMapping = BrokerageStatementMapping(
+  dateColumn: 0,
+  activityColumn: 1,
+  instrumentColumn: 2,
+  grossAmountColumn: 3,
+  quantityColumn: 4,
+  executionPriceColumn: 5,
+  feeColumn: 6,
+  taxColumn: 7,
+  currencyColumn: 8,
+  referenceColumn: 9,
+  noteColumn: 10,
+  realizedPnlColumn: 11,
+  splitNumeratorColumn: 12,
+  splitDenominatorColumn: 13,
+  decimalSeparator: CsvSeparator.period,
+  thousandsSeparator: CsvSeparator.none,
+);
+
+List<String> rdnRow(
+  String date,
+  String activity, {
+  String symbol = '',
+  String gross = '',
+  String quantity = '',
+  String price = '',
+  String currency = 'IDR',
+  String splitNumerator = '',
+  String splitDenominator = '',
+}) => [
+  date,
+  activity,
+  symbol,
+  gross,
+  quantity,
+  price,
+  '',
+  '',
+  currency,
+  '$activity-$date',
+  '',
+  '',
+  splitNumerator,
+  splitDenominator,
+];
 
 CsvParsedSource ownerRdnSource(List<List<String>> rows) => CsvParsedSource(
   fileName: 'synthetic-stockbit-rdn.csv',
@@ -637,6 +684,333 @@ void main() {
       0,
     );
   });
+
+  test(
+    'one create decision replans all nine activities as one chronological session',
+    () async {
+      final repository = RecordingRepository();
+      final controller =
+          BrokerageImportController(
+              pickFile: () async => null,
+              commitService: BrokerageImportCommitService(
+                repository: repository,
+              ),
+              accounts: () => [broker, cash],
+              instruments: () => repository.definitions,
+              transactions: () => repository.transactions,
+              transferLinks: () => const [],
+              onImported: () async {},
+            )
+            ..source = ownerRdnSource([
+              rdnRow('2026-09-01', 'DEPOSIT', gross: '200000'),
+              rdnRow(
+                '2026-09-02',
+                'BUY',
+                symbol: 'PTST',
+                gross: '100000',
+                quantity: '100',
+                price: '1000',
+              ),
+              rdnRow('2026-09-03', 'DIVIDEND', symbol: 'PTST', gross: '1000'),
+              rdnRow('2026-09-04', 'INTEREST', gross: '500'),
+              rdnRow('2026-09-05', 'FEE', gross: '100'),
+              rdnRow('2026-09-06', 'TAX', gross: '50'),
+              rdnRow(
+                '2026-09-07',
+                'SELL',
+                symbol: 'PTST',
+                gross: '48000',
+                quantity: '40',
+                price: '1200',
+              ),
+              rdnRow(
+                '2026-09-08',
+                'SPLIT',
+                symbol: 'PTST',
+                splitNumerator: '2',
+                splitDenominator: '1',
+              ),
+              rdnRow('2026-09-09', 'WITHDRAWAL', gross: '500'),
+            ])
+            ..mapping = reviewRdnMapping
+            ..brokerageAccountId = broker.id
+            ..counterpartyAccountId = cash.id;
+      addTearDown(controller.dispose);
+
+      await controller.analyze(bookId: 'book');
+      expect(controller.preview!.unresolvedCount, 4);
+
+      controller.createInstrument(3, bookId: 'book');
+      final preview = controller.preview!;
+      final instrumentDrafts = preview.drafts
+          .where((draft) => draft.requiresInstrument)
+          .toList();
+      expect(instrumentDrafts, hasLength(4));
+      expect(
+        instrumentDrafts.map((draft) => draft.instrumentId).toSet(),
+        hasLength(1),
+      );
+      expect(
+        instrumentDrafts.map((draft) => draft.instrumentResolution).toSet(),
+        {BrokerageInstrumentResolution.create},
+      );
+      expect(
+        instrumentDrafts.every((draft) => !draft.hasBlockingIssue),
+        isTrue,
+      );
+      expect(preview.unresolvedCount, 0);
+      expect(preview.instrumentsToCreate, 1);
+      expect(preview.readyCount, 9);
+
+      await controller.commit(bookId: 'book', memberId: null);
+      expect(controller.error, isNull);
+      expect(repository.calls, 1);
+      expect(repository.definitions, hasLength(1));
+      final definition = repository.definitions.single;
+      expect(definition.symbol, 'PTST');
+      expect(
+        repository.transactions
+            .where((transaction) => transaction.assetDefinitionId != null)
+            .map((transaction) => transaction.assetDefinitionId)
+            .toSet(),
+        {definition.id},
+      );
+      final holding = AssetPortfolioCalculator.calculate(
+        transactions: repository.transactions,
+        assetDefinitions: repository.definitions,
+        brokerageAccountId: broker.id,
+      ).holdings.single;
+      expect(holding.quantity, 120);
+      expect(holding.costBasis, 60000);
+
+      final repeated = await planner.build(
+        source: controller.source!,
+        mapping: reviewRdnMapping,
+        brokerageAccount: broker,
+        activeBookId: 'book',
+        instruments: repository.definitions,
+        existingTransactions: repository.transactions,
+        existingTransferLinks: repository.transferLinks,
+        counterpartyAccount: cash,
+      );
+      expect(repeated.readyCount, 0);
+      expect(repeated.instrumentsToCreate, 0);
+      expect(
+        repeated.drafts
+            .where((draft) => !draft.isSettlement)
+            .every(
+              (draft) =>
+                  draft.classification ==
+                  BrokerageImportClassification.alreadyImported,
+            ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'excluding or changing the earlier buy immediately invalidates later sell and split',
+    () async {
+      final controller =
+          BrokerageImportController(
+              pickFile: () async => null,
+              commitService: BrokerageImportCommitService(
+                repository: RecordingRepository(),
+              ),
+              accounts: () => [broker, cash],
+              instruments: () => const [],
+              transactions: () => const [],
+              transferLinks: () => const [],
+              onImported: () async {},
+            )
+            ..source = ownerRdnSource([
+              rdnRow(
+                '2026-09-01',
+                'BUY',
+                symbol: 'PTST',
+                gross: '100000',
+                quantity: '100',
+                price: '1000',
+              ),
+              rdnRow(
+                '2026-09-02',
+                'SELL',
+                symbol: 'PTST',
+                gross: '48000',
+                quantity: '40',
+                price: '1200',
+              ),
+              rdnRow(
+                '2026-09-03',
+                'SPLIT',
+                symbol: 'PTST',
+                splitNumerator: '2',
+                splitDenominator: '1',
+              ),
+            ])
+            ..mapping = reviewRdnMapping
+            ..brokerageAccountId = broker.id
+            ..counterpartyAccountId = cash.id;
+      addTearDown(controller.dispose);
+      await controller.analyze(bookId: 'book');
+      controller.createInstrument(2, bookId: 'book');
+      expect(
+        controller.preview!.drafts.every((draft) => draft.canCommit),
+        isTrue,
+      );
+
+      controller.setIncluded(2, false, bookId: 'book');
+      expect(controller.preview!.drafts[1].hasBlockingIssue, isTrue);
+      expect(controller.preview!.drafts[2].hasBlockingIssue, isTrue);
+
+      controller.setIncluded(2, true, bookId: 'book');
+      expect(
+        controller.preview!.drafts.every((draft) => draft.canCommit),
+        isTrue,
+      );
+      controller.resolveActivity(2, BrokerageActivityType.fee, bookId: 'book');
+      expect(controller.preview!.drafts[1].hasBlockingIssue, isTrue);
+      expect(controller.preview!.drafts[2].hasBlockingIssue, isTrue);
+    },
+  );
+
+  test(
+    'chronological replanning ignores source row order and blocks oversells',
+    () async {
+      Future<BrokerageImportController> buildController(
+        List<List<String>> rows,
+      ) async {
+        final controller =
+            BrokerageImportController(
+                pickFile: () async => null,
+                commitService: BrokerageImportCommitService(
+                  repository: RecordingRepository(),
+                ),
+                accounts: () => [broker, cash],
+                instruments: () => const [],
+                transactions: () => const [],
+                transferLinks: () => const [],
+                onImported: () async {},
+              )
+              ..source = ownerRdnSource(rows)
+              ..mapping = reviewRdnMapping
+              ..brokerageAccountId = broker.id
+              ..counterpartyAccountId = cash.id;
+        await controller.analyze(bookId: 'book');
+        return controller;
+      }
+
+      final outOfOrder = await buildController([
+        rdnRow(
+          '2026-09-07',
+          'SELL',
+          symbol: 'PTST',
+          gross: '48000',
+          quantity: '40',
+          price: '1200',
+        ),
+        rdnRow(
+          '2026-09-02',
+          'BUY',
+          symbol: 'PTST',
+          gross: '100000',
+          quantity: '100',
+          price: '1000',
+        ),
+      ]);
+      addTearDown(outOfOrder.dispose);
+      outOfOrder.createInstrument(3, bookId: 'book');
+      expect(
+        outOfOrder.preview!.drafts.every((draft) => draft.canCommit),
+        isTrue,
+      );
+
+      final oversell = await buildController([
+        rdnRow(
+          '2026-09-02',
+          'BUY',
+          symbol: 'PTST',
+          gross: '100000',
+          quantity: '100',
+          price: '1000',
+        ),
+        rdnRow(
+          '2026-09-07',
+          'SELL',
+          symbol: 'PTST',
+          gross: '168000',
+          quantity: '140',
+          price: '1200',
+        ),
+      ]);
+      addTearDown(oversell.dispose);
+      oversell.createInstrument(2, bookId: 'book');
+      expect(oversell.preview!.drafts.first.canCommit, isTrue);
+      expect(oversell.preview!.drafts.last.hasBlockingIssue, isTrue);
+    },
+  );
+
+  test('instrument decisions propagate by symbol and currency only', () async {
+    final mappedDefinition = AssetDefinition(
+      id: 'mapped',
+      bookId: 'book',
+      displayName: 'Mapped equity',
+      kind: AssetKind.stock,
+      symbol: 'OTHER',
+      providerCode: null,
+      providerSymbol: null,
+      exchangeCode: 'IDX',
+      currencyCode: 'IDR',
+      unit: 'share',
+      lotSize: 100,
+      onlinePricingEnabled: false,
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      deletedAt: null,
+      version: 1,
+      deviceId: 'test',
+      syncStatus: 'synced',
+    );
+    final controller =
+        BrokerageImportController(
+            pickFile: () async => null,
+            commitService: BrokerageImportCommitService(
+              repository: RecordingRepository(),
+            ),
+            accounts: () => [broker, cash],
+            instruments: () => [mappedDefinition],
+            transactions: () => const [],
+            transferLinks: () => const [],
+            onImported: () async {},
+          )
+          ..source = ownerRdnSource([
+            rdnRow(
+              '2026-09-01',
+              'BUY',
+              symbol: 'PTST',
+              gross: '100000',
+              quantity: '100',
+              price: '1000',
+            ),
+            rdnRow('2026-09-02', 'DIVIDEND', symbol: 'PTST', gross: '1000'),
+            rdnRow(
+              '2026-09-03',
+              'DIVIDEND',
+              symbol: 'PTST',
+              gross: '10',
+              currency: 'USD',
+            ),
+          ])
+          ..mapping = reviewRdnMapping
+          ..brokerageAccountId = broker.id
+          ..counterpartyAccountId = cash.id;
+    addTearDown(controller.dispose);
+    await controller.analyze(bookId: 'book');
+    controller.mapInstrument(2, mappedDefinition, bookId: 'book');
+    expect(controller.preview!.drafts[0].instrumentId, mappedDefinition.id);
+    expect(controller.preview!.drafts[1].instrumentId, mappedDefinition.id);
+    expect(controller.preview!.drafts[2].instrumentId, isNull);
+  });
 }
 
 class _RejectingGenericMoneyParser extends CsvMoneyParser {
@@ -659,6 +1033,7 @@ class RecordingRepository implements InvestmentImportAtomicRepository {
   int calls = 0;
   List<Transaction> transactions = [];
   List<AssetDefinition> definitions = [];
+  List<InternalTransferLink> transferLinks = [];
   List<Map<String, Object?>> settlements = [];
   @override
   Future<void> saveInvestmentImportAtomic({
@@ -670,6 +1045,7 @@ class RecordingRepository implements InvestmentImportAtomicRepository {
     calls++;
     this.transactions = transactions;
     definitions = assetDefinitionCreations;
+    this.transferLinks = transferLinks;
     this.settlements = settlements;
   }
 }

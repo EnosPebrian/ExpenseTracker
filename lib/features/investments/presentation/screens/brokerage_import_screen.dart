@@ -645,6 +645,7 @@ class _DraftCard extends StatelessWidget {
                       ? (value) => controller.setIncluded(
                           draft.sourceRowNumber,
                           value ?? false,
+                          bookId: bookId,
                         )
                       : null,
                 ),

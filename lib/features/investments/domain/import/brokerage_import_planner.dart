@@ -97,7 +97,7 @@ class BrokerageImportPlanner {
                 item.bookId == activeBookId && item.normalizedSymbol == symbol,
           )) {
         final definition = staged.putIfAbsent(
-          symbol,
+          _instrumentKey(draft),
           () => _newInstrument(draft, activeBookId, idx: true),
         );
         draft = draft.copyWith(
@@ -109,6 +109,167 @@ class BrokerageImportPlanner {
       drafts.add(draft);
     }
     activeInstruments.addAll(staged.values);
+    return _planPreview(
+      source: source,
+      drafts: drafts,
+      activeBookId: activeBookId,
+      brokerageAccount: brokerageAccount,
+      counterpartyAccount: counterpartyAccount,
+      instruments: activeInstruments,
+      existingTransactions: transactions,
+      existingTransferLinkIds: existingLinkIds,
+      existingSettlementIds: existingSettlementIds,
+      remoteFreshnessVerified: remoteFreshnessVerified,
+      detectedDateFormat: effectiveDateFormat,
+      fractionalIdrRoundingApproved: false,
+      preserveInclusion: false,
+    );
+  }
+
+  BrokerageImportPreview replan({
+    required BrokerageImportPreview preview,
+    required String activeBookId,
+    required Account brokerageAccount,
+    required Iterable<AssetDefinition> instruments,
+    required Iterable<Transaction> existingTransactions,
+    required Iterable<InternalTransferLink> existingTransferLinks,
+    Account? counterpartyAccount,
+    Set<String> existingSettlementIds = const {},
+  }) {
+    _validateAccounts(activeBookId, brokerageAccount, counterpartyAccount);
+    final activeInstruments = instruments
+        .where(
+          (instrument) =>
+              !instrument.isDeleted && instrument.bookId == activeBookId,
+        )
+        .toList(growable: true);
+    final decisions = <String, AssetDefinition>{};
+    final resolutions = <String, BrokerageInstrumentResolution>{};
+    for (final draft in preview.drafts) {
+      final instrument = draft.plannedInstrument;
+      if (!draft.requiresInstrument ||
+          instrument == null ||
+          draft.instrumentId != instrument.id ||
+          (draft.instrumentResolution != BrokerageInstrumentResolution.mapped &&
+              draft.instrumentResolution !=
+                  BrokerageInstrumentResolution.create)) {
+        continue;
+      }
+      final key = _instrumentKey(draft);
+      decisions.putIfAbsent(key, () => instrument);
+      resolutions.putIfAbsent(key, () => draft.instrumentResolution);
+      if (!activeInstruments.any((item) => item.id == instrument.id)) {
+        activeInstruments.add(instrument);
+      }
+    }
+    final drafts = [
+      for (final draft in preview.drafts)
+        if (!draft.requiresInstrument)
+          draft.copyWith(
+            instrumentResolution: BrokerageInstrumentResolution.notRequired,
+            clearInstrumentId: true,
+            clearPlannedInstrument: true,
+          )
+        else if (decisions[_instrumentKey(draft)] case final instrument?
+            when _isInstrumentCompatible(
+              draft,
+              instrument,
+              activeBookId,
+              brokerageAccount,
+            ))
+          draft.copyWith(
+            instrumentResolution: resolutions[_instrumentKey(draft)],
+            instrumentId: instrument.id,
+            plannedInstrument: instrument,
+          )
+        else
+          draft.copyWith(
+            instrumentResolution: BrokerageInstrumentResolution.unresolved,
+            clearInstrumentId: true,
+            clearPlannedInstrument: true,
+          ),
+    ];
+    return _planPreview(
+      source: preview.source,
+      drafts: drafts,
+      activeBookId: activeBookId,
+      brokerageAccount: brokerageAccount,
+      counterpartyAccount: counterpartyAccount,
+      instruments: activeInstruments,
+      existingTransactions: existingTransactions.toList(growable: false),
+      existingTransferLinkIds: existingTransferLinks
+          .map((link) => link.id)
+          .toSet(),
+      existingSettlementIds: existingSettlementIds,
+      remoteFreshnessVerified: preview.remoteFreshnessVerified,
+      detectedDateFormat: preview.detectedDateFormat,
+      fractionalIdrRoundingApproved: preview.fractionalIdrRoundingApproved,
+      preserveInclusion: true,
+    );
+  }
+
+  List<BrokerageImportDraft> applyInstrumentDecision({
+    required Iterable<BrokerageImportDraft> drafts,
+    required int sourceRowNumber,
+    required AssetDefinition instrument,
+    required BrokerageInstrumentResolution resolution,
+    required String activeBookId,
+    required Account brokerageAccount,
+  }) {
+    if (resolution != BrokerageInstrumentResolution.mapped &&
+        resolution != BrokerageInstrumentResolution.create) {
+      throw ArgumentError.value(resolution, 'resolution');
+    }
+    final source = drafts.firstWhere(
+      (draft) => draft.sourceRowNumber == sourceRowNumber,
+    );
+    final key = _instrumentKey(source);
+    return [
+      for (final draft in drafts)
+        if (draft.requiresInstrument &&
+            _instrumentKey(draft) == key &&
+            _isInstrumentCompatible(
+              draft,
+              instrument,
+              activeBookId,
+              brokerageAccount,
+            ))
+          draft.copyWith(
+            instrumentResolution: resolution,
+            instrumentId: instrument.id,
+            plannedInstrument: instrument,
+          )
+        else
+          draft,
+    ];
+  }
+
+  AssetDefinition createInstrumentDefinition({
+    required BrokerageImportDraft draft,
+    required String activeBookId,
+    bool idx = false,
+  }) {
+    if (draft.sourceInstrument.trim().isEmpty) {
+      throw StateError('An instrument symbol is required.');
+    }
+    return _newInstrument(draft, activeBookId, idx: idx);
+  }
+
+  BrokerageImportPreview _planPreview({
+    required CsvParsedSource source,
+    required List<BrokerageImportDraft> drafts,
+    required String activeBookId,
+    required Account brokerageAccount,
+    required Account? counterpartyAccount,
+    required List<AssetDefinition> instruments,
+    required List<Transaction> existingTransactions,
+    required Set<String> existingTransferLinkIds,
+    required Set<String> existingSettlementIds,
+    required bool remoteFreshnessVerified,
+    required CsvDateFormat? detectedDateFormat,
+    required bool fractionalIdrRoundingApproved,
+    required bool preserveInclusion,
+  }) {
     final ordered = List<int>.generate(drafts.length, (index) => index)
       ..sort((left, right) {
         final leftDate = drafts[left].date;
@@ -124,31 +285,36 @@ class BrokerageImportPlanner {
                 drafts[right].sourceRowNumber,
               );
       });
-    final analysisTransactions = transactions.toList(growable: true);
-    final analysisIndex = _BrokerageExistingTransactionIndex(transactions);
+    final analysisTransactions = existingTransactions.toList(growable: true);
+    final analysisIndex = _BrokerageExistingTransactionIndex(
+      existingTransactions,
+    );
     for (final index in ordered) {
-      final finalized = _finish(
+      final original = drafts[index];
+      var finalized = _finish(
         drafts[index],
         activeBookId: activeBookId,
         brokerageAccount: brokerageAccount,
         counterpartyAccount: counterpartyAccount,
-        instruments: activeInstruments,
+        instruments: instruments,
         existingTransactions: analysisTransactions,
         existingIndex: analysisIndex,
-        existingTransferLinkIds: existingLinkIds,
+        existingTransferLinkIds: existingTransferLinkIds,
       );
-      drafts[index] =
-          finalized.isSettlement &&
-              existingSettlementIds.contains(finalized.eventId)
-          ? finalized.copyWith(
-              classification: BrokerageImportClassification.alreadyImported,
-              included: false,
-            )
-          : finalized;
+      if (finalized.isSettlement &&
+          existingSettlementIds.contains(finalized.eventId)) {
+        finalized = finalized.copyWith(
+          classification: BrokerageImportClassification.alreadyImported,
+          included: false,
+        );
+      } else if (preserveInclusion) {
+        finalized = finalized.copyWith(included: original.included);
+      }
+      drafts[index] = finalized;
       if (!finalized.canCommit || finalized.isSettlement) continue;
       final instrument = finalized.instrumentId == null
           ? null
-          : activeInstruments.cast<AssetDefinition?>().firstWhere(
+          : instruments.cast<AssetDefinition?>().firstWhere(
               (candidate) => candidate?.id == finalized.instrumentId,
               orElse: () => finalized.plannedInstrument,
             );
@@ -167,9 +333,27 @@ class BrokerageImportPlanner {
       source: source,
       drafts: List.unmodifiable(drafts),
       remoteFreshnessVerified: remoteFreshnessVerified,
-      detectedDateFormat: effectiveDateFormat,
+      detectedDateFormat: detectedDateFormat,
+      fractionalIdrRoundingApproved: fractionalIdrRoundingApproved,
     );
   }
+
+  static String _instrumentKey(BrokerageImportDraft draft) =>
+      '${draft.sourceInstrument.trim().toUpperCase()}|${draft.currencyCode.trim().toUpperCase()}';
+
+  static bool _isInstrumentCompatible(
+    BrokerageImportDraft draft,
+    AssetDefinition instrument,
+    String activeBookId,
+    Account brokerageAccount,
+  ) =>
+      instrument.bookId == activeBookId &&
+      !instrument.isDeleted &&
+      instrument.normalizedCurrencyCode == brokerageAccount.currencyCode &&
+      instrument.normalizedCurrencyCode == draft.currencyCode &&
+      ((draft.activityType != BrokerageActivityType.buy &&
+              draft.activityType != BrokerageActivityType.sell) ||
+          instrument.kind == AssetKind.stock);
 
   BrokerageImportDraft resolveActivity({
     required BrokerageImportDraft draft,

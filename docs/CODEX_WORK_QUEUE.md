@@ -19,6 +19,32 @@ Codex must:
 
 ## RECENTLY COMPLETED
 
+### PT-BETA-08N-R7 — Brokerage import session replanning
+
+**Priority:** P0
+**State:** COMPLETE
+**Type:** owner-runtime importer review regression
+**Authority:** owner runtime evidence and bounded repair authorization, 2026-09-27
+**Scope:** brokerage import review/replanning only; accounting semantics and feature freeze unchanged
+
+Make shared instrument resolution statement-level and rebuild the full preview
+after review actions. Chronologically simulate included planned postings over
+the persisted transaction baseline so a same-session BUY can validate a later
+SELL and SPLIT without weakening `AssetTradeValidator`. Preserve deterministic
+instrument/event identity, atomic commit, exact reimport behavior and Trusted
+IDX staging. No schema, Supabase or backup change is expected.
+
+Completed on 2026-09-27. One explicit Map/Create choice now propagates to
+every compatible statement row with the same normalized symbol and currency,
+and every review action replans the complete preview in date/source-row order
+over persisted history plus earlier included postings. The all-nine-activity
+PTST regression commits one definition, validates the later SELL and SPLIT,
+retains authoritative oversell rejection, and reimports with zero effects.
+Focused tests passed 97/97; analyzer and full 1024/1024 Flutter suite passed;
+Web, Windows debug and Android debug builds passed. Owner runtime acceptance
+for R7 remains PENDING / NOT RUN. Feature freeze remains active with no READY
+feature item.
+
 ### PT-BETA-08N-R6-R1 — Fractional IDR parse-order regression repair
 
 **Priority:** P0
