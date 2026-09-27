@@ -41,7 +41,9 @@ Android debug APK build: PASS (unchanged file_picker forward-looking Kotlin warn
 schema / Supabase / backup changes: none
 owner acceptance: PENDING / NOT RUN
 feature freeze: active
-Git completion: pending final commit and push
+implementation/test/docs commit: 3aa15f67a970555e506bcd383a9fbbf2a0560e2f
+push result: origin/main succeeded
+post-push status: HEAD == origin/main; clean before this durable handoff record
 ```
 
 ## Latest pushed engineering baseline
@@ -49,8 +51,8 @@ Git completion: pending final commit and push
 ```text
 branch: main
 remote: origin
-commit: 5f1fb7804449f35e103a84fb03665f48e065fefe
-message: docs: record BETA-08N RDN owner acceptance
+commit: 3aa15f67a970555e506bcd383a9fbbf2a0560e2f
+message: fix: replan brokerage import sessions
 push: origin/main succeeded
 HEAD == origin/main: yes
 post-push worktree: clean
