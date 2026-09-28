@@ -8,8 +8,16 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-PT-BETA-09C — Deterministic CSV Date Handling.
+PT-BETA-09B1 — Spreadsheet Transaction Grid Foundation.
 Authority: `POST_BETA08N_PROGRAM_AUTHORIZATION.md`; R7 is already COMPLETE.
+
+09C publication COMPLETE: `a83c14986d58ab08cf380b2ff68eec5a4facfeb6` pushed
+normally to origin/main; HEAD == origin/main and clean worktree verified.
+09B1 next: desktop virtualized grid over existing TransactionController;
+ordinary inline edits through existing validated use cases; protected records
+use coordinated editor. Add entity sync visibility without new schema. Preserve
+mobile list and all financial authorities. No B2 clipboard/bulk work until B1
+passes its focused/full/analyzer/three-build gates and is pushed.
 
 09C resume point: implementation began from clean `1bf704fea93f54924e5d2bb54bfcadf802f1ba6a`
 (09A durable handoff pushed). Shared date-column policy now drives ordinary and
