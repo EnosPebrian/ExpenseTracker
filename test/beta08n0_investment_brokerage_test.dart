@@ -1085,7 +1085,12 @@ class _ConflictBackend
     calls++;
     return ConflictResolutionResult(
       status: 'resolved',
-      canonicalPayload: resolvedPayload,
+      canonicalPayload: {
+        ...?resolvedPayload,
+        'id': conflict.entityId,
+        'book_id': conflict.bookId,
+        'version': conflict.serverVersion + 1,
+      },
     );
   }
 

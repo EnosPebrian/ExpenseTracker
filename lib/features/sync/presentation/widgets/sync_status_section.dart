@@ -76,6 +76,21 @@ class SyncStatusSection extends StatelessWidget {
                 Text(
                   'Pending: ${controller.pendingCount} · Last successful: ${controller.lastSuccessfulSyncAt == null ? 'Not yet' : MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(controller.lastSuccessfulSyncAt!))}',
                 ),
+                Text(
+                  'Failed changes: ${controller.failedCount} · Conflicts: ${controller.conflictCount}',
+                ),
+                Text(
+                  'Last successful push (this session): ${controller.lastSuccessfulPushAt ?? 'Not yet'}',
+                ),
+                Text(
+                  'Last successful pull (this session): ${controller.lastSuccessfulPullAt ?? 'Not yet'}',
+                ),
+                Text(
+                  'Consumed remote cursor: ${controller.remoteCursor ?? 'Not initialized'}',
+                ),
+                const Text('Status applies to this device, not other devices.'),
+                if (controller.result.message != null)
+                  Text(controller.result.message!),
               ],
               if (!controller.realtimeConnected && controller.canSync)
                 const Padding(
@@ -85,7 +100,8 @@ class SyncStatusSection extends StatelessWidget {
                   ),
                 ),
               const SizedBox(height: 8),
-              if (controller.status == SyncStatus.conflict &&
+              if ((controller.status == SyncStatus.conflict ||
+                      controller.conflictCount > 0) &&
                   onReviewConflicts != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),

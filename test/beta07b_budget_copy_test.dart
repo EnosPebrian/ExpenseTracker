@@ -583,6 +583,14 @@ Future<_WidgetSetup> _widgetSetup(String name, {bool delayed = false}) async {
     bookId: bookId,
   )).singleWhere((row) => row['id'] == categories['Archived']);
   final archivedAt = DateTime(2026, 8, 2).millisecondsSinceEpoch;
+  // Remote archival follows acknowledgement of the local category creation.
+  // A pending local branch must not be overwritten by a cloud snapshot.
+  for (final operation in await store.getEligibleSyncOperations(bookId)) {
+    if (operation['entity_type'] == 'categories' &&
+        operation['entity_id'] == categories['Archived']) {
+      await store.completeSyncOperation(operation['operation_id'] as String);
+    }
+  }
   await store.applyRemoteSyncBatch(
     bookId,
     changes: [

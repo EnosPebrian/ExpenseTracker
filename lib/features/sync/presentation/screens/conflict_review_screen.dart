@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-
+import '../../domain/conflict_merge_policy.dart';
 import '../../domain/sync_models.dart';
 import '../controllers/sync_conflict_controller.dart';
+import '../widgets/conflict_merge_dialog.dart';
 
 class ConflictReviewScreen extends StatefulWidget {
   const ConflictReviewScreen({super.key, required this.controller});
@@ -19,8 +20,6 @@ class ConflictReviewScreen extends StatefulWidget {
 }
 
 class _ConflictReviewScreenState extends State<ConflictReviewScreen> {
-  int index = 0;
-  final choices = <String, bool>{};
   @override
   void initState() {
     super.initState();
@@ -34,201 +33,111 @@ class _ConflictReviewScreenState extends State<ConflictReviewScreen> {
       animation: widget.controller,
       builder: (context, _) {
         final controller = widget.controller;
-        if (controller.loading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (controller.conflicts.isEmpty) {
-          return const Center(child: Text('No conflicts need review.'));
-        }
-        if (index >= controller.conflicts.length) {
-          index = controller.conflicts.length - 1;
-        }
-        final conflict = controller.conflicts[index];
-        final fields = conflict.changedLocalFields
-            .where(
-              (f) => !const {
-                'id',
-                'book_id',
-                'created_at',
-                'updated_at',
-                'version',
-                'device_id',
-                'sync_status',
-              }.contains(f),
-            )
-            .toList();
-        if (conflict.entityType == 'transactions' &&
-            fields.remove('category_id') &&
-            !fields.contains('category')) {
-          fields.add('category');
-        }
-        final mergeFields = conflict.entityType == 'monthly_category_budgets'
-            ? fields
-                  .where(
-                    (field) => const {'limit_minor', 'note'}.contains(field),
-                  )
-                  .toSet()
-            : fields.toSet();
-        if (conflict.entityType == 'transactions') {
-          for (final field in const {
-            'brokerage_activity_type',
-            'split_numerator',
-            'split_denominator',
-          }) {
-            mergeFields.remove(field);
-          }
-          if (fields.remove('brokerage_account_id')) {
-            fields.add('brokerage_account_id');
-          }
-        }
-        final merged = {...?conflict.serverPayload};
-        for (final field in mergeFields) {
-          if (choices[field] ?? false) {
-            merged[field] = conflict.localPayload?[field];
-            if (conflict.entityType == 'transactions' && field == 'category') {
-              merged['category_id'] = conflict.localPayload?['category_id'];
-            }
-            if (conflict.entityType == 'transactions' &&
-                field == 'brokerage_account_id') {
-              for (final linkedField in const {
-                'brokerage_activity_type',
-                'split_numerator',
-                'split_denominator',
-              }) {
-                merged[linkedField] = conflict.localPayload?[linkedField];
-              }
-            }
-          }
-        }
-        final budgetLifecycleConflict =
-            conflict.entityType == 'monthly_category_budgets' &&
-            (conflict.serverPayload?['deleted_at'] != null ||
-                conflict.localPayload?['deleted_at'] != null);
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text(
-              '${index + 1} of ${controller.count} conflicts',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _title(conflict),
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            Text(
-              'Occurred ${MaterialLocalizations.of(context).formatMediumDate(conflict.createdAt)}',
-            ),
+            if (controller.loading) const LinearProgressIndicator(),
             if (controller.error != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  controller.error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
+              Text(
+                controller.error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
-            const Divider(),
-            for (final field in fields)
+            if (!controller.loading && controller.conflicts.isEmpty)
+              const Text('No conflicts need review.'),
+            for (final conflict in controller.conflicts)
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _label(field),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        '${conflict.entityType.replaceAll('_', ' ')}: '
+                        '${conflict.localPayload?['title'] ?? conflict.localPayload?['name'] ?? 'Saved record'}',
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
-                      const SizedBox(height: 8),
-                      if (mergeFields.contains(field))
-                        SegmentedButton<bool>(
-                          segments: [
-                            ButtonSegment(
-                              value: false,
-                              label: Text(
-                                'Shared: ${_value(conflict.serverPayload?[field])}',
-                              ),
+                      const Text(
+                        'This device and the shared household have different versions. '
+                        'The conflict remains saved until the server and this device accept the resolution.',
+                      ),
+                      if (ConflictMergePolicy.coordinated(conflict))
+                        const Text(
+                          'Linked financial record: field-by-field merging is disabled.',
+                        ),
+                      if (controller.resolvingId == conflict.id)
+                        const LinearProgressIndicator(),
+                      if (conflict.resolutionIntent != null) ...[
+                        const Text(
+                          'A saved resolution is awaiting confirmation. Retry that same decision safely.',
+                        ),
+                        FilledButton(
+                          onPressed: controller.resolvingId == null
+                              ? () => controller.resolve(
+                                  conflict,
+                                  ConflictResolutionType.keepServer,
+                                )
+                              : null,
+                          child: const Text('Retry saved resolution'),
+                        ),
+                      ] else
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton(
+                              onPressed: controller.resolvingId == null
+                                  ? () => _confirm(
+                                      conflict,
+                                      ConflictResolutionType.keepServer,
+                                    )
+                                  : null,
+                              child: const Text('Keep cloud version'),
                             ),
-                            ButtonSegment(
-                              value: true,
-                              label: Text(
-                                'This device: ${_value(conflict.localPayload?[field])}',
-                              ),
+                            OutlinedButton(
+                              onPressed: controller.resolvingId == null
+                                  ? () => _confirm(
+                                      conflict,
+                                      ConflictResolutionType.keepDevice,
+                                    )
+                                  : null,
+                              child: const Text('Keep local version'),
                             ),
+                            if (ConflictMergePolicy.fields(conflict).isNotEmpty)
+                              FilledButton(
+                                onPressed: controller.resolvingId == null
+                                    ? () => showDialog<void>(
+                                        context: context,
+                                        builder: (_) => ConflictMergeDialog(
+                                          conflict: conflict,
+                                          controller: controller,
+                                        ),
+                                      )
+                                    : null,
+                                child: const Text('Merge manually'),
+                              ),
                           ],
-                          selected: {choices[field] ?? false},
-                          onSelectionChanged: (value) =>
-                              setState(() => choices[field] = value.single),
-                        )
-                      else ...[
-                        Text(
-                          'Shared: ${_value(conflict.serverPayload?[field])}',
                         ),
-                        Text(
-                          'This device: ${_value(conflict.localPayload?[field])}',
-                        ),
-                        const Text('Identity or lifecycle field (review only)'),
-                      ],
                     ],
                   ),
                 ),
               ),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton(
-                  onPressed: controller.resolvingId == null
-                      ? () => _confirm(
-                          conflict,
-                          ConflictResolutionType.keepServer,
-                        )
-                      : null,
-                  child: const Text('Keep shared version'),
-                ),
-                OutlinedButton(
-                  onPressed: controller.resolvingId == null
-                      ? () => _confirm(
-                          conflict,
-                          ConflictResolutionType.keepDevice,
-                        )
-                      : null,
-                  child: const Text('Keep this device'),
-                ),
-                if (!{
-                      SyncConflictType.linkedTransactionConflict,
-                      SyncConflictType.assetTradeConflict,
-                    }.contains(conflict.conflictType) &&
-                    !budgetLifecycleConflict)
-                  FilledButton(
-                    onPressed: controller.resolvingId == null
-                        ? () => _confirm(
-                            conflict,
-                            ConflictResolutionType.manualMerge,
-                            merged,
-                          )
-                        : null,
-                    child: const Text('Merge manually'),
-                  ),
-              ],
-            ),
           ],
         );
       },
     ),
   );
+
   Future<void> _confirm(
     SyncConflict conflict,
-    ConflictResolutionType type, [
-    Map<String, Object?>? merged,
-  ]) async {
+    ConflictResolutionType type,
+  ) async {
     final approved =
         await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('Confirm financial conflict resolution'),
             content: const Text(
-              'This creates the canonical shared version and cannot be undone automatically.',
+              'Use this whole version as the shared record? Other pending changes are not discarded.',
             ),
             actions: [
               TextButton(
@@ -243,18 +152,6 @@ class _ConflictReviewScreenState extends State<ConflictReviewScreen> {
           ),
         ) ??
         false;
-    if (!approved) return;
-    await widget.controller.resolve(conflict, type, mergedPayload: merged);
-    if (mounted) setState(() => choices.clear());
+    if (approved) await widget.controller.resolve(conflict, type);
   }
-
-  static String _title(SyncConflict c) =>
-      '${_label(c.entityType)} conflict: ${c.localPayload?['title'] ?? c.localPayload?['name'] ?? c.localPayload?['display_name'] ?? c.entityId}';
-  static String _label(String value) => value
-      .replaceAll('_', ' ')
-      .split(' ')
-      .map((p) => p.isEmpty ? p : '${p[0].toUpperCase()}${p.substring(1)}')
-      .join(' ');
-  static String _value(Object? value) =>
-      value == null ? 'None' : value.toString();
 }

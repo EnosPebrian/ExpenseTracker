@@ -183,6 +183,7 @@ class SyncConflict {
     this.changedServerFields = const [],
     this.resolutionStatus = ConflictResolutionStatus.unresolved,
     this.resolutionOperationId,
+    this.resolutionIntent,
   });
 
   final String id;
@@ -200,6 +201,7 @@ class SyncConflict {
   final List<String> changedServerFields;
   final ConflictResolutionStatus resolutionStatus;
   final String? resolutionOperationId;
+  final Map<String, Object?>? resolutionIntent;
 
   factory SyncConflict.fromRecord(Map<String, Object?> record) {
     List<String> fields(Object? value) =>
@@ -227,6 +229,10 @@ class SyncConflict {
         record['resolution_status'] as String? ?? 'unresolved',
       ),
       resolutionOperationId: record['resolution_operation_id'] as String?,
+      resolutionIntent:
+          (record['resolution'] as String?)?.startsWith('{') == true
+          ? payload(record['resolution'])
+          : null,
     );
   }
 }

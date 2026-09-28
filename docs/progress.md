@@ -1,5 +1,15 @@
 # Pilgrim Tracker Progress
 
+## Authorized post-BETA-08N reliability program — 2026-09-27
+
+R7 is engineering COMPLETE. BETA-09A engineering/hosted gates PASS: durable
+conflict retry, dependency-aware delivery, cursor safety and sync diagnostics.
+The owner-authorized sequence is 09A, 09C, 09B1, 09B2; feature freeze is lifted
+only for that scope. Owner acceptance remains separate and pending. See the
+work queue and engineering handoff for gate/deployment/Git evidence. Final
+Flutter suite 1039/1039; analyzer and three builds PASS; pgTAP 360/360;
+authorized migration 20260927100120 deployed with data/access preserved.
+
 ## Distinct Brokerage Interest repair — 2026-09-16
 
 R4 implements ARCH-20260914-01: exact `INTEREST` import/manual activity is

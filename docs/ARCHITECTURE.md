@@ -1,5 +1,13 @@
 # Pilgrim Tracker Architecture
 
+## BETA-09A synchronization reliability
+
+`SYNC_CONVERGENCE.md` defines ordered dependency delivery, consumed-prefix
+cursor safety, durable idempotent conflict resolution, and truthful per-device
+diagnostics. Existing financial authorities, SQLite 29 and backup v8 are
+unchanged. The one additive 09A server migration adds household serialization
+to existing RPC critical sections without changing RLS or ACLs.
+
 ## BETA-08N Investments navigation and presentation
 
 Investments is a first-class application destination immediately after Assets.

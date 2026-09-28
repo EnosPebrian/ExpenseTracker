@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../master_data/system_category.dart';
 import 'brokerage_settlement_integrity.dart';
+import 'sync_outbox_order.dart';
 
 class LocalStore {
   LocalStore({String? databasePath});
@@ -2331,18 +2332,34 @@ class LocalStore {
   Future<List<Map<String, Object?>>> getEligibleSyncOperations(
     String bookId, {
     int limit = 50,
+  }) async => _syncOutbox
+      .where(
+        (item) =>
+            item['book_id'] == bookId &&
+            const {'pending', 'retry'}.contains(item['status']) &&
+            ((item['next_attempt_at'] as num?)?.toInt() ?? 0) <=
+                DateTime.now().millisecondsSinceEpoch,
+      )
+      .take(limit.clamp(1, 100))
+      .map(Map<String, Object?>.of)
+      .toList();
+
+  Future<List<Map<String, Object?>>> getOrderedSyncOperations(
+    String bookId, {
+    int limit = 50,
   }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    return _syncOutbox
-        .where(
-          (item) =>
-              item['book_id'] == bookId &&
-              (item['status'] == 'pending' || item['status'] == 'retry') &&
-              ((item['next_attempt_at'] as num?)?.toInt() ?? 0) <= now,
-        )
-        .take(limit.clamp(1, 100))
-        .map(Map<String, Object?>.of)
-        .toList();
+    return SyncOutboxOrder.eligible(
+      _syncOutbox
+          .where(
+            (item) =>
+                item['book_id'] == bookId && item['status'] != 'completed',
+          )
+          .map(Map<String, Object?>.of)
+          .toList(),
+      now: now,
+      limit: limit,
+    );
   }
 
   Future<int> getPendingSyncCount(String bookId) async => _syncOutbox
@@ -2502,20 +2519,24 @@ class LocalStore {
 
   Future<bool> beginSyncConflictResolution(
     String id,
-    String operationId,
-  ) async {
+    String operationId, {
+    Map<String, Object?>? intent,
+  }) async {
     final index = _syncConflicts.indexWhere(
       (item) =>
           item['id'] == id &&
           (item['resolution_status'] == null ||
               item['resolution_status'] == 'unresolved' ||
-              item['resolution_status'] == 'resolutionFailed'),
+              item['resolution_status'] == 'resolutionFailed' ||
+              (item['resolution_status'] == 'resolving' &&
+                  item['resolution_operation_id'] == operationId)),
     );
     if (index < 0) return false;
     _syncConflicts[index] = {
       ..._syncConflicts[index],
       'resolution_status': 'resolving',
       'resolution_operation_id': operationId,
+      if (intent != null) 'resolution': jsonEncode(intent),
     };
     return true;
   }
@@ -2532,6 +2553,26 @@ class LocalStore {
     }
   }
 
+  Future<void> rejectSyncConflictResolution(
+    String id, {
+    Map<String, Object?>? latestPayload,
+  }) async {
+    final index = _syncConflicts.indexWhere(
+      (row) => row['id'] == id && row['resolved_at'] == null,
+    );
+    if (index < 0) return;
+    _syncConflicts[index] = {
+      ..._syncConflicts[index],
+      'resolution_status': 'resolutionFailed',
+      'resolution_operation_id': null,
+      'resolution': null,
+      if (latestPayload != null) ...{
+        'server_payload_json': jsonEncode(latestPayload),
+        'server_version': latestPayload['version'],
+      },
+    };
+  }
+
   Future<void> completeSyncConflictResolution(
     String id, {
     required String resolution,
@@ -2545,6 +2586,14 @@ class LocalStore {
     final conflict = _syncConflicts[index];
     final collection = _syncCollection(conflict['entity_type'] as String);
     final collectionSnapshot = collection.map(Map<String, Object?>.of).toList();
+    final newerLocal = _syncOutbox.any(
+      (item) =>
+          item['entity_type'] == conflict['entity_type'] &&
+          item['entity_id'] == conflict['entity_id'] &&
+          item['operation_id'] != conflict['operation_id'] &&
+          item['status'] != 'completed' &&
+          (item['base_version'] as num) > (conflict['base_version'] as num),
+    );
     try {
       final current = conflict['entity_type'] == 'transactions'
           ? collection
@@ -2575,6 +2624,11 @@ class LocalStore {
       collection.removeWhere((item) => item['id'] == conflict['entity_id']);
       collection.add({...resolvedPayload, 'sync_status': 'synced'});
       _validateActiveTransferLinks(conflict['book_id'] as String);
+      if (newerLocal) {
+        collection
+          ..clear()
+          ..addAll(collectionSnapshot);
+      }
     } catch (_) {
       collection
         ..clear()
@@ -2588,17 +2642,11 @@ class LocalStore {
       ...conflict,
       'resolution_status': 'resolved',
       'resolution': resolution,
+      'server_payload_json': jsonEncode(canonicalPayload),
+      'server_version': canonicalPayload['version'],
       'resolved_at': DateTime.now().millisecondsSinceEpoch,
     };
-    final cursor = _syncCursors.indexWhere(
-      (item) => item['book_id'] == conflict['book_id'],
-    );
-    if (cursor >= 0) {
-      _syncCursors[cursor] = {
-        ..._syncCursors[cursor],
-        'last_server_sequence': serverSequence,
-      };
-    }
+    // Resolution acknowledges one entity, not an ordered change-feed prefix.
   }
 
   Future<void> applyRemoteSyncBatch(
@@ -2670,6 +2718,19 @@ class LocalStore {
         final index = collection.indexWhere(
           (item) => item['id'] == payload['id'],
         );
+        if (!replaceExisting &&
+            (_syncOutbox.any(
+                  (item) =>
+                      item['book_id'] == bookId &&
+                      item['entity_type'] == entityType &&
+                      item['entity_id'] == payload['id'] &&
+                      item['status'] != 'completed',
+                ) ||
+                (index >= 0 &&
+                    ((collection[index]['version'] as num?)?.toInt() ?? 0) >
+                        ((payload['version'] as num?)?.toInt() ?? 0)))) {
+          continue;
+        }
         final existing = index < 0
             ? const <String, Object?>{}
             : collection.removeAt(index);

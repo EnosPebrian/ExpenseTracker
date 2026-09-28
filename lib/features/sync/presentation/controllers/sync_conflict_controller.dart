@@ -42,6 +42,7 @@ class SyncConflictController extends ChangeNotifier {
     ConflictResolutionType type, {
     Map<String, Object?>? mergedPayload,
   }) async {
+    if (resolvingId != null) return false;
     resolvingId = conflict.id;
     error = null;
     notifyListeners();
@@ -56,6 +57,9 @@ class SyncConflictController extends ChangeNotifier {
     } catch (_) {
       error = 'Resolution failed. Your conflict is still saved.';
     }
+    final failure = error;
+    await load();
+    error = failure;
     resolvingId = null;
     notifyListeners();
     return false;

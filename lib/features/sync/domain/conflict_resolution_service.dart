@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import 'sync_models.dart';
 import 'sync_repository.dart';
 import 'sync_transport.dart';
+import 'conflict_merge_policy.dart';
 
 class ConflictResolutionService {
   ConflictResolutionService({
@@ -11,11 +12,44 @@ class ConflictResolutionService {
   });
   final SyncConflictRepository repository;
   final ConflictResolutionTransport transport;
+  final Set<String> _resolving = {};
 
   Future<List<SyncConflict>> load(String bookId) =>
       repository.conflicts(bookId);
 
   Future<void> resolve(
+    SyncConflict conflict,
+    ConflictResolutionType type, {
+    Map<String, Object?>? mergedPayload,
+  }) async {
+    if (!_resolving.add(conflict.id)) {
+      throw StateError('This resolution is already in progress.');
+    }
+    try {
+      final current = repository is DurableConflictResolutionRepository
+          ? (await repository.conflicts(
+              conflict.bookId,
+            )).where((item) => item.id == conflict.id).firstOrNull
+          : conflict;
+      if (current == null) {
+        throw StateError('This conflict has already been resolved.');
+      }
+      final pending = current.resolutionIntent;
+      await _resolve(
+        current,
+        pending == null
+            ? type
+            : ConflictResolutionType.values.byName(pending['type'] as String),
+        mergedPayload: pending == null
+            ? mergedPayload
+            : (pending['payload'] as Map?)?.cast<String, Object?>(),
+      );
+    } finally {
+      _resolving.remove(conflict.id);
+    }
+  }
+
+  Future<void> _resolve(
     SyncConflict conflict,
     ConflictResolutionType type, {
     Map<String, Object?>? mergedPayload,
@@ -46,16 +80,27 @@ class ConflictResolutionService {
         conflict.entityType == 'transactions') {
       _validateTransactionMerge(conflict, mergedPayload);
     }
-    final operationId = const Uuid().v4();
-    if (!await repository.beginResolution(conflict.id, operationId)) {
+    final operationId = conflict.resolutionIntent == null
+        ? const Uuid().v4()
+        : conflict.resolutionOperationId!;
+    final chosen =
+        type == ConflictResolutionType.keepServer ||
+            type == ConflictResolutionType.keepDeleted
+        ? conflict.serverPayload
+        : (mergedPayload ?? conflict.localPayload);
+    final durable = repository is DurableConflictResolutionRepository
+        ? repository as DurableConflictResolutionRepository
+        : null;
+    final begun = durable == null
+        ? await repository.beginResolution(conflict.id, operationId)
+        : await durable.prepareResolution(conflict.id, operationId, {
+            'type': type.name,
+            'payload': chosen,
+          });
+    if (!begun) {
       throw StateError('This conflict has already been resolved.');
     }
     try {
-      final chosen =
-          type == ConflictResolutionType.keepServer ||
-              type == ConflictResolutionType.keepDeleted
-          ? conflict.serverPayload
-          : (mergedPayload ?? conflict.localPayload);
       final result = await transport.resolveConflict(
         conflict: conflict,
         resolutionOperationId: operationId,
@@ -63,15 +108,24 @@ class ConflictResolutionService {
         resolvedPayload: chosen,
       );
       if (result.status == 'staleResolution') {
+        await durable?.rejectResolution(
+          conflict.id,
+          latestPayload: result.canonicalPayload,
+        );
         throw StateError(
           'This conflict changed again. Refresh and review the latest version.',
         );
       }
       if (result.status != 'resolved' && result.status != 'alreadyResolved') {
+        await durable?.rejectResolution(conflict.id);
         throw StateError('The conflict could not be resolved safely.');
       }
       final canonical = result.canonicalPayload;
-      if (canonical == null) {
+      if (canonical == null ||
+          canonical['id'] != conflict.entityId ||
+          (conflict.entityType != 'books' &&
+              canonical['book_id'] != conflict.bookId) ||
+          canonical['version'] is! num) {
         throw StateError('The server did not return the resolved record.');
       }
       await repository.completeResolution(
@@ -129,6 +183,7 @@ class ConflictResolutionService {
     SyncConflict conflict,
     Map<String, Object?>? mergedPayload,
   ) {
+    ConflictMergePolicy.validateTransaction(conflict, mergedPayload);
     final shared = conflict.serverPayload;
     final local = conflict.localPayload;
     if (mergedPayload == null || shared == null || local == null) {

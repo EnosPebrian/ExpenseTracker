@@ -4,10 +4,19 @@ import '../../../core/database/local_store.dart';
 import '../domain/sync_models.dart';
 import '../domain/sync_repository.dart';
 
-class LocalSyncRepository implements SyncRepository, SyncConflictRepository {
+class LocalSyncRepository
+    implements
+        SyncRepository,
+        SyncConflictRepository,
+        DurableConflictResolutionRepository,
+        SyncDiagnosticsRepository {
   LocalSyncRepository(this.store);
 
   final LocalStore store;
+
+  @override
+  Future<Map<String, int>> outboxStatusCounts(String bookId) =>
+      store.getSyncOutboxStatusCounts(bookId);
 
   @override
   Future<SyncCursor?> getCursor(String bookId) async {
@@ -25,7 +34,7 @@ class LocalSyncRepository implements SyncRepository, SyncConflictRepository {
   Future<List<SyncOperation>> getEligibleOperations(
     String bookId, {
     int limit = 50,
-  }) async => (await store.getEligibleSyncOperations(
+  }) async => (await store.getOrderedSyncOperations(
     bookId,
     limit: limit,
   )).map(SyncOperation.fromRecord).toList();
@@ -157,6 +166,26 @@ class LocalSyncRepository implements SyncRepository, SyncConflictRepository {
   @override
   Future<bool> beginResolution(String conflictId, String operationId) =>
       store.beginSyncConflictResolution(conflictId, operationId);
+
+  @override
+  Future<bool> prepareResolution(
+    String conflictId,
+    String operationId,
+    Map<String, Object?> intent,
+  ) => store.beginSyncConflictResolution(
+    conflictId,
+    operationId,
+    intent: intent,
+  );
+
+  @override
+  Future<void> rejectResolution(
+    String conflictId, {
+    Map<String, Object?>? latestPayload,
+  }) => store.rejectSyncConflictResolution(
+    conflictId,
+    latestPayload: latestPayload,
+  );
 
   @override
   Future<void> failResolution(String conflictId) =>

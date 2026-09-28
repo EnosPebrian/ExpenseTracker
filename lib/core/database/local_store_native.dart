@@ -15,6 +15,7 @@ import 'brokerage_settlement_integrity.dart';
 import 'budget_schema_native.dart';
 import 'native_database_path.dart';
 import 'sync_schema_native.dart';
+import 'sync_outbox_order.dart';
 import 'transaction_import_rule_schema_native.dart';
 import 'transaction_category_identity_schema_native.dart';
 import 'transaction_metadata_schema_native.dart';
@@ -2067,17 +2068,32 @@ asset_symbol TEXT,
   Future<List<Map<String, Object?>>> getEligibleSyncOperations(
     String bookId, {
     int limit = 50,
-  }) {
+  }) => db.query(
+    'sync_outbox',
+    where:
+        'book_id = ? AND status IN (?, ?) '
+        'AND (next_attempt_at IS NULL OR next_attempt_at <= ?)',
+    whereArgs: [
+      bookId,
+      'pending',
+      'retry',
+      DateTime.now().millisecondsSinceEpoch,
+    ],
+    orderBy: 'created_at ASC',
+    limit: limit.clamp(1, 100),
+  );
+
+  Future<List<Map<String, Object?>>> getOrderedSyncOperations(
+    String bookId, {
+    int limit = 50,
+  }) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    return db.query(
+    final outstanding = await db.query(
       'sync_outbox',
-      where:
-          'book_id = ? AND status IN (?, ?) '
-          'AND (next_attempt_at IS NULL OR next_attempt_at <= ?)',
-      whereArgs: [bookId, 'pending', 'retry', now],
-      orderBy: 'created_at ASC',
-      limit: limit.clamp(1, 100),
+      where: "book_id = ? AND status != 'completed'",
+      whereArgs: [bookId],
     );
+    return SyncOutboxOrder.eligible(outstanding, now: now, limit: limit);
   }
 
   Future<int> getPendingSyncCount(String bookId) async {
@@ -2238,16 +2254,26 @@ asset_symbol TEXT,
 
   Future<bool> beginSyncConflictResolution(
     String id,
-    String operationId,
-  ) async {
+    String operationId, {
+    Map<String, Object?>? intent,
+  }) async {
     final changed = await db.update(
       'sync_conflicts',
       {
         'resolution_status': 'resolving',
         'resolution_operation_id': operationId,
+        if (intent != null) 'resolution': jsonEncode(intent),
       },
-      where: 'id = ? AND resolution_status IN (?, ?)',
-      whereArgs: [id, 'unresolved', 'resolutionFailed'],
+      where:
+          'id = ? AND (resolution_status IN (?, ?) OR '
+          '(resolution_status = ? AND resolution_operation_id = ?))',
+      whereArgs: [
+        id,
+        'unresolved',
+        'resolutionFailed',
+        'resolving',
+        operationId,
+      ],
     );
     return changed == 1;
   }
@@ -2258,6 +2284,26 @@ asset_symbol TEXT,
     where: 'id = ? AND resolution_status = ?',
     whereArgs: [id, 'resolving'],
   );
+
+  Future<void> rejectSyncConflictResolution(
+    String id, {
+    Map<String, Object?>? latestPayload,
+  }) async {
+    await db.update(
+      'sync_conflicts',
+      {
+        'resolution_status': 'resolutionFailed',
+        'resolution_operation_id': null,
+        'resolution': null,
+        if (latestPayload != null) ...{
+          'server_payload_json': jsonEncode(latestPayload),
+          'server_version': latestPayload['version'],
+        },
+      },
+      where: 'id = ? AND resolved_at IS NULL',
+      whereArgs: [id],
+    );
+  }
 
   Future<void> completeSyncConflictResolution(
     String id, {
@@ -2278,14 +2324,29 @@ asset_symbol TEXT,
       }
       final conflict = conflicts.first;
       final table = _syncTable(conflict['entity_type'] as String);
+      final snapshotRows = await txn.query(
+        table,
+        where: 'id = ?',
+        whereArgs: [canonicalPayload['id']],
+        limit: 1,
+      );
       final currentRows = conflict['entity_type'] == 'transactions'
-          ? await txn.query(
-              table,
-              where: 'id = ?',
-              whereArgs: [canonicalPayload['id']],
-              limit: 1,
-            )
+          ? snapshotRows
           : const <Map<String, Object?>>[];
+      final newer = await txn.query(
+        'sync_outbox',
+        columns: ['operation_id'],
+        where:
+            'entity_type = ? AND entity_id = ? AND operation_id != ? '
+            "AND status != 'completed' AND base_version > ?",
+        whereArgs: [
+          conflict['entity_type'],
+          conflict['entity_id'],
+          conflict['operation_id'],
+          conflict['base_version'],
+        ],
+        limit: 1,
+      );
       final resolvedRecord = <String, Object?>{
         if (currentRows.isNotEmpty && !canonicalPayload.containsKey('note'))
           'note': currentRows.first['note'],
@@ -2345,6 +2406,17 @@ asset_symbol TEXT,
         txn,
         conflict['book_id'] as String,
       );
+      // A newer local mutation made while the RPC was in flight remains a
+      // separate pending branch. Acknowledging the reviewed older operation
+      // must not discard it; its original base version still needs server review.
+      if (newer.isNotEmpty && snapshotRows.isNotEmpty) {
+        await txn.update(
+          table,
+          snapshotRows.first,
+          where: 'id = ?',
+          whereArgs: [conflict['entity_id']],
+        );
+      }
       await txn.update(
         'sync_outbox',
         {
@@ -2360,17 +2432,15 @@ asset_symbol TEXT,
         {
           'resolution_status': 'resolved',
           'resolution': resolution,
+          'server_payload_json': jsonEncode(canonicalPayload),
+          'server_version': canonicalPayload['version'],
           'resolved_at': now,
         },
         where: 'id = ? AND resolution_status = ?',
         whereArgs: [id, 'resolving'],
       );
-      await txn.rawInsert(
-        '''INSERT INTO sync_cursors(book_id,last_server_sequence,initialization_state,updated_at)
-        VALUES (?,?,'ready',?) ON CONFLICT(book_id) DO UPDATE SET
-        last_server_sequence = MAX(last_server_sequence, excluded.last_server_sequence), updated_at = excluded.updated_at''',
-        [conflict['book_id'], serverSequence, now],
-      );
+      // An entity acknowledgement is not a consumed change-feed prefix.
+      // Only applyRemoteSyncBatch may advance the household pull cursor.
     });
   }
 
@@ -2399,6 +2469,23 @@ asset_symbol TEXT,
           whereArgs: [payload['id']],
           limit: 1,
         );
+        final unsent = await txn.query(
+          'sync_outbox',
+          columns: ['operation_id'],
+          where:
+              'book_id = ? AND entity_type = ? AND entity_id = ? '
+              "AND status != 'completed'",
+          whereArgs: [bookId, entityType, payload['id']],
+          limit: 1,
+        );
+        // Immutable outbox/conflict snapshots retain local intent for review.
+        // Never overwrite that intent while consuming unrelated remote changes.
+        if (unsent.isNotEmpty) continue;
+        if (existing.isNotEmpty &&
+            ((existing.first['version'] as num?)?.toInt() ?? 0) >
+                ((payload['version'] as num?)?.toInt() ?? 0)) {
+          continue;
+        }
         if (entityType == 'transactions' &&
             !payload.containsKey('category_id') &&
             existing.isNotEmpty &&

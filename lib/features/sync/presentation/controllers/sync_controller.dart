@@ -6,6 +6,7 @@ import '../../../master_data/domain/entities/financial_book.dart';
 import '../../domain/sync_coordinator.dart';
 import '../../domain/sync_models.dart';
 import '../../domain/sync_transport.dart';
+import '../../domain/sync_repository.dart';
 
 class SyncController extends ChangeNotifier {
   SyncController(this.coordinator, {this.onRemoteDataApplied});
@@ -19,6 +20,30 @@ class SyncController extends ChangeNotifier {
   bool _rerunRequested = false;
   bool realtimeConnected = false;
   DateTime? lastSuccessfulSyncAt;
+  int failedCount = 0;
+  int conflictCount = 0;
+  int? remoteCursor;
+  DateTime? get lastSuccessfulPushAt => coordinator.lastSuccessfulPushAt;
+  DateTime? get lastSuccessfulPullAt => coordinator.lastSuccessfulPullAt;
+
+  Future<void> _diagnostics() async {
+    final book = _book;
+    if (book == null) return;
+    conflictCount = await coordinator.repository.unresolvedConflictCount(
+      book.id,
+    );
+    remoteCursor = (await coordinator.repository.getCursor(
+      book.id,
+    ))?.lastServerSequence;
+    final repository = coordinator.repository;
+    if (repository is SyncDiagnosticsRepository) {
+      final counts = await (repository as SyncDiagnosticsRepository)
+          .outboxStatusCounts(book.id);
+      failedCount =
+          (counts['retry'] ?? 0) +
+          ((counts['conflict'] ?? 0) - conflictCount).clamp(0, 1 << 30);
+    }
+  }
 
   SyncStatus get status => result.status;
   int get pendingCount => result.pendingCount;
@@ -44,12 +69,8 @@ class SyncController extends ChangeNotifier {
     realtimeConnected = false;
     _book = book;
     result = await coordinator.inspect(book);
-    final cursor = book == null
-        ? null
-        : await coordinator.repository.getCursor(book.id);
-    lastSuccessfulSyncAt = _showsSuccessfulHistory(result.status)
-        ? cursor?.updatedAt
-        : null;
+    lastSuccessfulSyncAt = null;
+    await _diagnostics();
     if (book != null &&
         result.status != SyncStatus.signedOut &&
         canSync &&
@@ -67,13 +88,7 @@ class SyncController extends ChangeNotifier {
 
   Future<void> refresh() async {
     result = await coordinator.inspect(_book);
-    final book = _book;
-    final cursor = book == null
-        ? null
-        : await coordinator.repository.getCursor(book.id);
-    lastSuccessfulSyncAt = _showsSuccessfulHistory(result.status)
-        ? cursor?.updatedAt
-        : null;
+    await _diagnostics();
     notifyListeners();
   }
 
@@ -96,8 +111,8 @@ class SyncController extends ChangeNotifier {
         if (result.pulledCount > 0) {
           await onRemoteDataApplied?.call();
         }
-        if (result.status == SyncStatus.synced ||
-            result.status == SyncStatus.conflict) {
+        await _diagnostics();
+        if (result.status == SyncStatus.synced) {
           lastSuccessfulSyncAt = DateTime.now();
         }
       } finally {
@@ -122,16 +137,6 @@ class SyncController extends ChangeNotifier {
   void onResume() {
     if (canSync) scheduleSync();
   }
-
-  static bool _showsSuccessfulHistory(SyncStatus status) => switch (status) {
-    SyncStatus.synced ||
-    SyncStatus.pending ||
-    SyncStatus.syncing ||
-    SyncStatus.offline ||
-    SyncStatus.retryScheduled ||
-    SyncStatus.conflict => true,
-    _ => false,
-  };
 
   @override
   void dispose() {

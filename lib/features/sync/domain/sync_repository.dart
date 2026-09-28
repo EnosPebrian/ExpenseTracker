@@ -39,3 +39,20 @@ abstract interface class SyncConflictRepository {
     required int serverSequence,
   });
 }
+
+/// Optional durable intent support; uses the existing conflict resolution fields.
+abstract interface class DurableConflictResolutionRepository {
+  Future<bool> prepareResolution(
+    String conflictId,
+    String operationId,
+    Map<String, Object?> intent,
+  );
+  Future<void> rejectResolution(
+    String conflictId, {
+    Map<String, Object?>? latestPayload,
+  });
+}
+
+abstract interface class SyncDiagnosticsRepository {
+  Future<Map<String, int>> outboxStatusCounts(String bookId);
+}

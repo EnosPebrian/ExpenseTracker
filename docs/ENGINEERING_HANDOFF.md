@@ -8,16 +8,59 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-None — PT-BETA-08N-R7 engineering is complete. Owner runtime acceptance is
-pending under the active feature freeze.
+PT-BETA-09A — Sync Convergence & Conflict Reliability.
+Authority: `POST_BETA08N_PROGRAM_AUTHORIZATION.md`; R7 is already COMPLETE.
 
 ## Current state
 
-`BLOCKED_OWNER` — R7 now propagates one explicit Map/Create decision by
-normalized symbol + currency and chronologically replans the entire preview
-after every financial review action. Engineering gates are complete; owner
-runtime acceptance is PENDING / NOT RUN. Feature freeze remains active, with no
-new product work READY.
+`VALIDATING` — 09A engineering/hosted gates PASS; Git publication next. Clean starting
+main/ origin/main: `35ee692429499a25bf2cd6e0213e24ddbdbdf0c3`; fetch succeeded.
+Feature freeze temporarily lifted only for 09A, 09C, 09B1 and 09B2; execute
+in that order, validating/committing/pushing each. R7 owner acceptance remains
+PENDING. Only the authorized 09A dev migration has now been deployed.
+
+09A implemented cursor-prefix safety, continued independent sync during
+conflict, dependency-ordered draining, dirty-row protection, durable resolution
+intent/retry, explicit merge UI and diagnostics. See BETA09A_ENGINEERING_ANALYSIS.
+SQLite 29 and backup v8 unchanged. New deployed migration:
+`20260927100120_beta09a_sync_serialization.sql` (CLI-generated filename),
+serializing existing push/resolution functions with initial-sync household lock.
+
+Validation so far: clean local replay PASS; focused pgTAP 17/17; full pgTAP
+360/360 (18 files). Local lint matches unchanged hosted begin_initial_download
+dynamic-SQL finding. Initial 09A tests 14/14; settlement persistence 3/3;
+historical category+brokerage tests 32/32. Broader 152-test group had one stale
+settlement remote-overwrite assertion, now repaired to verify preservation of
+pending local data followed by acknowledgement/pull with no echo. Both focused
+files then passed 17/17. No assertions about accounting were weakened.
+Final focused group passed 152/152; follow-up sync/status group passed 29/29;
+analyzer passed. First full run: 1036 passed, two budget-copy fixture failures
+because a remote archive attempted to overwrite unacknowledged category creation.
+Fixture now acknowledges that creation before remote archival; all financial/UI
+assertions unchanged; budget-copy focused file passed 10/10. Analyzer + full
+suite rerun passed the budget cases. A final UI review added persistence-aware
+Review conflicts visibility while offline; that edit occurred during the run,
+so its new regression saw an older compiled widget (1038 passed / one failed).
+An overlapping focused invocation also hit the in-use sqlite3.dll; no cleaning
+or production rollback was performed. Source is now frozen and serial focused,
+analyzer and full gates are running (pilgrim-beta09a-final-serial.log).
+Final serial gates now PASS: focused 15/15; analyzer clean; full 1039/1039.
+All three builds PASS: Web, Windows debug, Android debug APK (unchanged
+file_picker Kotlin warning). Source is frozen.
+Hosted gates PASS on 2026-09-28: five non-empty dumps and verified SHA-256 at
+pre-beta09a-20260928-140105; exact one-migration dry-run/push; history aligned;
+24 public-table counts/content fingerprints unchanged; RLS/policies/ACLs and
+security advisor details unchanged; expected function locks present. Hosted lint
+retains the same known baseline issue. Next: review/stage/commit/push 09A, then
+automatically start PT-BETA-09C. Do not restart R7 or repeat passed gates.
+Hosted read-only preflight: intended project positively identified as
+pilgrim-tracker-dev / jylclfebdeaywfdwabph. Migration list has exactly one pending
+09A migration; previous history through 20260921144802 matches. Pre-security
+advisor: INFO rls_enabled_no_policy(5); WARN function_search_path_mutable(2),
+anon_security_definer_function_executable(3),
+authenticated_security_definer_function_executable(25),
+auth_leaked_password_protection(1). Compare post-deploy, do not conflate these
+existing warnings with a new regression. Final comparison was unchanged.
 
 ## PT-BETA-08N-R7 engineering evidence — 2026-09-27
 

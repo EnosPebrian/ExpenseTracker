@@ -1,5 +1,15 @@
 # Pilgrim Tracker Incremental Sync Protocol
 
+## BETA-09A convergence and conflict reliability
+
+See `SYNC_CONVERGENCE.md`. Existing outbox/change-feed/RPC authorities remain;
+dependency-aware draining and consumed-prefix cursors prevent skipped imports.
+Persisted resolution intent makes retries/restarts idempotent. Conflict removal
+requires confirmed canonical application, not UI actions. Remote apply preserves
+pending branches and is echo-free. The additive `20260927100120` migration
+serializes existing push/resolution critical sections; its deployment evidence
+is recorded in the 09A checkpoint. SQLite 29 and backup v8 remain unchanged.
+
 ## BETA-08N Interest activity
 
 Interest uses the existing transaction/outbox/change-feed/bootstrap protocol.

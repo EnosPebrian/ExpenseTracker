@@ -216,7 +216,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             repository: syncRepository,
             transport: widget.syncTransport as ConflictResolutionTransport,
           ),
-          afterResolution: syncController.syncNow,
+          afterResolution: () async {
+            await _refreshSyncedData();
+            await syncController.syncNow();
+          },
         )
       : null;
   late final InitialSyncController initialSyncController =

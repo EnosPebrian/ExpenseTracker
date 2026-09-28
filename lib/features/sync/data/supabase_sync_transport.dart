@@ -379,6 +379,7 @@ class SupabaseSyncTransport
       'project_id',
       'title',
       'category',
+      'category_id',
       'account',
       'note',
       'reference',

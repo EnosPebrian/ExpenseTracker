@@ -2,6 +2,7 @@ import '../../master_data/domain/entities/financial_book.dart';
 import 'sync_models.dart';
 import 'sync_repository.dart';
 import 'sync_transport.dart';
+import '../../../core/database/sync_outbox_order.dart';
 
 class SyncCoordinator {
   SyncCoordinator({
@@ -14,6 +15,9 @@ class SyncCoordinator {
   final SyncTransport transport;
   final DateTime Function() _now;
   Future<SyncRunResult>? _activeRun;
+  final Set<String> _reconciledBooks = {};
+  DateTime? lastSuccessfulPushAt;
+  DateTime? lastSuccessfulPullAt;
 
   Future<SyncRunResult> synchronize(FinancialBook? book) {
     final active = _activeRun;
@@ -37,12 +41,14 @@ class SyncCoordinator {
     final guarded = _guardStatus(cursor?.initializationState);
     if (guarded != null) return SyncRunResult(status: guarded);
     final conflicts = await repository.unresolvedConflictCount(book.id);
-    if (conflicts > 0) {
-      return const SyncRunResult(status: SyncStatus.conflict);
-    }
     final pending = await repository.pendingCount(book.id);
+    if (conflicts > 0) {
+      return SyncRunResult(status: SyncStatus.conflict, pendingCount: pending);
+    }
     return SyncRunResult(
-      status: pending == 0 ? SyncStatus.synced : SyncStatus.pending,
+      status: pending == 0 && _reconciledBooks.contains(book.id)
+          ? SyncStatus.synced
+          : SyncStatus.pending,
       pendingCount: pending,
     );
   }
@@ -50,20 +56,28 @@ class SyncCoordinator {
   Future<SyncRunResult> _synchronize(FinancialBook? book) async {
     final readiness = await inspect(book);
     if (readiness.status != SyncStatus.synced &&
-        readiness.status != SyncStatus.pending) {
+        readiness.status != SyncStatus.pending &&
+        readiness.status != SyncStatus.conflict) {
       return readiness;
     }
     final bookId = book!.id;
+    _reconciledBooks.remove(bookId);
     await repository.recoverInterrupted(bookId);
     var pushed = 0;
     var pulled = 0;
     try {
-      final operations = await repository.getEligibleOperations(bookId);
-      if (operations.isNotEmpty) {
+      final attempted = <String>{};
+      while (true) {
+        final operations = (await repository.getEligibleOperations(
+          bookId,
+        )).where((item) => !attempted.contains(item.operationId)).toList();
+        if (operations.isEmpty) break;
+        attempted.addAll(operations.map((item) => item.operationId));
         await repository.markSending(
           operations.map((item) => item.operationId),
         );
         final results = await transport.push(bookId, operations);
+        lastSuccessfulPushAt = _now();
         final operationsById = {
           for (final operation in operations) operation.operationId: operation,
         };
@@ -101,18 +115,39 @@ class SyncCoordinator {
         }
       }
 
-      var cursor = await repository.getCursor(bookId);
+      final cursor = await repository.getCursor(bookId);
+      var afterSequence = cursor?.lastServerSequence ?? 0;
+      final changes = <RemoteChange>[];
       while (true) {
         final batch = await transport.pull(
           bookId,
-          afterSequence: cursor?.lastServerSequence ?? 0,
+          afterSequence: afterSequence,
         );
         if (batch.changes.isEmpty) break;
-        await repository.applyRemoteBatch(bookId, batch);
-        pulled += batch.changes.length;
-        cursor = await repository.getCursor(bookId);
+        if (batch.finalSequence <= afterSequence) {
+          throw StateError('Remote change feed did not advance.');
+        }
+        changes.addAll(batch.changes);
+        afterSequence = batch.finalSequence;
         if (batch.changes.length < 100) break;
       }
+      // Current snapshots can reference later feed entries. Validate/apply the
+      // complete consumed prefix atomically, with reference entities first.
+      changes.sort((a, b) {
+        final order = SyncOutboxOrder.priority(
+          a.entityType,
+        ).compareTo(SyncOutboxOrder.priority(b.entityType));
+        return order != 0 ? order : a.sequence.compareTo(b.sequence);
+      });
+      if (changes.isNotEmpty) {
+        await repository.applyRemoteBatch(
+          bookId,
+          PullBatch(changes: changes, finalSequence: afterSequence),
+        );
+        pulled = changes.length;
+      }
+      lastSuccessfulPullAt = _now();
+      _reconciledBooks.add(bookId);
       final conflicts = await repository.unresolvedConflictCount(bookId);
       final pending = await repository.pendingCount(bookId);
       return SyncRunResult(

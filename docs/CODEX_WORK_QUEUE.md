@@ -2,7 +2,24 @@
 
 **Queue protocol:** `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md`
 **Last architect seed:** 2026-09-09
-**Last reconciled:** 2026-09-23
+**Last reconciled:** 2026-09-27
+
+## Authorized reliability / spreadsheet program
+
+Authority: `POST_BETA08N_PROGRAM_AUTHORIZATION.md` (owner/architect).
+Feature freeze is temporarily lifted ONLY for these bounded sprints.
+R7 is already COMPLETE; do not repeat it. Owner acceptance is separate.
+
+| Work item | State | Dependency |
+| --- | --- | --- |
+| PT-BETA-09A — Sync convergence / conflict reliability | VALIDATING | Gates PASS; Git publication |
+| PT-BETA-09C — Deterministic CSV dates | READY | 09A engineering PASS |
+| PT-BETA-09B1 — Desktop transaction grid | READY | 09C engineering PASS |
+| PT-BETA-09B2 — Clipboard / bulk editing | READY | 09B1 engineering PASS |
+
+Execute the acceptance criteria and gates in the authority document, one
+validated commit/push per sprint. Continue automatically in this order.
+Restore freeze after the program; no Google Sheets storage or new feature item.
 
 ## Queue rules
 

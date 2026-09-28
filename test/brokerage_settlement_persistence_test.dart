@@ -150,7 +150,30 @@ void main() {
         );
         expect(await store.getPendingSyncCount(book), count);
         expect(await store.getTransactions(), isEmpty);
+        // A pending local mutation is preserved, not overwritten by pull.
+        expect(
+          (await store.getBrokerageSettlements()).single['version'],
+          count > 0 ? 1 : 2,
+        );
+        for (final pending in await store.getEligibleSyncOperations(book)) {
+          await store.completeSyncOperation(
+            pending['operation_id'] as String,
+            serverVersion: 2,
+          );
+        }
+        await store.applyRemoteSyncBatch(
+          book,
+          changes: <Map<String, Object?>>[
+            {
+              'entity_type': 'brokerage_settlements',
+              'entity_id': row['id'],
+              'payload': {...row, 'version': 2},
+            },
+          ],
+          finalSequence: 2,
+        );
         expect((await store.getBrokerageSettlements()).single['version'], 2);
+        expect(await store.getPendingSyncCount(book), 0);
         final Map<String, List<Map<String, Object?>>> backupSnapshot =
             await store.createHouseholdBackupSnapshot(book);
         HouseholdBackupIntegrity.validate(backupSnapshot);
