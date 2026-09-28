@@ -8,12 +8,12 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-PT-BETA-09A — Sync Convergence & Conflict Reliability.
+PT-BETA-09C — Deterministic CSV Date Handling.
 Authority: `POST_BETA08N_PROGRAM_AUTHORIZATION.md`; R7 is already COMPLETE.
 
 ## Current state
 
-`VALIDATING` — 09A engineering/hosted gates PASS; Git publication next. Clean starting
+`IN_PROGRESS` — 09C inspection starts from validated/pushed 09A. Clean 09A starting
 main/ origin/main: `35ee692429499a25bf2cd6e0213e24ddbdbdf0c3`; fetch succeeded.
 Feature freeze temporarily lifted only for 09A, 09C, 09B1 and 09B2; execute
 in that order, validating/committing/pushing each. R7 owner acceptance remains
@@ -51,8 +51,12 @@ Hosted gates PASS on 2026-09-28: five non-empty dumps and verified SHA-256 at
 pre-beta09a-20260928-140105; exact one-migration dry-run/push; history aligned;
 24 public-table counts/content fingerprints unchanged; RLS/policies/ACLs and
 security advisor details unchanged; expected function locks present. Hosted lint
-retains the same known baseline issue. Next: review/stage/commit/push 09A, then
-automatically start PT-BETA-09C. Do not restart R7 or repeat passed gates.
+retains the same known baseline issue.
+09A commit/push PASS: `92c9381270fdff91dd89d3262689770cdc9c8035` on main;
+HEAD == origin/main and clean status verified. This follow-up records publication
+and activates 09C. Next: shared whole-column date detection and session-level
+examples/choice across ordinary and brokerage CSV, preserving explicit formats,
+identities and financial semantics. Do not restart R7 or repeat 09A gates.
 Hosted read-only preflight: intended project positively identified as
 pilgrim-tracker-dev / jylclfebdeaywfdwabph. Migration list has exactly one pending
 09A migration; previous history through 20260921144802 matches. Pre-security

@@ -2,7 +2,7 @@
 
 ## Status
 
-Engineering gates PASS — Git publication in progress. Owner acceptance PENDING / NOT RUN.
+Engineering PASS — committed/pushed. Owner acceptance PENDING / NOT RUN.
 Starting main/origin: `35ee692429499a25bf2cd6e0213e24ddbdbdf0c3` (clean).
 
 ## Diagnosis and implementation
@@ -50,7 +50,8 @@ Hosted status: DEPLOYED on 2026-09-28 to pilgrim-tracker-dev
   fingerprints unchanged. Both targeted functions now have the household lock.
 - Security advisor details/counts unchanged before/after; no new severe finding.
   Post-hosted lint retains only the same known initial-download dynamic-SQL issue.
-- Commit/push: publication in progress; see engineering handoff for hashes.
+- Commit `92c9381270fdff91dd89d3262689770cdc9c8035` pushed to origin/main;
+  HEAD == origin/main and clean worktree verified before this handoff update.
 
 ## Limits and next work
 
