@@ -5,6 +5,8 @@ import '../../../assets/domain/entities/asset_definition.dart';
 import '../../../master_data/domain/entities/account.dart';
 import '../../../transactions/domain/entities/transaction_brokerage_metadata.dart';
 import '../../../transactions/domain/import/transaction_import_models.dart';
+import '../../../transactions/domain/import/csv_date_column_policy.dart';
+import '../../../transactions/presentation/import/csv_date_format_help.dart';
 import '../../domain/import/brokerage_import_models.dart';
 import '../../domain/import/brokerage_import_planner.dart';
 import '../controllers/brokerage_import_controller.dart';
@@ -420,11 +422,25 @@ class _MappingPanel extends StatelessWidget {
                 decoration: const InputDecoration(labelText: 'Date format'),
                 items: [
                   for (final value in CsvDateFormat.values)
-                    DropdownMenuItem(value: value, child: Text(value.name)),
+                    DropdownMenuItem(
+                      value: value,
+                      child: Text(CsvDateColumnPolicy.label(value)),
+                    ),
                 ],
                 onChanged: (value) {
                   if (value != null) _update(mapping, dateFormat: value);
                 },
+              ),
+              const SizedBox(height: 12),
+              CsvDateFormatHelp(
+                values: controller.source!.rows.map(
+                  (row) =>
+                      mapping.dateColumn >= 0 &&
+                          mapping.dateColumn < row.values.length
+                      ? row.values[mapping.dateColumn]
+                      : '',
+                ),
+                format: mapping.dateFormat,
               ),
               const SizedBox(height: 12),
               Row(

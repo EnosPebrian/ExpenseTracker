@@ -11,6 +11,18 @@ Update it whenever an engineering session materially changes state, especially b
 PT-BETA-09C — Deterministic CSV Date Handling.
 Authority: `POST_BETA08N_PROGRAM_AUTHORIZATION.md`; R7 is already COMPLETE.
 
+09C resume point: implementation began from clean `1bf704fea93f54924e5d2bb54bfcadf802f1ba6a`
+(09A durable handoff pushed). Shared date-column policy now drives ordinary and
+brokerage detection; session examples/help added to both mapping UIs; exported
+economic dates use ISO calendar dates (audit timestamps unchanged). Focused
+tests PASS 106/106 in pilgrim-beta09c-focused-final.log. The sole stale historical
+expectation labeled invalid 2026-02-30 as detected ISO; updated to null while
+preserving unresolved date and no-commit checks. No schema/Supabase change.
+Final serial gates PASS: analyzer clean; full Flutter 1052/1052; Web, Windows
+debug and Android debug APK PASS (unchanged file_picker Kotlin warning).
+Logs pilgrim-beta09c-{full,web,windows,android}.log in system TEMP.
+Diff reviewed; git diff --check PASS. Next: publish 09C, then begin 09B1.
+
 ## Current state
 
 `IN_PROGRESS` — 09C inspection starts from validated/pushed 09A. Clean 09A starting

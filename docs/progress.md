@@ -1,5 +1,13 @@
 # Pilgrim Tracker Progress
 
+## Deterministic CSV dates — 2026-09-28
+
+BETA-09C engineering PASS: shared whole-column strict date detection, one
+ambiguity choice with examples, ISO calendar dates in transaction CSV exports.
+Focused 106/106; full Flutter 1052/1052; analyzer and Web/Windows/Android debug
+builds PASS. SQLite 29 and backup v8 unchanged; no SQL/hosted changes.
+Owner acceptance PENDING / NOT RUN. Git publication tracked in handoff.
+
 ## Authorized post-BETA-08N reliability program — 2026-09-27
 
 R7 is engineering COMPLETE. BETA-09A engineering/hosted gates PASS: durable

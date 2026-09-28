@@ -530,7 +530,8 @@ void main() {
       ]);
       expect(preview.drafts.single.date, isNull);
       expect(preview.drafts.single.rawDate, '2026-02-30');
-      expect(preview.detectedDateFormat, CsvDateFormat.yyyyMmDd);
+      // A familiar shape is not a successfully parsed calendar column.
+      expect(preview.detectedDateFormat, isNull);
       final repo = RecordingRepository();
       await expectLater(
         BrokerageImportCommitService(repository: repo).commit(

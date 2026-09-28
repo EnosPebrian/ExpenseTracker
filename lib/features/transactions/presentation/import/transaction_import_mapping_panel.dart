@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/import/transaction_import_models.dart';
+import '../../domain/import/csv_date_column_policy.dart';
+import 'csv_date_format_help.dart';
 
 class TransactionImportMappingPanel extends StatefulWidget {
   const TransactionImportMappingPanel({
@@ -8,8 +10,10 @@ class TransactionImportMappingPanel extends StatefulWidget {
     required this.headers,
     required this.initial,
     required this.onChanged,
+    this.rows = const [],
   });
   final List<String> headers;
+  final List<CsvSourceRow> rows;
   final TransactionImportMapping? initial;
   final ValueChanged<TransactionImportMapping> onChanged;
 
@@ -163,6 +167,17 @@ class _MappingPanelState extends State<TransactionImportMappingPanel> {
                 emit();
               },
             ),
+            SizedBox(
+              width: double.infinity,
+              child: CsvDateFormatHelp(
+                values: widget.rows.map(
+                  (row) => date >= 0 && date < row.values.length
+                      ? row.values[date]
+                      : '',
+                ),
+                format: dateFormat,
+              ),
+            ),
             if (strategy == CsvAmountStrategy.signedAmount)
               _enum<CsvSignConvention>(
                 'Sign convention',
@@ -227,7 +242,16 @@ class _MappingPanelState extends State<TransactionImportMappingPanel> {
       initialValue: value,
       decoration: InputDecoration(labelText: label),
       items: values
-          .map((item) => DropdownMenuItem(value: item, child: Text(item.name)))
+          .map(
+            (item) => DropdownMenuItem(
+              value: item,
+              child: Text(
+                item is CsvDateFormat
+                    ? CsvDateColumnPolicy.label(item)
+                    : item.name,
+              ),
+            ),
+          )
           .toList(),
       onChanged: (item) {
         if (item != null) changed(item);

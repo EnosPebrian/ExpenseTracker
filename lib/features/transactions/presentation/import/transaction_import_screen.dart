@@ -236,6 +236,7 @@ class TransactionImportScreen extends StatelessWidget {
           TransactionImportMappingPanel(
             key: ValueKey('${source.fileFingerprint}-${source.headerMode}'),
             headers: source.headers,
+            rows: source.rows,
             initial: controller.mapping,
             onChanged: controller.setMapping,
           ),

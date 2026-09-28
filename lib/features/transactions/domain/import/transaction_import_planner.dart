@@ -9,6 +9,7 @@ import '../entities/transaction_import_rule.dart';
 import '../services/transaction_import_rule_engine.dart';
 import '../services/transaction_duplicate_detector.dart';
 import 'csv_value_parsers.dart';
+import 'csv_date_column_policy.dart';
 import 'transaction_import_category_review.dart';
 import 'transaction_import_models.dart';
 import 'transaction_import_identity.dart';
@@ -38,6 +39,20 @@ class TransactionImportPlanner {
     bool remoteFreshnessVerified = true,
   }) async {
     mapping.validate();
+    final dateValues = source.rows
+        .map(
+          (row) =>
+              mapping.dateColumn >= 0 && mapping.dateColumn < row.values.length
+              ? row.values[mapping.dateColumn]
+              : '',
+        )
+        .toList();
+    final effectiveDateFormat = mapping.dateFormat == CsvDateFormat.automatic
+        ? CsvDateColumnPolicy.detect(dateValues)
+        : mapping.dateFormat;
+    final dateIssue = effectiveDateFormat == null
+        ? CsvDateColumnPolicy.issue(dateValues)
+        : null;
     if (account.deletedAt != null || account.bookId != activeBookId) {
       throw const TransactionImportException(
         'Choose an active account in the current household.',
@@ -54,6 +69,8 @@ class TransactionImportPlanner {
           source: source,
           row: row,
           mapping: mapping,
+          effectiveDateFormat: effectiveDateFormat,
+          dateIssue: dateIssue,
           account: account,
           activeBookId: activeBookId,
           existingIndex: existingIndex,
@@ -76,6 +93,8 @@ class TransactionImportPlanner {
     required CsvParsedSource source,
     required CsvSourceRow row,
     required TransactionImportMapping mapping,
+    required CsvDateFormat? effectiveDateFormat,
+    required String? dateIssue,
     required Account account,
     required String activeBookId,
     required _ExistingTransactionIndex existingIndex,
@@ -112,7 +131,13 @@ class TransactionImportPlanner {
       if (description.isEmpty) {
         throw const TransactionImportException('Description is required.');
       }
-      date = dateParser.parse(_at(row, mapping.dateColumn), mapping.dateFormat);
+      if (effectiveDateFormat == null) {
+        throw TransactionImportException(dateIssue!);
+      }
+      date = dateParser.parse(
+        _at(row, mapping.dateColumn),
+        effectiveDateFormat,
+      );
       (amount, type) = _parseAmountAndType(row, mapping, account.currencyCode);
     } on TransactionImportException catch (error) {
       issues.add(TransactionImportIssue(error.message, blocking: true));

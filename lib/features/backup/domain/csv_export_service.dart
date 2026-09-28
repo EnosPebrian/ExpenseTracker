@@ -231,7 +231,7 @@ class CsvExportService {
         return [
           _text(row['id']),
           _text(row['book_id']),
-          _date(row['transaction_date']),
+          _calendarDate(row['transaction_date']),
           _raw(row['transaction_type']),
           _text(row['title']),
           _raw(amount),
@@ -529,6 +529,16 @@ class CsvExportService {
       DateTime.fromMillisecondsSinceEpoch(
         value.toInt(),
       ).toUtc().toIso8601String(),
+    );
+  }
+
+  // Economic dates are calendar dates, not UTC audit timestamps.
+  static _CsvCell _calendarDate(Object? value) {
+    if (value is! num) return const _CsvCell('');
+    return _CsvCell(
+      DateTime.fromMillisecondsSinceEpoch(
+        value.toInt(),
+      ).toIso8601String().split('T').first,
     );
   }
 

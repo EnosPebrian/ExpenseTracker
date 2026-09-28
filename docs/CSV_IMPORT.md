@@ -63,8 +63,11 @@ must be greater than zero. Extra columns are ignored. The first row can be
 treated as headers or data.
 
 Date choices are `yyyy-MM-dd`, `dd/MM/yyyy`, `MM/dd/yyyy`, `dd-MM-yyyy`,
-`yyyy/MM/dd`, `dd MMM yyyy`, and `dd MMMM yyyy`. Automatic recognition accepts
-only unambiguous year-first dates. Dates remain local calendar dates.
+`yyyy/MM/dd`, `dd MMM yyyy`, and `dd MMMM yyyy`. Automatic recognition inspects
+the entire mapped column, preferring valid ISO YYYY-MM-DD. A unique consistent
+interpretation is selected automatically; genuinely ambiguous slash dates ask
+once with sample interpretations. Invalid/mixed columns block. Dates remain
+local calendar dates. See `CSV_DATE_POLICY.md`.
 
 Decimal and thousands separators are selected explicitly. Parsing produces
 integer minor units without floating-point authority. Ambiguous punctuation,

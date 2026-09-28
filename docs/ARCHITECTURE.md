@@ -1,5 +1,13 @@
 # Pilgrim Tracker Architecture
 
+## BETA-09C deterministic CSV dates
+
+`CsvDateColumnPolicy` is the shared ordinary/brokerage whole-column detection
+authority. Mapping presentation shows session-level examples/choice; planners
+retain source identity and require valid calendar dates before commit.
+Transaction CSV exports use ISO calendar dates while audit fields retain
+timestamps. See `CSV_DATE_POLICY.md`. No schema/accounting/sync change.
+
 ## BETA-09A synchronization reliability
 
 `SYNC_CONVERGENCE.md` defines ordered dependency delivery, consumed-prefix
