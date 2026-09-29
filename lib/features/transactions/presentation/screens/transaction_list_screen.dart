@@ -6,6 +6,9 @@ import '../filters/transaction_filter.dart';
 import '../widgets/transaction_filters.dart';
 import '../widgets/transaction_tile.dart';
 import 'transaction_detail_screen.dart';
+import '../../domain/services/transaction_grid_policy.dart';
+import '../grid/transaction_grid.dart';
+import '../../../sync/presentation/controllers/sync_controller.dart';
 
 class TransactionListScreen extends StatefulWidget {
   const TransactionListScreen({
@@ -16,6 +19,9 @@ class TransactionListScreen extends StatefulWidget {
     this.onReviewTransfers,
     this.importedTransactionIds = const {},
     this.initialDate,
+    this.gridPolicy,
+    this.syncController,
+    this.onConflict,
   });
 
   final TransactionController controller;
@@ -23,6 +29,9 @@ class TransactionListScreen extends StatefulWidget {
   final VoidCallback? onImportCsv;
   final VoidCallback? onReviewTransfers;
   final Set<String> importedTransactionIds;
+  final TransactionGridPolicy? gridPolicy;
+  final SyncController? syncController;
+  final VoidCallback? onConflict;
 
   /// Primarily useful for deterministic widget tests.
   /// Production uses the current date when this is null.
@@ -79,7 +88,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: widget.controller,
+      animation: Listenable.merge([widget.controller, widget.syncController]),
       builder: (context, _) {
         var filtered = filterTransactions(
           transactions: widget.controller.displayTransactions,
@@ -96,6 +105,73 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
               .toList();
         }
 
+        if (MediaQuery.sizeOf(context).width >= 1100 &&
+            widget.gridPolicy != null) {
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Transactions',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    if (widget.onReviewTransfers != null)
+                      TextButton(
+                        onPressed: widget.onReviewTransfers,
+                        child: const Text('Review possible transfers'),
+                      ),
+                    if (widget.onImportCsv != null)
+                      OutlinedButton(
+                        onPressed: widget.onImportCsv,
+                        child: const Text('Import'),
+                      ),
+                  ],
+                ),
+                TransactionFilters(
+                  onSearch: (v) => setState(() => query = v),
+                  from: from,
+                  to: to,
+                  onFromChanged: _changeFrom,
+                  onToChanged: _changeTo,
+                  onReset: _resetDateRange,
+                ),
+                if (widget.importedTransactionIds.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilterChip(
+                      selected: showImportedOnly,
+                      label: Text(
+                        'Current import (${widget.importedTransactionIds.length})',
+                      ),
+                      onSelected: (v) => setState(() => showImportedOnly = v),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: TransactionGrid(
+                    rows: filtered,
+                    policy: widget.gridPolicy!,
+                    onSave: widget.controller.updateTransaction,
+                    onOpen: widget.onEdit,
+                    onConflict: widget.onConflict,
+                    syncStates:
+                        widget.syncController?.transactionStates ?? const {},
+                    loading: widget.controller.isLoading,
+                    error: widget.controller.error,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
         return SingleChildScrollView(
           padding: const EdgeInsets.all(32),
           child: Column(

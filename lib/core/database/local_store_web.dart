@@ -2377,6 +2377,31 @@ class LocalStore {
     return counts;
   }
 
+  Future<List<Map<String, Object?>>> getTransactionSyncDiagnostics(
+    String bookId,
+  ) async {
+    final conflicted = _syncConflicts
+        .where(
+          (c) =>
+              c['book_id'] == bookId &&
+              c['entity_type'] == 'transactions' &&
+              c['resolution_status'] != 'resolved',
+        )
+        .map((c) => c['entity_id'])
+        .toSet();
+    return [
+      for (final row in _syncOutbox)
+        if (row['book_id'] == bookId &&
+            row['entity_type'] == 'transactions' &&
+            row['status'] != 'completed')
+          {
+            'entity_id': row['entity_id'],
+            'status': row['status'],
+            'has_conflict': conflicted.contains(row['entity_id']) ? 1 : 0,
+          },
+    ];
+  }
+
   Future<void> recoverInterruptedSyncOperations(String bookId) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     for (var index = 0; index < _syncOutbox.length; index++) {

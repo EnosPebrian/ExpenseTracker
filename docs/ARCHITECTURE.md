@@ -1,5 +1,14 @@
 # Pilgrim Tracker Architecture
 
+## BETA-09B1 transaction grid
+
+The wide Transactions grid is a virtualized presentation over the existing
+transaction controller/update authority. A pure domain policy validates inline
+ordinary edits; protected financial records retain coordinated editors.
+Read-only native/web per-entity outbox diagnostics distinguish unsent, failed
+and conflicted rows. No second ledger or persistence schema is introduced.
+See `TRANSACTION_GRID.md` for keyboard, identity and currency boundaries.
+
 ## BETA-09C deterministic CSV dates
 
 `CsvDateColumnPolicy` is the shared ordinary/brokerage whole-column detection

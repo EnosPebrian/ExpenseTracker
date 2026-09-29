@@ -77,6 +77,7 @@ import '../../../features/tithe/domain/tithe_summary.dart';
 import '../../../features/telegram_integration/domain/telegram_integration_repository.dart';
 import '../../../features/telegram_integration/presentation/screens/integrations_screen.dart';
 import '../../../features/transactions/domain/entities/transaction.dart';
+import '../../../features/transactions/domain/services/transaction_grid_policy.dart';
 import '../../../features/transactions/data/repositories/local_transaction_repository.dart';
 import '../../../features/transactions/data/transaction_import_file_service.dart';
 import '../../../features/transactions/data/document_import_file_service.dart';
@@ -1302,6 +1303,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         const SizedBox.shrink(),
       TransactionListScreen(
         controller: transactionController,
+        gridPolicy: TransactionGridPolicy(
+          accounts: masterDataController.accountRecords,
+          expenseCategories: transactionFormOptions.expenseCategoryIdsByName,
+          incomeCategories: transactionFormOptions.incomeCategoryIdsByName,
+          projects: transactionFormOptions.projectIdsByName,
+        ),
+        syncController: syncController,
+        onConflict: syncConflictController == null
+            ? null
+            : () => ConflictReviewScreen.show(context, syncConflictController!),
         importedTransactionIds: currentSessionImportedTransactionIds,
         onImportCsv: () => openTransactionImport(context),
         onReviewTransfers: () => openInternalTransferReview(context),

@@ -56,3 +56,7 @@ abstract interface class DurableConflictResolutionRepository {
 abstract interface class SyncDiagnosticsRepository {
   Future<Map<String, int>> outboxStatusCounts(String bookId);
 }
+
+abstract interface class SyncEntityDiagnosticsRepository {
+  Future<Map<String, String>> transactionSyncStates(String bookId);
+}

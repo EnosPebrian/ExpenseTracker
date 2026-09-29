@@ -9,10 +9,28 @@ class LocalSyncRepository
         SyncRepository,
         SyncConflictRepository,
         DurableConflictResolutionRepository,
-        SyncDiagnosticsRepository {
+        SyncDiagnosticsRepository,
+        SyncEntityDiagnosticsRepository {
   LocalSyncRepository(this.store);
 
   final LocalStore store;
+
+  @override
+  Future<Map<String, String>> transactionSyncStates(String bookId) async {
+    final rows = await store.getTransactionSyncDiagnostics(bookId);
+    final states = <String, String>{};
+    const rank = {'Pending': 1, 'Failed': 2, 'Conflict': 3};
+    for (final row in rows) {
+      final id = row['entity_id'] as String;
+      final state = row['has_conflict'] == 1
+          ? 'Conflict'
+          : {'retry', 'conflict'}.contains(row['status'])
+          ? 'Failed'
+          : 'Pending';
+      if ((rank[state] ?? 0) > (rank[states[id]] ?? 0)) states[id] = state;
+    }
+    return states;
+  }
 
   @override
   Future<Map<String, int>> outboxStatusCounts(String bookId) =>

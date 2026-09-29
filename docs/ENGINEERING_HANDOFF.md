@@ -19,6 +19,29 @@ use coordinated editor. Add entity sync visibility without new schema. Preserve
 mobile list and all financial authorities. No B2 clipboard/bulk work until B1
 passes its focused/full/analyzer/three-build gates and is pushed.
 
+09B1 implementation in progress from `b21d6bd`: new domain grid edit policy,
+virtualized grid and wide-screen integration; read-only native/web per-record
+sync diagnostics. Initial grid/diagnostics/mobile-navigation group 15/15 PASS.
+No schema/hosted changes. Next: finish focused coverage/review, formatter,
+historical regressions, analyzer, full suite and three builds, then publish.
+Do not rerun completed 09A/09C gates or discard the current grid worktree.
+
+2026-09-29 resume: analyzer had one missing-braces info in grid, repaired.
+Final serial focused/analyzer/full command is session 57925; logs are
+pilgrim-beta09b1-final-focused.log, pilgrim-beta09b1-analyze-final.log and
+pilgrim-beta09b1-full.log in system TEMP. Builds not yet run. Initial broader
+group passed 159 cases; corrected filename brokerage group passed 17 and
+native/web diagnostics passed 2 (178 distinct focused/historical cases).
+Patch-tool sandbox falsely reports reparse points on regular files; verified
+with Get-Item/fsutil. Installed codex.exe --codex-run-as-apply-patch with a
+PowerShell multiline argument works under approved escalation; no reset/clean.
+
+Final 09B1 focused 10/10 PASS; analyzer no issues; full 1062/1062 PASS.
+Build sequence is running as session 36507; logs pilgrim-beta09b1-web.log,
+pilgrim-beta09b1-windows.log, pilgrim-beta09b1-android.log in system TEMP.
+Source frozen. Next collect build results, final diff/docs, commit/push B1,
+then activate B2. No SQL/Supabase action in this sprint.
+
 09C resume point: implementation began from clean `1bf704fea93f54924e5d2bb54bfcadf802f1ba6a`
 (09A durable handoff pushed). Shared date-column policy now drives ordinary and
 brokerage detection; session examples/help added to both mapping UIs; exported
@@ -31,7 +54,12 @@ debug and Android debug APK PASS (unchanged file_picker Kotlin warning).
 Logs pilgrim-beta09c-{full,web,windows,android}.log in system TEMP.
 Diff reviewed; git diff --check PASS. Next: publish 09C, then begin 09B1.
 
-## Current state
+09B1 all engineering gates PASS on 2026-09-29: focused 10/10, 178 distinct
+focused/historical tests, analyzer clean, full 1062/1062, Web/Windows debug/
+Android debug PASS. Existing file_picker warning unchanged. Diff reviewed and
+clean; Git publication next. Owner acceptance NOT RUN. SQLite 29 / backup v8.
+
+## Archived 09A/09C execution evidence
 
 `IN_PROGRESS` — 09C inspection starts from validated/pushed 09A. Clean 09A starting
 main/ origin/main: `35ee692429499a25bf2cd6e0213e24ddbdbdf0c3`; fetch succeeded.

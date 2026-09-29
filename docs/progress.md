@@ -1,5 +1,14 @@
 # Pilgrim Tracker Progress
 
+## Desktop transaction grid — 2026-09-29
+
+BETA-09B1 engineering PASS: virtualized wide-screen grid, sorting/resizing,
+keyboard editing through existing validated updates, protected-record routing,
+and native/web per-record sync diagnostics. Mobile list retained. Focused 10/10
+plus historical coverage (178 distinct tests); full suite 1062/1062, analyzer
+and Web/Windows/Android debug builds PASS. SQLite 29 / backup v8 unchanged.
+No SQL migration or hosted action. Owner acceptance NOT RUN.
+
 ## Deterministic CSV dates — 2026-09-28
 
 BETA-09C engineering PASS: shared whole-column strict date detection, one

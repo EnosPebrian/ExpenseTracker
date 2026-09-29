@@ -23,12 +23,16 @@ class SyncController extends ChangeNotifier {
   int failedCount = 0;
   int conflictCount = 0;
   int? remoteCursor;
+  Map<String, String> transactionStates = const {};
   DateTime? get lastSuccessfulPushAt => coordinator.lastSuccessfulPushAt;
   DateTime? get lastSuccessfulPullAt => coordinator.lastSuccessfulPullAt;
 
   Future<void> _diagnostics() async {
     final book = _book;
-    if (book == null) return;
+    if (book == null) {
+      transactionStates = const {};
+      return;
+    }
     conflictCount = await coordinator.repository.unresolvedConflictCount(
       book.id,
     );
@@ -36,6 +40,10 @@ class SyncController extends ChangeNotifier {
       book.id,
     ))?.lastServerSequence;
     final repository = coordinator.repository;
+    transactionStates = repository is SyncEntityDiagnosticsRepository
+        ? await (repository as SyncEntityDiagnosticsRepository)
+              .transactionSyncStates(book.id)
+        : const {};
     if (repository is SyncDiagnosticsRepository) {
       final counts = await (repository as SyncDiagnosticsRepository)
           .outboxStatusCounts(book.id);

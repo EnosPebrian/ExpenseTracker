@@ -2117,6 +2117,15 @@ asset_symbol TEXT,
     };
   }
 
+  Future<List<Map<String, Object?>>> getTransactionSyncDiagnostics(
+    String bookId,
+  ) => db.rawQuery(
+    'SELECT o.entity_id, o.status, EXISTS(SELECT 1 FROM sync_conflicts c '
+    "WHERE c.book_id = o.book_id AND c.entity_type = o.entity_type AND c.entity_id = o.entity_id AND c.resolution_status != 'resolved') AS has_conflict "
+    "FROM sync_outbox o WHERE o.book_id = ? AND o.entity_type = 'transactions' AND o.status != 'completed'",
+    [bookId],
+  );
+
   Future<void> recoverInterruptedSyncOperations(String bookId) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.update(
