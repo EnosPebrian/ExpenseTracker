@@ -2,12 +2,14 @@
 
 **Queue protocol:** `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md`
 **Last architect seed:** 2026-09-09
-**Last reconciled:** 2026-09-28
+**Last reconciled:** 2026-09-29
 
 ## Authorized reliability / spreadsheet program
 
 Authority: `POST_BETA08N_PROGRAM_AUTHORIZATION.md` (owner/architect).
-Feature freeze is temporarily lifted ONLY for these bounded sprints.
+All authorized sprints are COMPLETE. Feature freeze is RESTORED.
+No READY/IN_PROGRESS engineering item remains. Next state: BLOCKED_OWNER for
+physical acceptance in POST_BETA08N_OWNER_ACCEPTANCE.md. No new feature authorized.
 R7 is already COMPLETE; do not repeat it. Owner acceptance is separate.
 
 | Work item | State | Dependency |
@@ -15,11 +17,11 @@ R7 is already COMPLETE; do not repeat it. Owner acceptance is separate.
 | PT-BETA-09A — Sync convergence / conflict reliability | COMPLETE | 92c9381 pushed; owner pending |
 | PT-BETA-09C — Deterministic CSV dates | COMPLETE | a83c149 pushed; owner pending |
 | PT-BETA-09B1 — Desktop transaction grid | COMPLETE | 947f60c pushed; owner pending |
-| PT-BETA-09B2 — Clipboard / bulk editing | VALIDATING | All engineering gates PASS; Git publication pending |
+| PT-BETA-09B2 — Clipboard / bulk editing | COMPLETE | afa00b3 pushed; owner pending |
 
-Execute the acceptance criteria and gates in the authority document, one
-validated commit/push per sprint. Continue automatically in this order.
-Restore freeze after the program; no Google Sheets storage or new feature item.
+Each sprint passed its required automated gates and was pushed separately.
+ENGINEERING COMPLETE — OWNER ACCEPTANCE PENDING. No Google Sheets storage or
+new feature item. Historical queue entries below are retained as audit context.
 
 ## Queue rules
 

@@ -1,6 +1,8 @@
 # PT-BETA-09B2 — Reviewed Clipboard / Bulk Editing
 
-State: Engineering PASS, 2026-09-29; Git publication tracked in handoff.
+State: COMPLETE / Engineering PASS, 2026-09-29.
+Commit afa00b3049678e2d8140b6dcf09f87573865a66f pushed to origin/main;
+HEAD == origin/main and clean worktree verified before docs-only closure.
 Owner acceptance NOT RUN.
 Starting clean main/origin: 0dc4e81 (B1 handoff published).
 
@@ -20,5 +22,5 @@ SQLite 29, backup v8 unchanged; no SQL migration or hosted action in B2.
 
 Limitations: row-by-row reviewed commit, not atomic batch update. Undo covers
 only latest single-cell text/date/amount edit; catalog and bulk undo deferred.
-See TRANSACTION_GRID.md. After publication restore program feature freeze and
-leave physical Windows/Android owner acceptance pending.
+See TRANSACTION_GRID.md. Program feature freeze RESTORED; physical
+Windows/Android acceptance is BLOCKED_OWNER / PENDING / NOT RUN.

@@ -7,8 +7,9 @@ reviewed per-row updates with explicit outcomes, version/catalog safety,
 latest single-cell undo and view-only filters. Focused/historical 124/124,
 full Flutter 1072/1072, analyzer, Web/Windows debug/Android debug and diff gates
 PASS. SQLite 29 / backup v8 unchanged; no B2 SQL or hosted action. Publication
-tracked in ENGINEERING_HANDOFF.md; owner matrix remains NOT RUN. This is the
-last authorized engineering sprint; restore freeze after Git completion.
+completed with afa00b3 pushed to origin/main; owner matrix remains NOT RUN.
+This is the last authorized engineering sprint; feature freeze RESTORED.
+Engineering COMPLETE, next state BLOCKED_OWNER for physical acceptance.
 
 ## Desktop transaction grid — 2026-09-29
 

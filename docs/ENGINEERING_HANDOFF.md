@@ -6,7 +6,26 @@ Update it whenever an engineering session materially changes state, especially b
 
 ---
 
-## Current active work item
+## Current state — engineering complete, owner acceptance pending
+
+2026-09-29: R7, 09A, 09C, 09B1 and 09B2 COMPLETE and pushed. Feature freeze
+RESTORED. No READY/IN_PROGRESS engineering work remains; BLOCKED_OWNER for
+physical Windows/Android checks in POST_BETA08N_OWNER_ACCEPTANCE.md. No open
+architecture escalation. Prior deferred BETA-08N acceptance remains deferred.
+
+B2 implementation commit: afa00b3049678e2d8140b6dcf09f87573865a66f.
+Branch: main. Normal origin/main push succeeded. HEAD == origin/main and
+git status --short empty verified after implementation push. This docs-only
+closure records that result and is published as a separate follow-up commit.
+Gates: focused/historical 124/124; full 1072/1072; analyzer; Web/Windows debug/
+Android debug; diff and staged-diff checks PASS. Known file_picker warning only.
+SQLite 29 / backup v8 unchanged. No B2 SQL/hosted changes. Program's only new
+migration 20260927100120 was deployed and verified by 09A; pgTAP 360/360 PASS.
+Remaining limitations: reviewed individual row updates (not atomic bulk),
+latest single-cell undo only, no catalog/bulk undo or persisted column layout.
+Next action: owner executes the prepared matrix; do not begin another feature.
+
+## Archived B2 and earlier execution notes
 
 PT-BETA-09B2 — Spreadsheet Editing / Clipboard / Bulk Workflow.
 Authority: `POST_BETA08N_PROGRAM_AUTHORIZATION.md`; R7 is already COMPLETE.
