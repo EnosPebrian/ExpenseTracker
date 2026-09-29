@@ -8,8 +8,15 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current active work item
 
-PT-BETA-09B1 — Spreadsheet Transaction Grid Foundation.
+PT-BETA-09B2 — Spreadsheet Editing / Clipboard / Bulk Workflow.
 Authority: `POST_BETA08N_PROGRAM_AUTHORIZATION.md`; R7 is already COMPLETE.
+
+B1 COMPLETE: 947f60c092287202531d87c2f6581f573701b92c pushed to origin/main;
+HEAD == origin/main and clean status verified. Next B2: rectangular clipboard
+copy/paste and reviewed per-row bulk updates through existing grid policy and
+transaction updates; explicit outcomes (no false atomic promise), safe undo
+with stale-state checks, and view-only filters. No schema/hosted changes.
+Complete all gates then restore program feature freeze; owner tests NOT RUN.
 
 09C publication COMPLETE: `a83c14986d58ab08cf380b2ff68eec5a4facfeb6` pushed
 normally to origin/main; HEAD == origin/main and clean worktree verified.

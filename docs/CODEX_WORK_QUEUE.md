@@ -14,8 +14,8 @@ R7 is already COMPLETE; do not repeat it. Owner acceptance is separate.
 | --- | --- | --- |
 | PT-BETA-09A — Sync convergence / conflict reliability | COMPLETE | 92c9381 pushed; owner pending |
 | PT-BETA-09C — Deterministic CSV dates | COMPLETE | a83c149 pushed; owner pending |
-| PT-BETA-09B1 — Desktop transaction grid | VALIDATING | 1062 tests/analyzer PASS; builds running |
-| PT-BETA-09B2 — Clipboard / bulk editing | READY | 09B1 engineering PASS |
+| PT-BETA-09B1 — Desktop transaction grid | COMPLETE | 947f60c pushed; owner pending |
+| PT-BETA-09B2 — Clipboard / bulk editing | IN_PROGRESS | 09B1 engineering PASS |
 
 Execute the acceptance criteria and gates in the authority document, one
 validated commit/push per sprint. Continue automatically in this order.

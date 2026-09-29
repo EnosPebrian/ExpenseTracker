@@ -1,6 +1,8 @@
 # PT-BETA-09B1 — Spreadsheet Transaction Grid Foundation
 
-State: Engineering PASS; Git publication pending. Owner acceptance NOT RUN.
+State: COMPLETE. Owner acceptance NOT RUN.
+Commit 947f60c092287202531d87c2f6581f573701b92c pushed normally to origin/main;
+HEAD == origin/main and clean worktree verified.
 Starting clean main/origin: b21d6bd (09C handoff published).
 
 Wide Transactions uses a virtualized grid over the existing controller; narrow
