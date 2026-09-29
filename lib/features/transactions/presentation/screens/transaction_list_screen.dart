@@ -160,6 +160,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                     rows: filtered,
                     policy: widget.gridPolicy!,
                     onSave: widget.controller.updateTransaction,
+                    readCurrent: widget.controller.transactionById,
                     onOpen: widget.onEdit,
                     onConflict: widget.onConflict,
                     syncStates:

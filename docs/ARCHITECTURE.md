@@ -2,6 +2,12 @@
 
 ## BETA-09B1 transaction grid
 
+BETA-09B2 adds a strict clipboard adapter and pure batch plan validation.
+Reviewed rows use existing controller updates, with current version/catalog
+revalidation and explicit per-row outcomes; no atomic bulk-update claim.
+Undo is a guarded new ordinary mutation, never a storage/history rewind.
+Filters and rectangular selection are transient presentation state.
+
 The wide Transactions grid is a virtualized presentation over the existing
 transaction controller/update authority. A pure domain policy validates inline
 ordinary edits; protected financial records retain coordinated editors.

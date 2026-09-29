@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../domain/entities/transaction.dart';
 import '../../domain/services/transaction_grid_policy.dart';
+import '../../domain/services/transaction_grid_batch.dart';
+import '../../data/grid_clipboard_codec.dart';
+import 'grid_batch_review.dart';
+import 'grid_cell.dart';
+import 'grid_toolbar.dart';
 
 /// Virtualized rows with a fixed header. All writes are delegated to the controller.
 class TransactionGrid extends StatefulWidget {
@@ -15,6 +20,7 @@ class TransactionGrid extends StatefulWidget {
     this.syncStates = const {},
     this.loading = false,
     this.error,
+    this.readCurrent,
   });
   final List<Transaction> rows;
   final TransactionGridPolicy policy;
@@ -24,6 +30,7 @@ class TransactionGrid extends StatefulWidget {
   final Map<String, String> syncStates;
   final bool loading;
   final String? error;
+  final Transaction? Function(String)? readCurrent;
 
   @override
   State<TransactionGrid> createState() => _TransactionGridState();
@@ -71,6 +78,147 @@ class _TransactionGridState extends State<TransactionGrid> {
   Transaction? original;
   List<Transaction> sorted = [];
   Map<String, String> projectNames = {};
+  String? anchor;
+  int anchorColumn = 0;
+  Set<String> rangeIds = {};
+  int rangeStart = 0;
+  int rangeEnd = 0;
+  final filters = <int, String>{};
+  GridUndoChange? undo;
+
+  Future<void> _undo() async {
+    final change = undo;
+    if (change == null || saving || editing) return;
+    setState(() {
+      saving = true;
+      editError = null;
+    });
+    try {
+      await widget.onSave(
+        change.prepare(_current(change.expected.id), widget.policy),
+      );
+      if (mounted) setState(() => undo = null);
+    } catch (e) {
+      if (mounted) setState(() => editError = e.toString());
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Transaction? _current(String id) => widget.readCurrent != null
+      ? widget.readCurrent!(id)
+      : widget.rows.where((r) => r.id == id).firstOrNull;
+
+  void _range() {
+    final a = sorted.indexWhere((r) => r.id == anchor);
+    final b = sorted.indexWhere((r) => r.id == selected);
+    if (a < 0 || b < 0) {
+      rangeIds = {};
+      return;
+    }
+    rangeIds = sorted
+        .sublist(a < b ? a : b, (a > b ? a : b) + 1)
+        .map((r) => r.id)
+        .toSet();
+    rangeStart = anchorColumn < column ? anchorColumn : column;
+    rangeEnd = anchorColumn > column ? anchorColumn : column;
+  }
+
+  Future<void> _copy() async {
+    final rows = sorted.where((r) => rangeIds.contains(r.id));
+    await Clipboard.setData(
+      ClipboardData(
+        text: GridClipboardCodec.encode([
+          for (final r in rows)
+            [for (var c = rangeStart; c <= rangeEnd; c++) _value(r, c)],
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _paste() async {
+    try {
+      final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+      final values = GridClipboardCodec.decode(text);
+      final start = sorted.indexWhere((r) => rangeIds.contains(r.id));
+      if (start < 0 ||
+          start + values.length > sorted.length ||
+          rangeStart + values.first.length > fields.length) {
+        throw StateError('Clipboard does not fit the visible grid.');
+      }
+      if (rangeIds.length > 1 &&
+          (rangeIds.length != values.length ||
+              rangeEnd - rangeStart + 1 != values.first.length)) {
+        throw StateError('Clipboard must match the selected rectangle.');
+      }
+      final plan = TransactionGridBatch.plan(
+        rows: sorted.sublist(start, start + values.length),
+        fields: fields.sublist(rangeStart, rangeStart + values.first.length),
+        values: values,
+        policy: widget.policy,
+      );
+      await _review(plan);
+    } catch (e) {
+      if (mounted) setState(() => editError = e.toString());
+    }
+  }
+
+  Future<void> _bulk() async {
+    final rows = sorted.where((r) => rangeIds.contains(r.id)).toList();
+    final input = await GridBatchReview.bulkInput(context);
+    if (input == null || !mounted) return;
+    await _review(
+      TransactionGridBatch.plan(
+        rows: rows,
+        fields: [input.$1],
+        values: [
+          for (final _ in rows) [input.$2],
+        ],
+        policy: widget.policy,
+      ),
+    );
+  }
+
+  Future<void> _review(GridEditPlan plan) async {
+    if (!mounted || !await GridBatchReview.confirm(context, plan) || !mounted) {
+      return;
+    }
+    setState(() {
+      saving = true;
+      editError = null;
+      undo = null;
+    });
+    final results = await GridBatchCommit.apply(
+      plan,
+      current: _current,
+      save: widget.onSave,
+      currentPolicy: () => widget.policy,
+    );
+    if (!mounted) return;
+    setState(() => saving = false);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Bulk save outcomes'),
+        content: SizedBox(
+          width: 650,
+          height: 350,
+          child: ListView(
+            children: [
+              for (var i = 0; i < results.length; i++)
+                Text('${plan.edits[i].before.title}: ${results[i].message}'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -97,7 +245,9 @@ class _TransactionGridState extends State<TransactionGrid> {
     projectNames = {
       for (final e in widget.policy.projects.entries) e.value: e.key,
     };
-    sorted = List.of(widget.rows);
+    sorted = widget.rows
+        .where((r) => filters.entries.every((f) => _value(r, f.key) == f.value))
+        .toList();
     sorted.sort((a, b) {
       final order = sortColumn == 3
           ? a.amount.compareTo(b.amount)
@@ -109,6 +259,7 @@ class _TransactionGridState extends State<TransactionGrid> {
             ).toLowerCase().compareTo(_value(b, sortColumn).toLowerCase());
       return (ascending ? 1 : -1) * (order == 0 ? a.id.compareTo(b.id) : order);
     });
+    _range();
   }
 
   String _state(Transaction row) =>
@@ -135,9 +286,14 @@ class _TransactionGridState extends State<TransactionGrid> {
   void _select(Transaction row, int col) {
     if (editing || saving) return;
     setState(() {
+      if (!HardwareKeyboard.instance.isShiftPressed || anchor == null) {
+        anchor = row.id;
+        anchorColumn = col;
+      }
       selected = row.id;
       column = col;
       editError = null;
+      _range();
     });
     focus.requestFocus();
   }
@@ -174,7 +330,7 @@ class _TransactionGridState extends State<TransactionGrid> {
       editError = null;
     });
     try {
-      final latest = widget.rows.where((r) => r.id == original!.id).firstOrNull;
+      final latest = _current(original!.id);
       if (latest == null ||
           latest.version != original!.version ||
           latest.updatedAt != original!.updatedAt) {
@@ -183,9 +339,17 @@ class _TransactionGridState extends State<TransactionGrid> {
         );
       }
       final next = widget.policy.prepare(latest, fields[column], editor.text);
+      final previous = _value(latest, column);
       await widget.onSave(next);
       if (!mounted) return;
+      final persisted = _current(latest.id);
       setState(() {
+        undo =
+            GridUndoChange.supports(fields[column]) &&
+                persisted != null &&
+                persisted.version > latest.version
+            ? GridUndoChange(persisted, fields[column], previous)
+            : null;
         editing = false;
         original = null;
       });
@@ -221,6 +385,11 @@ class _TransactionGridState extends State<TransactionGrid> {
     setState(() {
       selected = sorted[row].id;
       column = col;
+      if (!HardwareKeyboard.instance.isShiftPressed) {
+        anchor = selected;
+        anchorColumn = column;
+      }
+      _range();
     });
     if (vertical.hasClients) {
       final top = row * 44.0;
@@ -242,6 +411,20 @@ class _TransactionGridState extends State<TransactionGrid> {
   KeyEventResult _key(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent || saving) return KeyEventResult.ignored;
     final key = event.logicalKey;
+    if (!editing && HardwareKeyboard.instance.isControlPressed) {
+      if (key == LogicalKeyboardKey.keyC) {
+        _copy();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.keyV) {
+        _paste();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.keyZ) {
+        _undo();
+        return KeyEventResult.handled;
+      }
+    }
     if (key == LogicalKeyboardKey.escape && editing) {
       setState(() {
         editing = false;
@@ -285,6 +468,32 @@ class _TransactionGridState extends State<TransactionGrid> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        GridToolbar(
+          selectedCount: rangeIds.length,
+          labels: labels,
+          filters: filters,
+          options: {
+            for (final c in [2, 4, 5, 6, 10])
+              c: ({
+                ...widget.rows.map((r) => _value(r, c)),
+                if (filters[c] != null) filters[c]!,
+              }.toList()..sort()),
+          },
+          onCopy: rangeIds.isEmpty || editing || saving ? null : _copy,
+          onPaste: rangeIds.isEmpty || editing || saving ? null : _paste,
+          onBulk: rangeIds.isEmpty || editing || saving ? null : _bulk,
+          onUndo: undo == null || editing || saving ? null : _undo,
+          onFilter: editing || saving
+              ? null
+              : (c, v) => setState(() {
+                  if (v == null) {
+                    filters.remove(c);
+                  } else {
+                    filters[c] = v;
+                  }
+                  _sort();
+                }),
+        ),
         Text(
           '${sorted.length} transactions · Enter/double-click to edit · Escape cancels · Amounts use account storage units',
         ),
@@ -376,93 +585,33 @@ class _TransactionGridState extends State<TransactionGrid> {
                                   key: ValueKey('grid-row-${row.id}'),
                                   children: [
                                     for (var c = 0; c < fields.length; c++)
-                                      SizedBox(
+                                      GridCell(
                                         width: widths[c],
-                                        height: 44,
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            color:
-                                                selected == row.id &&
-                                                    column == c
-                                                ? Theme.of(
-                                                    context,
-                                                  ).colorScheme.primaryContainer
-                                                : (index.isEven
-                                                      ? Theme.of(
-                                                          context,
-                                                        ).colorScheme.surface
-                                                      : Theme.of(context)
-                                                            .colorScheme
-                                                            .surfaceContainerLow),
-                                            border: Border.all(
-                                              color:
-                                                  selected == row.id &&
-                                                      column == c
-                                                  ? Theme.of(
-                                                      context,
-                                                    ).colorScheme.primary
-                                                  : Theme.of(
-                                                      context,
-                                                    ).dividerColor,
-                                              width: .5,
-                                            ),
-                                          ),
-                                          child:
-                                              editing &&
-                                                  selected == row.id &&
-                                                  column == c
-                                              ? TextField(
-                                                  key: const Key('grid-editor'),
-                                                  controller: editor,
-                                                  autofocus: true,
-                                                  enabled: !saving,
-                                                  onSubmitted: (_) => _save(),
-                                                  decoration:
-                                                      const InputDecoration(
-                                                        isDense: true,
-                                                        contentPadding:
-                                                            EdgeInsets.all(8),
-                                                      ),
-                                                )
-                                              : GestureDetector(
-                                                  behavior:
-                                                      HitTestBehavior.opaque,
-                                                  onTap: () {
-                                                    _select(row, c);
-                                                    if (fields[c] ==
-                                                            TransactionGridField
-                                                                .sync &&
-                                                        _state(row) ==
-                                                            'Conflict') {
-                                                      widget.onConflict?.call();
-                                                    }
-                                                  },
-                                                  onDoubleTap: () =>
-                                                      _edit(row, c),
-                                                  child: Tooltip(
-                                                    message: _value(row, c),
-                                                    child: Align(
-                                                      alignment: c == 3
-                                                          ? Alignment
-                                                                .centerRight
-                                                          : Alignment
-                                                                .centerLeft,
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 8,
-                                                            ),
-                                                        child: Text(
-                                                          _value(row, c),
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow
-                                                              .ellipsis,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                        ),
+                                        value: _value(row, c),
+                                        selected:
+                                            selected == row.id && column == c,
+                                        inRange:
+                                            rangeIds.contains(row.id) &&
+                                            c >= rangeStart &&
+                                            c <= rangeEnd,
+                                        even: index.isEven,
+                                        numeric: c == 3,
+                                        editing:
+                                            editing &&
+                                            selected == row.id &&
+                                            column == c,
+                                        saving: saving,
+                                        editor: editor,
+                                        onSave: () => _save(),
+                                        onEdit: () => _edit(row, c),
+                                        onSelect: () {
+                                          _select(row, c);
+                                          if (fields[c] ==
+                                                  TransactionGridField.sync &&
+                                              _state(row) == 'Conflict') {
+                                            widget.onConflict?.call();
+                                          }
+                                        },
                                       ),
                                   ],
                                 );

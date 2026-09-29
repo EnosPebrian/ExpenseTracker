@@ -11,12 +11,37 @@ Update it whenever an engineering session materially changes state, especially b
 PT-BETA-09B2 — Spreadsheet Editing / Clipboard / Bulk Workflow.
 Authority: `POST_BETA08N_PROGRAM_AUTHORIZATION.md`; R7 is already COMPLETE.
 
+B2 final engineering gates PASS: 124/124 focused/historical, 1072/1072 full,
+analyzer clean, Web 139.8s / Windows debug 30.8s / Android debug 120.0s PASS.
+Known file_picker warning unchanged. Diff reviewed and whitespace check PASS.
+SQLite 29 / backup v8 unchanged; no B2 SQL/hosted changes. Next action is the
+authorized intended-file commit/push, then completion record and freeze.
+Owner matrix: POST_BETA08N_OWNER_ACCEPTANCE.md; all new checks NOT RUN.
+
+2026-09-29 current verified resume: final focused/historical 124/124 PASS;
+analyzer no issues; full Flutter 1072/1072 PASS. Seven analyzer braces infos
+were repaired before that final run. Source frozen; build sequence session
+99667 runs Web, Windows debug, Android debug in order, with TEMP logs
+pilgrim-beta09b2-{web,windows,android}.log. Fetch succeeded; main/origin baseline
+0dc4e81de3969e253e96e01b8423a1295db2eb6c. Diff check PASS. Next collect builds,
+complete docs/diff review, commit/push and restore freeze. Owner checks NOT RUN.
+
 B1 COMPLETE: 947f60c092287202531d87c2f6581f573701b92c pushed to origin/main;
 HEAD == origin/main and clean status verified. Next B2: rectangular clipboard
 copy/paste and reviewed per-row bulk updates through existing grid policy and
 transaction updates; explicit outcomes (no false atomic promise), safe undo
 with stale-state checks, and view-only filters. No schema/hosted changes.
 Complete all gates then restore program feature freeze; owner tests NOT RUN.
+
+2026-09-29 B2 implementation preserved: strict clipboard codec; domain batch
+planner/committer; review/outcome UI; Shift rectangle; view filters; guarded
+single-cell undo; extracted cell/toolbar widgets. No schema/hosted work.
+Initial focused B2+B1 group 17/17 PASS; final catalog identity recheck added.
+Focused/historical+analyzer serial command session 65744; logs
+pilgrim-beta09b2-regressions.log and pilgrim-beta09b2-analyze.log in system TEMP.
+Next collect results, repair bounded issues if any, full suite once, three
+builds, final diff/docs/commit/push and feature-freeze/owner handoff. Do not
+repeat completed B1 gates or start any new feature.
 
 09C publication COMPLETE: `a83c14986d58ab08cf380b2ff68eec5a4facfeb6` pushed
 normally to origin/main; HEAD == origin/main and clean worktree verified.
