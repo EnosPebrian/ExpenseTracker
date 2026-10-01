@@ -8,8 +8,9 @@ for all rows, project/text clearing is explicit. Stable choices are rechecked
 before existing updates; no catalog creation or accounting changes. Review
 shows friendly old/new values. Final grid tests 40/40 (22 new), expanded
 regressions 162/162, full suite 1094/1094, analyzer and three builds PASS.
-SQLite 29 / backup v8 unchanged; no SQL/hosted changes. Publication in handoff.
-Owner runtime acceptance pending; restore freeze after publication.
+SQLite 29 / backup v8 unchanged; no SQL/hosted changes. Commit 705ca1f pushed
+to origin/main; clean worktree verified. Owner runtime acceptance pending;
+feature freeze RESTORED. No additional feature started.
 
 ## Reviewed spreadsheet edits — 2026-09-29
 

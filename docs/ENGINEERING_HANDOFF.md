@@ -8,6 +8,20 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current state — engineering complete, owner acceptance pending
 
+2026-10-01 BETA-09B3 COMPLETE. Feature freeze RESTORED; BLOCKED_OWNER for
+POST_BETA08N_OWNER_ACCEPTANCE.md, including catalog-aware editing. No READY or
+IN_PROGRESS engineering work remains; do not start another feature.
+Implementation commit: 705ca1fe12ecaa2a31f893a3a59b675583942e20.
+Branch main, normal origin/main push succeeded; HEAD == origin/main and empty
+git status --short verified after implementation push. This documentation-only
+follow-up records closure. Owner runtime acceptance remains PENDING / NOT RUN.
+Focused 40/40 (22 B3), expanded 162/162, full 1094/1094, analyzer, all three
+builds and diff checks PASS. SQLite 29, backup v8; no SQL/hosted changes.
+Limits: existing per-row non-atomic bulk contract and limited undo unchanged;
+catalogs are existing-only, no new master-data creation; mobile UI unchanged.
+
+## Archived B3 validation notes
+
 2026-10-01 B3 engineering PASS: final grid 40/40 (22 new B3 tests), expanded
 regressions 162/162, full 1094/1094, analyzer clean, Web 190.7s / Windows debug
 48.8s / Android debug 135.0s PASS. Known file_picker warning unchanged.

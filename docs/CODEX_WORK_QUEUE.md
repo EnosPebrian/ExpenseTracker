@@ -2,16 +2,15 @@
 
 **Queue protocol:** `docs/AUTONOMOUS_ENGINEERING_PROTOCOL.md`
 **Last architect seed:** 2026-09-09
-**Last reconciled:** 2026-09-29
+**Last reconciled:** 2026-10-01
 
 ## Authorized reliability / spreadsheet program
 
-PT-BETA-09B3 — Catalog-aware spreadsheet editing: VALIDATING.
-Owner authorization 2026-09-29 temporarily lifts freeze only for searchable
-catalog bulk/inline pickers, friendly review and keyboard regression coverage.
-No accounting/schema/backup/hosted changes. All engineering gates PASS:
-focused 40/40, expanded regressions 162/162, full 1094/1094, analyzer and three
-builds. Git publication pending; restore freeze afterward. Owner acceptance pending.
+PT-BETA-09B3 — Catalog-aware spreadsheet editing: COMPLETE, 2026-10-01.
+Implementation 705ca1f pushed to origin/main; clean worktree verified.
+Focused 40/40, expanded regressions 162/162, full 1094/1094, analyzer and three
+builds PASS. No accounting/schema/backup/hosted changes. Feature freeze RESTORED;
+next state BLOCKED_OWNER, owner acceptance pending. No new feature authorized.
 
 Authority: `POST_BETA08N_PROGRAM_AUTHORIZATION.md` (owner/architect).
 All authorized sprints are COMPLETE. Feature freeze is RESTORED.

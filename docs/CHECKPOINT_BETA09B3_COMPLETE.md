@@ -1,6 +1,8 @@
 # BETA-09B3 — Catalog-aware spreadsheet editing
 
-State: Engineering PASS, 2026-10-01; Git publication tracked in handoff.
+State: COMPLETE / Engineering PASS, 2026-10-01.
+Commit 705ca1fe12ecaa2a31f893a3a59b675583942e20 pushed normally to origin/main.
+HEAD == origin/main and clean worktree verified before docs-only closure.
 Owner acceptance PENDING / NOT RUN.
 Baseline: main/origin 71be9eb33aebcbff06e215ff4cfbc6d348869f94, clean.
 
@@ -23,9 +25,9 @@ Initial focused B3/B2/B1: 33/33 PASS. Expanded B3 and historical regressions:
 Analyzer PASS (no issues); full Flutter suite 1094/1094 PASS. The sole initial
 test-braces info was fixed. Web PASS (190.7s), Windows debug PASS (48.8s),
 Android debug APK PASS (135.0s), known file_picker Kotlin warning unchanged.
-Diff review and git diff --check PASS. Publication pending; source frozen.
+Diff review and git diff --check PASS. Publication complete; source frozen.
 SQLite 29, backup v8 unchanged. No SQL/Supabase or hosted action.
 
 Limits inherited from B2: reviewed per-row saves, not atomic bulk; only latest
 supported single-cell undo; no master-data creation, no mobile spreadsheet UI.
-After all gates: commit/push, restore freeze, leave owner matrix NOT RUN.
+Feature freeze RESTORED; owner matrix remains NOT RUN / BLOCKED_OWNER.
