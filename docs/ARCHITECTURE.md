@@ -2,6 +2,11 @@
 
 ## BETA-09B1 transaction grid
 
+BETA-09B3 shares searchable presentation pickers across bulk/inline editing.
+Candidate validity is delegated to the existing grid policy; selected catalog
+IDs survive review and are checked again before ordinary updates. Discovery
+text is never fuzzy financial identity. No new persistence or mapping engine.
+
 BETA-09B2 adds a strict clipboard adapter and pure batch plan validation.
 Reviewed rows use existing controller updates, with current version/catalog
 revalidation and explicit per-row outcomes; no atomic bulk-update claim.

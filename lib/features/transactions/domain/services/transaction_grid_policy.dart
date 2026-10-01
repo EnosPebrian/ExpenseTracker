@@ -20,6 +20,15 @@ enum TransactionGridField {
   sync;
 
   bool get editable => !{type, asset, sync}.contains(this);
+  bool get catalogBacked => {category, account, project}.contains(this);
+  String get label => '${name[0].toUpperCase()}${name.substring(1)}';
+}
+
+class GridCatalogChoice {
+  const GridCatalogChoice(this.id, this.value, this.label);
+  final String? id;
+  final String value;
+  final String label;
 }
 
 /// A strict editing boundary, not a second ledger. Saving still uses UpdateTransaction.
@@ -35,6 +44,82 @@ class TransactionGridPolicy {
   final Map<String, String> expenseCategories;
   final Map<String, String> incomeCategories;
   final Map<String, String> projects;
+
+  String? catalogProblem(List<Transaction> rows, TransactionGridField field) {
+    if (field == TransactionGridField.category &&
+        rows.map((r) => r.type).toSet().length > 1) {
+      return 'Selected rows contain both Income and Expense transactions. '
+          'Select rows of one type to bulk-change Category.';
+    }
+    if (choices(rows, field).isEmpty) {
+      return field == TransactionGridField.account
+          ? 'No account is compatible with all selected rows.'
+          : 'No valid ${field.label.toLowerCase()} choices for these rows.';
+    }
+    return null;
+  }
+
+  /// Discovery delegates validity to the same final editing authority.
+  List<GridCatalogChoice> choices(
+    List<Transaction> rows,
+    TransactionGridField field,
+  ) {
+    if (rows.isEmpty || !field.catalogBacked) return [];
+    if (field == TransactionGridField.category &&
+        rows.map((r) => r.type).toSet().length != 1) {
+      return [];
+    }
+    final candidates = switch (field) {
+      TransactionGridField.category => [
+        for (final e
+            in (rows.first.type == TransactionType.income
+                    ? incomeCategories
+                    : expenseCategories)
+                .entries)
+          GridCatalogChoice(e.value, e.key, e.key),
+      ],
+      TransactionGridField.account => [
+        for (final a in accounts) GridCatalogChoice(a.id, a.name, a.name),
+      ],
+      TransactionGridField.project => [
+        const GridCatalogChoice(null, '', '(No project)'),
+        for (final e in projects.entries)
+          GridCatalogChoice(e.value, e.key, e.key),
+      ],
+      _ => <GridCatalogChoice>[],
+    };
+    return candidates
+        .where(
+          (choice) => rows.every((row) {
+            try {
+              prepareChoice(row, field, choice);
+              return true;
+            } catch (_) {
+              return false;
+            }
+          }),
+        )
+        .toList()
+      ..sort((a, b) => a.label.compareTo(b.label));
+  }
+
+  Transaction prepareChoice(
+    Transaction row,
+    TransactionGridField field,
+    GridCatalogChoice choice,
+  ) {
+    final next = prepare(row, field, choice.value);
+    final id = switch (field) {
+      TransactionGridField.category => next.categoryId,
+      TransactionGridField.project => next.projectId,
+      TransactionGridField.account => _account(next.account, row.bookId).id,
+      _ => throw StateError('Not a catalog field.'),
+    };
+    if (id != choice.id) {
+      throw StateError('Catalog changed. Select the value again.');
+    }
+    return next;
+  }
 
   bool canEdit(Transaction row) =>
       (row.type == TransactionType.expense ||

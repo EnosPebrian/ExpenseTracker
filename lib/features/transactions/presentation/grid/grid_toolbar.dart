@@ -28,7 +28,12 @@ class GridToolbar extends StatelessWidget {
       TextButton(onPressed: onUndo, child: const Text('Undo last cell edit')),
       TextButton(onPressed: onCopy, child: const Text('Copy selection')),
       TextButton(onPressed: onPaste, child: const Text('Paste / review')),
-      TextButton(onPressed: onBulk, child: Text('Set $selectedCount rows')),
+      TextButton(
+        onPressed: onBulk,
+        child: Text(
+          selectedCount == 1 ? 'Edit 1 row' : 'Bulk edit $selectedCount rows',
+        ),
+      ),
       const Text('Shift-click/Shift-arrows extend selection'),
       for (final c in options.keys)
         SizedBox(

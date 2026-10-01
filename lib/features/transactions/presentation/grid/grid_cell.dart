@@ -15,12 +15,14 @@ class GridCell extends StatelessWidget {
     required this.onSave,
     required this.onSelect,
     required this.onEdit,
+    this.catalogEditor,
   });
   final double width;
   final String value;
   final bool selected, inRange, even, numeric, editing, saving;
   final TextEditingController editor;
   final VoidCallback onSave, onSelect, onEdit;
+  final Widget? catalogEditor;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -41,17 +43,18 @@ class GridCell extends StatelessWidget {
         ),
       ),
       child: editing
-          ? TextField(
-              key: const Key('grid-editor'),
-              controller: editor,
-              autofocus: true,
-              enabled: !saving,
-              onSubmitted: (_) => onSave(),
-              decoration: const InputDecoration(
-                isDense: true,
-                contentPadding: EdgeInsets.all(8),
-              ),
-            )
+          ? catalogEditor ??
+                TextField(
+                  key: const Key('grid-editor'),
+                  controller: editor,
+                  autofocus: true,
+                  enabled: !saving,
+                  onSubmitted: (_) => onSave(),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.all(8),
+                  ),
+                )
           : GestureDetector(
               behavior: HitTestBehavior.opaque,
               onDoubleTap: onEdit,

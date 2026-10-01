@@ -8,6 +8,34 @@ Update it whenever an engineering session materially changes state, especially b
 
 ## Current state — engineering complete, owner acceptance pending
 
+2026-10-01 B3 engineering PASS: final grid 40/40 (22 new B3 tests), expanded
+regressions 162/162, full 1094/1094, analyzer clean, Web 190.7s / Windows debug
+48.8s / Android debug 135.0s PASS. Known file_picker warning unchanged.
+Diff reviewed and diff check PASS. No SQL/Supabase/schema/backup changes;
+SQLite 29 / backup v8. Next: commit/push intended B3 files then record closure
+and restore feature freeze. Owner acceptance remains PENDING / NOT RUN.
+
+Superseding active item 2026-09-29: PT-BETA-09B3 VALIDATING under explicit owner
+catalog-aware grid UX authorization. Clean baseline 71be9eb, main == origin/main.
+Implement shared policy-backed stable-ID pickers, bulk/inline review UX and
+tests only; no accounting/schema changes. All required gates and publication
+remain pending. Restore freeze after completion; do not start another feature.
+
+B3 implementation preserved: policy-backed stable-ID choices; shared searchable
+bulk/inline picker; explicit clearing; friendly old/new review and toolbar;
+keyboard and pending-save guards. Expanded regressions 162/162 PASS; two final
+identity/interaction tests added. Initial analyzer had one test braces info,
+fixed without weakening assertions. Final focused/analyzer/full serial session
+70914, TEMP logs pilgrim-beta09b3-{final-focused,analyze-final,full}.log.
+Source frozen. Next collect results, three builds, diff/docs and commit/push.
+No schema/Supabase/backup changes. Owner acceptance remains NOT RUN.
+
+2026-10-01 resume: final focused 40/40 (22 B3), analyzer clean and full
+1094/1094 verified from completed logs. Worktree preserved; diff check PASS.
+Build sequence session 98993 runs Web/Windows debug/Android debug serially,
+logs pilgrim-beta09b3-{web,windows,android}.log in TEMP. Next collect results,
+finish reviewed documentation and authorized commit/push; restore freeze.
+
 2026-09-29: R7, 09A, 09C, 09B1 and 09B2 COMPLETE and pushed. Feature freeze
 RESTORED. No READY/IN_PROGRESS engineering work remains; BLOCKED_OWNER for
 physical Windows/Android checks in POST_BETA08N_OWNER_ACCEPTANCE.md. No open

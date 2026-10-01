@@ -7,6 +7,7 @@ import '../../data/grid_clipboard_codec.dart';
 import 'grid_batch_review.dart';
 import 'grid_cell.dart';
 import 'grid_toolbar.dart';
+import 'grid_catalog_picker.dart';
 
 /// Virtualized rows with a fixed header. All writes are delegated to the controller.
 class TransactionGrid extends StatefulWidget {
@@ -85,6 +86,7 @@ class _TransactionGridState extends State<TransactionGrid> {
   int rangeEnd = 0;
   final filters = <int, String>{};
   GridUndoChange? undo;
+  GridCatalogChoice? catalogChoice;
 
   Future<void> _undo() async {
     final change = undo;
@@ -165,12 +167,23 @@ class _TransactionGridState extends State<TransactionGrid> {
 
   Future<void> _bulk() async {
     final rows = sorted.where((r) => rangeIds.contains(r.id)).toList();
-    final input = await GridBatchReview.bulkInput(context);
+    final input = await GridBatchReview.bulkInput(context, rows, widget.policy);
     if (input == null || !mounted) return;
+    if (input.$3 != null) {
+      try {
+        for (final row in rows) {
+          widget.policy.prepareChoice(row, input.$1, input.$3!);
+        }
+      } catch (e) {
+        setState(() => editError = e.toString());
+        return;
+      }
+    }
     await _review(
       TransactionGridBatch.plan(
         rows: rows,
         fields: [input.$1],
+        choices: {if (input.$3 != null) input.$1: input.$3!},
         values: [
           for (final _ in rows) [input.$2],
         ],
@@ -180,7 +193,9 @@ class _TransactionGridState extends State<TransactionGrid> {
   }
 
   Future<void> _review(GridEditPlan plan) async {
-    if (!mounted || !await GridBatchReview.confirm(context, plan) || !mounted) {
+    if (!mounted ||
+        !await GridBatchReview.confirm(context, plan, policy: widget.policy) ||
+        !mounted) {
       return;
     }
     setState(() {
@@ -316,6 +331,18 @@ class _TransactionGridState extends State<TransactionGrid> {
       editing = true;
       editError = null;
       editor.text = _value(row, col);
+      catalogChoice = fields[col].catalogBacked
+          ? widget.policy
+                .choices([row], fields[col])
+                .where(
+                  (c) => fields[col] == TransactionGridField.project
+                      ? c.id == row.projectId
+                      : fields[col] == TransactionGridField.category
+                      ? c.id == row.categoryId && c.value == editor.text
+                      : c.value == editor.text,
+                )
+                .firstOrNull
+          : null;
       editor.selection = TextSelection(
         baseOffset: 0,
         extentOffset: editor.text.length,
@@ -338,7 +365,15 @@ class _TransactionGridState extends State<TransactionGrid> {
           'Record changed while editing. Cancel and reopen the cell.',
         );
       }
-      final next = widget.policy.prepare(latest, fields[column], editor.text);
+      final field = fields[column];
+      if (field.catalogBacked && catalogChoice == null) {
+        throw StateError(
+          'Select an existing ${field.label.toLowerCase()} from the choices.',
+        );
+      }
+      final next = field.catalogBacked
+          ? widget.policy.prepareChoice(latest, field, catalogChoice!)
+          : widget.policy.prepare(latest, field, editor.text);
       final previous = _value(latest, column);
       await widget.onSave(next);
       if (!mounted) return;
@@ -602,6 +637,41 @@ class _TransactionGridState extends State<TransactionGrid> {
                                             column == c,
                                         saving: saving,
                                         editor: editor,
+                                        catalogEditor:
+                                            editing &&
+                                                selected == row.id &&
+                                                column == c &&
+                                                fields[c].catalogBacked
+                                            ? GridCatalogPicker(
+                                                key: ValueKey(
+                                                  'picker-${row.id}-$c',
+                                                ),
+                                                choices: widget.policy.choices([
+                                                  row,
+                                                ], fields[c]),
+                                                initial: catalogChoice,
+                                                autofocus: true,
+                                                enabled: !saving,
+                                                label: fields[c].label,
+                                                onTab: (direction) =>
+                                                    _save(move: direction),
+                                                onCancel: () {
+                                                  if (saving) return;
+                                                  setState(() {
+                                                    editing = false;
+                                                    editError = null;
+                                                    original = null;
+                                                  });
+                                                  focus.requestFocus();
+                                                },
+                                                onChanged: () =>
+                                                    catalogChoice = null,
+                                                onSelected: (v) {
+                                                  catalogChoice = v;
+                                                  editor.text = v.value;
+                                                },
+                                              )
+                                            : null,
                                         onSave: () => _save(),
                                         onEdit: () => _edit(row, c),
                                         onSelect: () {

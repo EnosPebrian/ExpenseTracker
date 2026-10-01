@@ -2,10 +2,16 @@ import '../entities/transaction.dart';
 import 'transaction_grid_policy.dart';
 
 class GridRowEdit {
-  const GridRowEdit(this.before, this.after, {this.values = const {}});
+  const GridRowEdit(
+    this.before,
+    this.after, {
+    this.values = const {},
+    this.choices = const {},
+  });
   final Transaction before;
   final Transaction after;
   final Map<TransactionGridField, String> values;
+  final Map<TransactionGridField, GridCatalogChoice> choices;
 }
 
 /// Undo is a new validated update, never a storage/history rewind.
@@ -50,6 +56,7 @@ class TransactionGridBatch {
     required List<TransactionGridField> fields,
     required List<List<String>> values,
     required TransactionGridPolicy policy,
+    Map<TransactionGridField, GridCatalogChoice> choices = const {},
   }) {
     final errors = <String>[];
     final edits = <GridRowEdit>[];
@@ -66,15 +73,18 @@ class TransactionGridBatch {
       var candidate = rows[r];
       for (var c = 0; c < fields.length; c++) {
         try {
-          candidate = policy.prepare(candidate, fields[c], values[r][c]);
+          candidate = choices[fields[c]] != null
+              ? policy.prepareChoice(candidate, fields[c], choices[fields[c]]!)
+              : policy.prepare(candidate, fields[c], values[r][c]);
         } catch (e) {
-          errors.add('Row ${r + 1}, ${fields[c].name}: $e');
+          errors.add('Row ${r + 1} (${rows[r].title}), ${fields[c].label}: $e');
         }
       }
       edits.add(
         GridRowEdit(
           rows[r],
           candidate,
+          choices: choices,
           values: {
             for (var c = 0; c < fields.length; c++) fields[c]: values[r][c],
           },
@@ -129,11 +139,10 @@ class GridBatchCommit {
         if (currentPolicy != null) {
           candidate = latest;
           for (final entry in edit.values.entries) {
-            candidate = currentPolicy().prepare(
-              candidate,
-              entry.key,
-              entry.value,
-            );
+            final choice = edit.choices[entry.key];
+            candidate = choice != null
+                ? currentPolicy().prepareChoice(candidate, entry.key, choice)
+                : currentPolicy().prepare(candidate, entry.key, entry.value);
           }
           final expected = edit.after.toRecord();
           if (candidate.toRecord().entries.any(

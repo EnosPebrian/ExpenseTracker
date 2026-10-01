@@ -1,23 +1,29 @@
 import 'package:flutter/material.dart';
+import '../../domain/entities/transaction.dart';
 import '../../domain/services/transaction_grid_batch.dart';
 import '../../domain/services/transaction_grid_policy.dart';
+import 'grid_bulk_dialog.dart';
 
 class GridBatchReview {
-  static Future<bool> confirm(BuildContext context, GridEditPlan plan) async =>
+  static Future<bool> confirm(
+    BuildContext context,
+    GridEditPlan plan, {
+    TransactionGridPolicy? policy,
+  }) async =>
       await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Review bulk changes'),
           content: SizedBox(
-            width: 650,
+            width: 750,
             height: 350,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text('${plan.edits.length} rows will change'),
                 const Text(
                   'Rows save individually, not atomically. If a save fails, earlier successes remain saved and later rows stop. Review all outcomes.',
                 ),
-                const SizedBox(height: 12),
                 Expanded(
                   child: ListView(
                     children: [
@@ -28,13 +34,36 @@ class GridBatchReview {
                             color: Theme.of(context).colorScheme.error,
                           ),
                         ),
-                      for (final edit in plan.edits)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Text(
-                            '${edit.before.title}\n${_changes(edit)}',
-                          ),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: DataTable(
+                          columns: [
+                            for (final label in [
+                              'Description',
+                              'Field',
+                              'Old',
+                              'New',
+                            ])
+                              DataColumn(label: Text(label)),
+                          ],
+                          rows: [
+                            for (final edit in plan.edits)
+                              for (final field in edit.values.keys)
+                                DataRow(
+                                  cells: [
+                                    DataCell(Text(edit.before.title)),
+                                    DataCell(Text(field.label)),
+                                    DataCell(
+                                      Text(_value(edit.before, field, policy)),
+                                    ),
+                                    DataCell(
+                                      Text(_value(edit.after, field, policy)),
+                                    ),
+                                  ],
+                                ),
+                          ],
                         ),
+                      ),
                     ],
                   ),
                 ),
@@ -57,71 +86,36 @@ class GridBatchReview {
       ) ??
       false;
 
-  static String _changes(GridRowEdit edit) {
-    final a = edit.before.toRecord();
-    final b = edit.after.toRecord();
-    return [
-      for (final key in b.keys)
-        if (a[key] != b[key])
-          '$key: ${a[key] ?? "(empty)"} → ${b[key] ?? "(empty)"}',
-    ].join('\n');
-  }
+  static String _value(
+    Transaction r,
+    TransactionGridField f,
+    TransactionGridPolicy? p,
+  ) => switch (f) {
+    TransactionGridField.date =>
+      '${r.date.year}-${r.date.month.toString().padLeft(2, '0')}-${r.date.day.toString().padLeft(2, '0')}',
+    TransactionGridField.description => r.title,
+    TransactionGridField.amount => '${r.amount}',
+    TransactionGridField.category => r.category,
+    TransactionGridField.account => r.account,
+    TransactionGridField.project =>
+      r.projectId == null
+          ? '(No project)'
+          : p?.projects.entries
+                    .where((e) => e.value == r.projectId)
+                    .firstOrNull
+                    ?.key ??
+                '(Unavailable project)',
+    TransactionGridField.reference => r.reference ?? '(Empty)',
+    TransactionGridField.note => r.note ?? '(Empty)',
+    _ => 'Read only',
+  };
 
-  static Future<(TransactionGridField, String)?> bulkInput(
+  static Future<GridBulkInput?> bulkInput(
     BuildContext context,
-  ) async {
-    var field = TransactionGridField.category;
-    var text = '';
-    final result = await showDialog<(TransactionGridField, String)>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Set selected rows'),
-          content: SizedBox(
-            width: 450,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButton<TransactionGridField>(
-                  value: field,
-                  isExpanded: true,
-                  items: [
-                    for (final f in [
-                      TransactionGridField.category,
-                      TransactionGridField.account,
-                      TransactionGridField.project,
-                      TransactionGridField.reference,
-                      TransactionGridField.note,
-                    ])
-                      DropdownMenuItem(value: f, child: Text(f.name)),
-                  ],
-                  onChanged: (v) {
-                    if (v != null) setState(() => field = v);
-                  },
-                ),
-                TextField(
-                  onChanged: (value) => text = value,
-                  decoration: const InputDecoration(
-                    labelText: 'Existing name or text value',
-                    helperText: 'Blank clears project, reference or note.',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, (field, text)),
-              child: const Text('Review'),
-            ),
-          ],
-        ),
-      ),
-    );
-    return result;
-  }
+    List<Transaction> rows,
+    TransactionGridPolicy policy,
+  ) => showDialog<GridBulkInput>(
+    context: context,
+    builder: (_) => GridBulkDialog(rows: rows, policy: policy),
+  );
 }

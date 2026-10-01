@@ -6,6 +6,13 @@
 
 ## Authorized reliability / spreadsheet program
 
+PT-BETA-09B3 — Catalog-aware spreadsheet editing: VALIDATING.
+Owner authorization 2026-09-29 temporarily lifts freeze only for searchable
+catalog bulk/inline pickers, friendly review and keyboard regression coverage.
+No accounting/schema/backup/hosted changes. All engineering gates PASS:
+focused 40/40, expanded regressions 162/162, full 1094/1094, analyzer and three
+builds. Git publication pending; restore freeze afterward. Owner acceptance pending.
+
 Authority: `POST_BETA08N_PROGRAM_AUTHORIZATION.md` (owner/architect).
 All authorized sprints are COMPLETE. Feature freeze is RESTORED.
 No READY/IN_PROGRESS engineering item remains. Next state: BLOCKED_OWNER for

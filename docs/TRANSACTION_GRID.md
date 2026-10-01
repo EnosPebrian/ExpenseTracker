@@ -62,3 +62,20 @@ Text/date filters remain on the screen; the grid adds type, category, account,
 project and sync/conflict filters. Filters and layout never write financial
 records. Copy uses visible order; hidden rows are never silently edited.
 Owner desktop/Android acceptance remains PENDING / NOT RUN.
+
+## BETA-09B3 catalog-aware controls
+
+Bulk and inline Category/Account/Project use a shared searchable catalog picker.
+Typing filters discovery only, not identity. Users select an existing choice;
+the policy validates its stable ID again on save and through bulk review.
+Same-named replacements cannot silently rebind a reviewed choice. Mixed
+income/expense selections cannot bulk-change Category. System Tithe and
+coordinated rows stay protected. Account options satisfy existing household,
+active, currency and brokerage restrictions for every selected row.
+Project has an explicit (No project) choice. Note/Reference remain free text;
+bulk clearing has a Clear value checkbox. No catalog is created by editing.
+
+Review shows Description / Field / Old / New and identifies invalid rows.
+Existing non-atomic per-row outcomes remain explicit. Enter opens inline edit;
+arrows navigate picker options; Enter chooses; Tab saves/moves; Escape cancels.
+Narrow/mobile list and coordinated editors are unchanged.

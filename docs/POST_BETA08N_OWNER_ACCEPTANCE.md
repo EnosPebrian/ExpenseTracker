@@ -8,6 +8,7 @@ Create an encrypted backup before financial test changes.
 
 | Check | Setup and exact action | Expected result | Owner PASS/FAIL |
 | --- | --- | --- | --- |
+| Catalog editing (09B3) | On Windows select expenses and Bulk edit Category, search Food and select; repeat income, mixed income/expense, Account, Project and Clear value for Note; edit the same cells inline using arrows/Enter/Tab/Escape | Correct existing catalogs only; mixed Category blocked; compatible accounts only; explicit no-project/clear; friendly old/new review; protected rows still use coordinated editor; no master data created | NOT RUN |
 | Brokerage session replan | Review one test statement with BUY 100, later SELL 40 and SPLIT 2:1 for a new ticker; choose Create once | One definition; later rows validate against the session; excluding BUY blocks dependent SELL/SPLIT; exact reimport adds no effects | NOT RUN |
 | Multi-device convergence | Same household on Windows/Android; import reviewed Windows test rows, sync Windows, then Android | Every accepted row and dependency appears once on Android; repeat sync changes nothing | NOT RUN |
 | Durable manual merge | Edit one ordinary test transaction differently offline on both devices; reconnect and open Conflict, choose explicit local/cloud fields | Actual resolver opens; conflict remains on network failure; after confirmed resolution both devices converge without losing independent records | NOT RUN |

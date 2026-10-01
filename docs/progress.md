@@ -1,5 +1,16 @@
 # Pilgrim Tracker Progress
 
+## Catalog-aware spreadsheet editing — 2026-10-01
+
+BETA-09B3 engineering PASS. Bulk and inline searchable existing catalog choices
+replace exact-name typing; mixed category selections block, accounts are valid
+for all rows, project/text clearing is explicit. Stable choices are rechecked
+before existing updates; no catalog creation or accounting changes. Review
+shows friendly old/new values. Final grid tests 40/40 (22 new), expanded
+regressions 162/162, full suite 1094/1094, analyzer and three builds PASS.
+SQLite 29 / backup v8 unchanged; no SQL/hosted changes. Publication in handoff.
+Owner runtime acceptance pending; restore freeze after publication.
+
 ## Reviewed spreadsheet edits — 2026-09-29
 
 BETA-09B2 engineering PASS: rectangular clipboard, complete-plan validation,
